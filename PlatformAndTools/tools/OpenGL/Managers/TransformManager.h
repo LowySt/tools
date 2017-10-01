@@ -1,7 +1,7 @@
 #pragma once
 
-#include "tools\Maths\Maths.h"
 #include "tools\OpenGL\Managers\Camera.h"
+#include "tools\Maths\Maths.h"
 #include "tools\lsCRT.h"
 
 struct TransformManager

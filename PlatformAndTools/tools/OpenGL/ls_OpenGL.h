@@ -38,12 +38,3 @@ typedef float GLclampf;
 typedef double GLdouble;
 typedef double GLclampd;
 typedef void GLvoid;
-
-struct VertexData
-{
-	GLfloat *vertices;
-	size_t verticesSize;
-
-	GLuint *indices;
-	size_t indicesSize;
-};
