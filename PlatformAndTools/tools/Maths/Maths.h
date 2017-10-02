@@ -1108,9 +1108,9 @@ f32 Determinant4(Mat4 m)
 	v3 row4 = vec3(m.row4[1], m.row4[2], m.row4[3]);
 
 	Minor1.row1 = row2; Minor1.row2 = row3; Minor1.row3 = row4;
-	Minor2.row1 = row1; Minor1.row2 = row3; Minor1.row3 = row4;
-	Minor3.row1 = row1; Minor1.row2 = row2; Minor1.row3 = row4;
-	Minor4.row1 = row1; Minor1.row2 = row2; Minor1.row3 = row3;
+	Minor2.row1 = row1; Minor2.row2 = row3; Minor2.row3 = row4;
+	Minor3.row1 = row1; Minor3.row2 = row2; Minor3.row3 = row4;
+	Minor4.row1 = row1; Minor4.row2 = row2; Minor4.row3 = row3;
 
 	Result = m.row1[0] * Determinant3(Minor1) - m.row2[0] * Determinant3(Minor2) + m.row3[0] * Determinant3(Minor3) - m.row4[0] * Determinant3(Minor4);
 
@@ -1359,11 +1359,11 @@ Mat4 Inverse4(Mat4 m)
 	return Result;
 }
 
-Mat3 NormalMatrix(Mat4 modelMat)
+Mat3 NormalMatrix(Mat4 m)
 {
 	Mat3 Result = {};
 
-	Mat4 tmp = Transpose4(Inverse4(modelMat));
+	Mat4 tmp = Transpose4(Inverse4(m));
 
 	Result.row1 = vec3(tmp.row1[0], tmp.row1[1], tmp.row1[2]);
 	Result.row2 = vec3(tmp.row2[0], tmp.row2[1], tmp.row2[2]);
