@@ -4,7 +4,13 @@
 #ifndef LS_WINDOWS
 #include "Platform\lsWindows.h"
 #endif
+
+#ifndef LS_MATHS_HEADER
+#include "tools\Maths\Maths.h"
+#endif
+
 #include <stdarg.h>
+
 
 #ifdef _DEBUG
 #define LogErrori(name, value) LogErrori_(name, value)
@@ -29,6 +35,7 @@
 ////////////////////////////////////////////////////
 
 struct string;
+union v3;
 
 typedef struct
 {
@@ -39,6 +46,54 @@ typedef struct
 	s32	  len; //Zero Terminated
 	s32   byteLen;
 } hex;
+
+struct Bitmap
+{
+	void *data;
+
+	u32 width;
+	u32 height;
+
+	u32 headerSize;
+	u32 compression;
+	u32 pixelBufferSize;
+
+	u64 size;
+};
+
+struct PNG
+{
+	char *compressedData;
+
+	u32 width;				//In pixels
+	u32 height;				//In pixels
+
+	/*n° of bits per sample (or per palette index, not per pixel) i.e. 1, 2, 4, 8, 16 (only some are possible per colorType)*/
+	u8 bitDepth;
+
+	/*Valid values (with associated bitDepth possible values) are 
+	0 - Greyscale			(bitDepth = 1, 2, 4, 8, 16)
+	2 - Truecolor			(bitDepth = 8, 16)
+	3 - IndexedColor		(bitDepth = 1, 2, 4, 8)
+	4 - Greyscale & Alpha	(bitDepth = 8, 16)
+	6 - Truecolor & alpha	(bitDepth = 8, 16)*/
+	u8 colorType;
+
+	/*Will always be 0 (Deflate / Inflate compression method is the International Standard*/
+	u8 compressionMethod;
+
+	/*Indicates the preprocessing method applied before compression. 
+	Will always be 0 (adaptive filtering with 5 basic filter types is the International Standard)*/
+	u8 filterMethod;
+
+	/*0 - No interlace, 1 - Adam7 interlace*/
+	u8 interlaceMethod;
+
+	/*Contains from 1 to 256 pallete entries*/
+	v3 *palette;
+
+	u64 size;
+};
 
 extern "C"
 {
@@ -100,9 +155,20 @@ extern "C"
 	s32 ls_printf(const char *format, ...);
 	char ls_getc();
 
+	////////////////////////////////////////////////////
+	//	FILE MANIPULATION FUNCTIONS
+	////////////////////////////////////////////////////
+
+	void ls_getFileNameFromPath(char *Path, char *out);
+	void ls_getFileExtension(char *Path, char *out);
+
 	//If bytesToRead is set to 0 the entire file will be read.
 	u64 ls_readTextFile(char *Path, char **Dest, u64 bytesToRead);
 	u64 ls_writeTextFile(char *Path, void *Source, u64 bytesToWrite, b32 append);
+
+	void ls_loadBitmap(char *Path, Bitmap *bitmap);
+	void ls_loadCompressedPNG(char *Path, PNG *png);
+	void ls_Deflate(char *data, char *out);
 
 	////////////////////////////////////////////////////
 	//	CRYPTOGRAPHY FUNCTIONS
@@ -132,7 +198,7 @@ extern "C"
 	void ls_zeroMem(void *mem, size_t size);
 	void ls_zeroMemASM(void *mem, size_t size);
 	void ls_zeroString(void *mem, size_t size);
-	void *ls_heapAlloc(u32 size);
+	void *ls_heapAlloc(u64 size);
 	void ls_heapFree(void *p);
 
 	////////////////////////////////////////////////////
@@ -1436,6 +1502,38 @@ char ls_getc()
 	return Result;
 }
 
+////////////////////////////////////////////////////
+//	FILE MANIPULATION FUNCTIONS
+////////////////////////////////////////////////////
+
+void ls_getFileNameFromPath(char *Path, char *out)
+{
+	u32 len = ls_len(Path);
+
+	u32 i = len - 1;
+	while (Path[i] != '/')
+	{ i--; }
+
+	ls_strcpy(out, Path + i + 1, true);
+
+	return;
+}
+
+void ls_getFileExtension(char *Path, char *out)
+{
+	u32 len = ls_len(Path);
+
+	u32 i = len - 1;
+	while (Path[i] != '.')
+	{
+		i--;
+	}
+
+	ls_strcpy(out, Path + i + 1, true);
+
+	return;
+}
+
 u64 ls_readTextFile(char *Path, char **Dest, u64 bytesToRead)
 {
 	DWORD Error = 0;
@@ -1486,6 +1584,98 @@ u64 ls_writeTextFile(char *Path, void *Source, u64 bytesToWrite, b32 append)
 	CloseHandle(FileHandle);
 
 	return 0;
+}
+
+void ls_loadBitmap(char *Path, Bitmap *bitmap)
+{
+	char *bitmapFile;
+	u64 bitmapFileSize = ls_readTextFile(Path, &bitmapFile, 0);
+
+	u32 PixelOffset = *((u32 *)((char *)bitmapFile + 10));
+	u32 HeaderSize = *((u32 *)((char *)bitmapFile + 14));
+
+	s32 Width = *((s32 *)((char *)bitmapFile + 18));
+	s32 Height = *((s32 *)((char *)bitmapFile + 22));
+	Height = ls_abs(Height);
+
+	u32 Compression = *((u32 *)((char *)bitmapFile + 30));
+
+	u32 PixelBufferSize = *((u32 *)((char *)bitmapFile + 34));
+
+	bitmap->data = ((char *)bitmapFile + PixelOffset);
+	bitmap->width = Width;
+	bitmap->height = Height;
+	bitmap->headerSize = HeaderSize;
+	bitmap->compression = Compression;
+	bitmap->pixelBufferSize = PixelBufferSize;
+	bitmap->size = bitmapFileSize;
+
+	return;
+}
+
+void ls_loadCompressedPNG(char *Path, PNG *png)
+{
+	char *pngFile;
+	u64 pngFileSize = ls_readTextFile(Path, &pngFile, 0);
+
+	png->compressedData = (char *)ls_heapAlloc(sizeof(char)*pngFileSize);
+
+	char *At = pngFile;
+	
+	//Checks the png file is "valid" with the first 4 bytes, 1 check byte and a "PNG" signature.
+	Assert((*At == 0x89) && (*(At+1) == 0x50) && (*(At + 2) == 0x4E) && (*(At + 1) == 0x47));
+	At += 8;
+
+	char chunkType[4];
+
+	u32 chunkSize = *(u32 *)At; At += 4;
+	ls_memcpy(At, chunkType, 4); At += 4;
+
+	while (ls_strcmp(chunkType, "IEND") != 0)
+	{
+		if (ls_strcmp(chunkType, "IHDR") == 0)
+		{
+			png->width				= *(u32 *)At; At += 4;
+			png->height				= *(u32 *)At; At += 4;
+			png->bitDepth			= *At; At++;
+			png->colorType			= *At; At++;
+			png->compressionMethod	= *At; At++;
+			png->filterMethod		= *At; At++;
+			png->interlaceMethod	= *At; At++;
+		}
+		else if (ls_strcmp(chunkType, "PLTE") == 0)
+		{
+			Assert((chunkSize % 3) == 0);
+			u32 numOfEntries = chunkSize / 3;
+
+			png->palette = (v3 *)ls_heapAlloc(sizeof(v3)*numOfEntries);
+
+			for (u32 i = 0; i < numOfEntries; i++)
+			{
+				png->palette[i].r = *At; At++;
+				png->palette[i].g = *At; At++;
+				png->palette[i].b = *At; At++;
+			}
+		}
+		else if (ls_strcmp(chunkType, "IDAT") == 0)
+		{
+			ls_memcpy(At, png->compressedData + png->size, chunkSize);
+			png->size += chunkSize;
+		}
+
+		//Jump CRC
+		At += 4;
+
+		chunkSize = *(u32 *)At; At += 4;
+		ls_memcpy(At, chunkType, 4); At += 4;
+	}
+
+	return;
+}
+
+void ls_Deflate(char *data, char *out)
+{
+	return;
 }
 
 ////////////////////////////////////////////////////
@@ -2023,7 +2213,7 @@ void ls_zeroString(void *mem, size_t size)
 }
 
 
-void *ls_heapAlloc(u32 size)
+void *ls_heapAlloc(u64 size)
 {
 	HANDLE HeapHandle = GetProcessHeap();
 	void *result = HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, size);
