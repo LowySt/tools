@@ -5,12 +5,8 @@
 #include "Platform\lsWindows.h"
 #endif
 
-#ifndef LS_MATHS_HEADER
-#include "tools\Maths\Maths.h"
-#endif
-
 #include <stdarg.h>
-
+#include "tools\Maths\Maths.h"
 
 #ifdef _DEBUG
 #define LogErrori(name, value) LogErrori_(name, value)
@@ -35,7 +31,10 @@
 ////////////////////////////////////////////////////
 
 struct string;
+struct v2;
 union v3;
+union v4;
+struct v3i;
 
 typedef struct
 {
@@ -92,7 +91,45 @@ struct PNG
 	/*Contains from 1 to 256 pallete entries*/
 	v3 *palette;
 
+	/*Information used in optional blocks*/
+	
+	/*bKGD*/
+	u8 defaultBackgroundIndex;
+	u16 defaultBackgroundGreyscale;
+	v3i defaultBackgroundColor;
+
+	/*cHRM*/
+	v2 whitePoint;
+	v2 redChrom;
+	v2 greenChrom;
+	v2 blueChrom;
+
+	/*gAMA*/
+	f32 gamma;
+
+	/*pHYs*/
+	u32 pixelsPerUnit_X;
+	u32 pixelsPerUnit_Y;
+	u8 unitSpecifier; // 0 is Unkown, 1 is one metre;
+
 	u64 size;
+
+	operator Bitmap() 
+	{
+		Bitmap bitmap = { 0 };
+		bitmap.data = compressedData;
+
+		bitmap.width = width;
+		bitmap.height = height;
+
+		bitmap.headerSize = 0;
+		bitmap.compression = 0;
+		bitmap.pixelBufferSize = bitDepth;
+
+		bitmap.size = size;
+
+		return bitmap;
+	}
 };
 
 extern "C"
@@ -173,6 +210,10 @@ extern "C"
 	////////////////////////////////////////////////////
 	//	CRYPTOGRAPHY FUNCTIONS
 	////////////////////////////////////////////////////
+
+	u16 btol16(char *At);
+	u32 btol32(char *At);
+	u64 btol64(char *At);
 
 	void ls_setupHex(hex *h, char *ascii);
 
@@ -1626,17 +1667,18 @@ void ls_loadCompressedPNG(char *Path, PNG *png)
 	Assert((*At == 0x89) && (*(At+1) == 0x50) && (*(At + 2) == 0x4E) && (*(At + 1) == 0x47));
 	At += 8;
 
-	char chunkType[4];
+	char chunkType[5];
 
-	u32 chunkSize = *(u32 *)At; At += 4;
+	u32 chunkSize = btol32(At); At += 4;
 	ls_memcpy(At, chunkType, 4); At += 4;
+	chunkType[4] = 0;
 
 	while (ls_strcmp(chunkType, "IEND") != 0)
 	{
 		if (ls_strcmp(chunkType, "IHDR") == 0)
 		{
-			png->width				= *(u32 *)At; At += 4;
-			png->height				= *(u32 *)At; At += 4;
+			png->width				= btol32(At); At += 4;
+			png->height				= btol32(At); At += 4;
 			png->bitDepth			= *At; At++;
 			png->colorType			= *At; At++;
 			png->compressionMethod	= *At; At++;
@@ -1662,12 +1704,56 @@ void ls_loadCompressedPNG(char *Path, PNG *png)
 			ls_memcpy(At, png->compressedData + png->size, chunkSize);
 			png->size += chunkSize;
 		}
+		else if (ls_strcmp(chunkType, "bKGD") == 0)
+		{
+			if (png->colorType == 3) { png->defaultBackgroundIndex = *At; At++; }
+			
+			else if ((png->colorType == 0) || (png->colorType == 4))
+			{ png->defaultBackgroundGreyscale = btol16(At); At += 2; }
+
+			else 
+			{ 
+				png->defaultBackgroundColor.x = btol16(At); At += 2; 
+				png->defaultBackgroundColor.y = btol16(At); At += 2;
+				png->defaultBackgroundColor.z = btol16(At); At += 2;
+			}
+		}
+		else if (ls_strcmp(chunkType, "cHRM") == 0)
+		{
+			png->whitePoint.x = (f32)btol32(At) / 100000.0f; At += 4;
+			png->whitePoint.y = (f32)btol32(At) / 100000.0f; At += 4;
+			png->redChrom.x = (f32)btol32(At) / 100000.0f; At += 4;
+			png->redChrom.y = (f32)btol32(At) / 100000.0f; At += 4;
+			png->greenChrom.x = (f32)btol32(At) / 100000.0f; At += 4;
+			png->greenChrom.y = (f32)btol32(At) / 100000.0f; At += 4;
+			png->blueChrom.x = (f32)btol32(At) / 100000.0f; At += 4;
+			png->blueChrom.y = (f32)btol32(At) / 100000.0f; At += 4;
+		}
+		else if (ls_strcmp(chunkType, "gAMA") == 0)
+		{
+			png->gamma = (f32)btol32(At) / 100000.0f; At += 4;
+		}
+		else if (ls_strcmp(chunkType, "pHYs") == 0)
+		{
+			png->pixelsPerUnit_X = btol32(At); At += 4;
+			png->pixelsPerUnit_Y = btol32(At); At += 4;
+			png->unitSpecifier = *At; At++;
+		}
+		/*else if (ls_strcmp(chunkType, "tRNS") == 0)
+		{
+
+		}*/
+		else
+		{
+			At += chunkSize;
+		}
 
 		//Jump CRC
 		At += 4;
 
-		chunkSize = *(u32 *)At; At += 4;
+		chunkSize = btol32(At); At += 4;
 		ls_memcpy(At, chunkType, 4); At += 4;
+		chunkType[4] = 0;
 	}
 
 	return;
@@ -1675,12 +1761,60 @@ void ls_loadCompressedPNG(char *Path, PNG *png)
 
 void ls_Deflate(char *data, char *out)
 {
+
 	return;
 }
 
 ////////////////////////////////////////////////////
 //	CRYPTOGRAPHY FUNCTIONS
 ////////////////////////////////////////////////////
+
+u16 btol16(char *At)
+{
+	u16 result = 0;
+	u16 buffer[2] = { 0 };
+
+	ls_memcpy(At, buffer, 2);
+
+	result |= buffer[1];
+	result |= (buffer[0] << 8);
+
+	return result;
+}
+
+u32 btol32(char *At)
+{
+	u32 result = 0;
+	u32 buffer[4] = { 0 };
+
+	ls_memcpy(At, buffer, 4);
+
+	result |= buffer[3];
+	result |= (buffer[2] << 8);
+	result |= (buffer[1] << 16);
+	result |= (buffer[0] << 24);
+
+	return result;
+}
+
+u64 btol64(char *At)
+{
+	u64 result = 0;
+	u64 buffer[8] = { 0 };
+
+	ls_memcpy(At, buffer, 8);
+
+	result |= buffer[7];
+	result |= (buffer[6] << 8);
+	result |= (buffer[5] << 16);
+	result |= (buffer[4] << 24);
+	result |= (buffer[3] << 32);
+	result |= (buffer[2] << 40);
+	result |= (buffer[1] << 48);
+	result |= (buffer[0] << 56);
+
+	return result;
+}
 
 void ls_setupHex(hex *h, char *ascii)
 {

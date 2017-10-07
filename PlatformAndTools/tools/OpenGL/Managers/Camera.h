@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tools\Maths\Maths.h"
+//#include "tools\Maths\Maths.h"
 #include "tools\lsCRT.h"
 
 struct Camera
