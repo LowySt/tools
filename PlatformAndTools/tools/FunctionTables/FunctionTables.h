@@ -1,9 +1,7 @@
 #pragma once
 
-#include "Platform\lsWindows.h"
-
 //It goes from 0.0f to 10.0f Negative values from -10.0f to 0.0f can be obtained by getting the abs(x) and making the result negative easy peasy!
-f32 arctan[1001] = {
+float arctan[1001] = {
 	0.000000f, 0.009999f, 0.019997f, 0.029991f, 0.039978f, 0.049958f, 0.059928f, 0.069886f,
 	0.079829f, 0.089758f, 0.099668f, 0.109559f, 0.119428f, 0.129275f, 0.139095f, 0.148889f,
 	0.158655f, 0.168390f, 0.178093f, 0.187762f, 0.197395f, 0.206992f, 0.216550f, 0.226068f,

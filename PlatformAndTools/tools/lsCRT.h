@@ -1,34 +1,33 @@
-#ifndef LS_CRT_HEADER
-#define LS_CRT_HEADER
+#ifndef LS_CRT_H
+#define LS_CRT_H
 
-#ifndef LS_WINDOWS
-#include "Platform\lsWindows.h"
+#ifdef _WIN32
+#define LS_PLAT_WINDOWS
+#elif __GNUC__
+#define LS_PLAT_LINUX
 #endif
 
-#ifndef LS_MATHS_HEADER
-#include "tools\Maths\Maths.h"
+
+#ifdef LS_PLAT_WINDOWS
+#ifndef LS_WINDOWS_H
+#include "../Platform/lsWindows.h"
+#endif
+#endif
+
+
+#ifdef LS_PLAT_LINUX
+#ifndef LS_LINUX_H
+#include "../Platform/lsLinux.h"
+#endif
+#endif
+
+#ifndef LS_MATHS_H
+#include "Maths/Maths.h"
 #endif
 
 #include <stdarg.h>
 
-
-#ifdef _DEBUG
-#define LogErrori(name, value) LogErrori_(name, value)
-#define LogErrorf(name, value) LogErrorf_(name, value)
-#else
-#define LogErrori(name, value)
-#define LogErrorf(name, value)
-#endif
-
-#define fil(value) for(int i = 0; i < value; i++)
-#define fjl(value) for(int j = 0; j < value; j++)
-
 #define PI_32 3.1415926f
-
-#define Bytes(n) n
-#define KBytes(n) 1024*n
-#define MBytes(n) 1024*KBytes(n)
-#define GBytes(n) 1024*MBytes(n)
 
 ////////////////////////////////////////////////////
 //	STRUCTURES
@@ -163,8 +162,8 @@ extern "C"
 	void ls_getFileExtension(char *Path, char *out);
 
 	//If bytesToRead is set to 0 the entire file will be read.
-	u64 ls_readTextFile(char *Path, char **Dest, u64 bytesToRead);
-	u64 ls_writeTextFile(char *Path, void *Source, u64 bytesToWrite, b32 append);
+    u64 ls_readFile(char *Path, char **Dest, u32 bytesToRead);
+	u64 ls_writeFile(char *Path, void *Source, u32 bytesToWrite, b32 append);
 
 	void ls_loadBitmap(char *Path, Bitmap *bitmap);
 	void ls_loadCompressedPNG(char *Path, PNG *png);
@@ -198,8 +197,8 @@ extern "C"
 	void ls_zeroMem(void *mem, size_t size);
 	void ls_zeroMemASM(void *mem, size_t size);
 	void ls_zeroString(void *mem, size_t size);
-	void *ls_heapAlloc(u64 size);
-	void ls_heapFree(void *p);
+	void *ls_alloc(u64 size);
+	void ls_free(void *p);
 
 	////////////////////////////////////////////////////
 	//	INTRINSICS
@@ -211,10 +210,6 @@ extern "C"
 	u16 ByteSwap16(u16 value);
 	u32 ByteSwap32(u32 value);
 	u64 ByteSwap64(u64 value);
-
-	//@TODO: Move in its own logging system
-	void LogErrori_(char *Message, s32 Error);
-	void LogErrorf_(char *Message, f32 Error);
 }
 
 //@TODO: I really don't like the C++-ness of this string code... Could I clean it up in any way?
@@ -227,20 +222,20 @@ struct string
 	{
 		u32 len = ls_len((char *)src);
 		size = len;
-		data = (char *)ls_heapAlloc(len);
+		data = (char *)ls_alloc(len);
 		ls_memcpy((void *)src, (void *)data, len);
 	}
 	
 	string(int v)
 	{
 		size = v;
-		data = (char *)ls_heapAlloc(v);
+		data = (char *)ls_alloc(v);
 	}
 
 	string(string *v)
 	{
 		size = v->size;
-		data = (char *)ls_heapAlloc(size);
+		data = (char *)ls_alloc(size);
 		ls_memcpy((void *)v->data, (void *)data, size);
 	}
 
@@ -254,13 +249,13 @@ struct string
 	string operator+(string w)
 	{
 		u32 newSize = size + w.size;
-		char *newData = (char *)ls_heapAlloc(newSize);
+		char *newData = (char *)ls_alloc(newSize);
 
 		ls_memcpy((void*)data, (void *)newData, size);
 		ls_memcpy((void*)w.data, (void *)(newData + size), w.size);
 
-		ls_heapFree(data);
-		ls_heapFree(w.data);
+		ls_free(data);
+		ls_free(w.data);
 
 		string result; result.data = newData; result.size = newSize;
 		return result;
@@ -362,7 +357,7 @@ struct hashTable
 
 	void growTable()
 	{
-		hashEntry *newEntries = (hashEntry *)ls_heapAlloc(sizeof(hashEntry)*size * 2);
+		hashEntry *newEntries = (hashEntry *)ls_alloc(sizeof(hashEntry)*size * 2);
 		size = size * 2;
 		longestLink = 0; elementsInTable = 0;
 
@@ -383,13 +378,13 @@ struct hashTable
 			}
 		}
 
-		ls_heapFree((void *)temp);
+		ls_free((void *)temp);
 	}
 
 	hashTable(u32 tableSize = 64, u32 (*func)(string) = 0)
 	{
 		size = tableSize;
-		entries = (hashEntry *)ls_heapAlloc(sizeof(hashEntry) * size);
+		entries = (hashEntry *)ls_alloc(sizeof(hashEntry) * size);
 		elementsInTable = 0; longestLink = 0;
 
 		if (func) { hashFunction = func; }
@@ -414,7 +409,7 @@ struct hashTable
 		{
 			hashEntry *At = &entries[index]; u32 linkLength = 0;
 			while (At->next != 0) { At = At->next; linkLength++; }
-			At->next = (hashEntry *)ls_heapAlloc(sizeof(hashEntry));
+			At->next = (hashEntry *)ls_alloc(sizeof(hashEntry));
 			At = At->next; linkLength++;
 			At->id = id; At->val = value;
 			elementsInTable++;
@@ -453,7 +448,7 @@ struct Array
 
 	void createArray(u32 dim, size_t sizeOfType)
 	{
-		data = ls_heapAlloc((u32)sizeOfType * dim);
+		data = ls_alloc((u32)sizeOfType * dim);
 		type = (u32)sizeOfType;
 		size = dim;
 		usedSize = 0;
@@ -467,9 +462,9 @@ struct Array
 
 	void resize(s32 amount)
 	{
-		void *newData = ls_heapAlloc((size + amount)*type);
+		void *newData = ls_alloc((size + amount)*type);
 		ls_memcpy(data, newData, (size*type));
-		ls_heapFree(data);
+		ls_free(data);
 
 		size = (size + amount);
 		data = newData;
@@ -520,8 +515,8 @@ struct Array
 
 	b32 hasElement(void *element)
 	{
-		char *b1 = (char *)ls_heapAlloc(type);
-		char *b2 = (char *)ls_heapAlloc(type);
+		char *b1 = (char *)ls_alloc(type);
+		char *b2 = (char *)ls_alloc(type);
 		ls_memcpy(element, b2, type);
 
 		char *At;
@@ -541,8 +536,8 @@ struct Array
 
 	b32 hasElement(void *element, u32 *index)
 	{
-		char *b1 = (char *)ls_heapAlloc(type);
-		char *b2 = (char *)ls_heapAlloc(type);
+		char *b1 = (char *)ls_alloc(type);
+		char *b2 = (char *)ls_alloc(type);
 		ls_memcpy(element, b2, type);
 
 		char *At;
@@ -588,7 +583,7 @@ struct Tree
 
 	Tree()
 	{
-		Root = (Node *)ls_heapAlloc(sizeof(Node)); 
+		Root = (Node *)ls_alloc(sizeof(Node)); 
 		numOfNodes = 1;
 	}
 
@@ -601,9 +596,16 @@ struct Tree
 
 #ifdef LS_CRT_IMPLEMENTATION
 
-#include "tools\FunctionTables\FunctionTables.h"
+#include "FunctionTables/FunctionTables.h"
 #include <immintrin.h>
+
+#ifdef LS_PLAT_WINDOWS
 #include <intrin.h>
+#endif
+
+#ifdef LS_PLAT_LINUX
+#include <x86intrin.h>
+#endif
 
 ////////////////////////////////////////////////////
 //	MATH FUNCTIONS
@@ -680,15 +682,22 @@ f32 rad(f32 x)
 
 f32 ls_sqrt(f32 x)
 {
+#ifdef LS_PLAT_WINDOWS
 	__m128 Result = _mm_set_ps1(x);
 	Result = _mm_rsqrt_ps(Result);
 
 	return (1 / Result.m128_f32[0]);
+#endif
+
+#ifdef LS_PLAT_LINUX
+    f32 Result = __builtin_sqrtf(x);
+    return Result;
+#endif
 }
 
 string *ls_findNthPermutation(char *elementArr, u32 sizeOfElementArr, u32 termPosition)
 {
-	string *result = (string *)ls_heapAlloc(sizeof(string) * 1);
+	string *result = (string *)ls_alloc(sizeof(string) * 1);
 	u64 numOfTerms = ls_fact(sizeOfElementArr);
 
 	if (termPosition > numOfTerms)
@@ -754,7 +763,7 @@ string *ls_findNthPermutation(char *elementArr, u32 sizeOfElementArr, u32 termPo
 void ls_powersOfTwo(u32 lastPower)
 {
 	u32 sizeOfBiggestPower = u32(0.3010299957f * lastPower); // This is the log10 of the last Power which tells me approximately the number of digits of it.
-	u32 *a = (u32 *)ls_heapAlloc(sizeof(u32)*(sizeOfBiggestPower+2));
+	u32 *a = (u32 *)ls_alloc(sizeof(u32)*(sizeOfBiggestPower+2));
 
 	u32 m = 1;
 	u32 carry = 0;
@@ -763,9 +772,9 @@ void ls_powersOfTwo(u32 lastPower)
 	char bufferBegin[] = "char powersOfTwo[][] = \r\n{\r\n\t";
 	char bufferBeginLine[] = "{\"";
 	char bufferEndLine[] = "\"},\r\n\t";
-	ls_writeTextFile("C:/Users/loren/Desktop/powersOfTwo.txt", (void *)bufferBegin, sizeof(bufferBegin)-1, TRUE);
+	ls_WriteFile("C:/Users/loren/Desktop/powersOfTwo.txt", (void *)bufferBegin, sizeof(bufferBegin)-1, TRUE);
 
-	char *bufferPowers = (char *)ls_heapAlloc(lastPower);
+	char *bufferPowers = (char *)ls_alloc(lastPower);
 	u32 idx = 0;
 
 	for (u32 i = 1; i <= lastPower; i++)
@@ -786,9 +795,9 @@ void ls_powersOfTwo(u32 lastPower)
 		{
 			bufferPowers[idx++] = ls_itoc(a[k]);
 		}
-		ls_writeTextFile("C:/Users/loren/Desktop/powersOfTwo.txt", (void *)bufferBeginLine, sizeof(bufferBeginLine)-1, TRUE);
-		ls_writeTextFile("C:/Users/loren/Desktop/powersOfTwo.txt", (void *)bufferPowers, idx, TRUE);
-		ls_writeTextFile("C:/Users/loren/Desktop/powersOfTwo.txt", (void *)bufferEndLine, sizeof(bufferEndLine)-1, TRUE);
+		ls_WriteFile("C:/Users/loren/Desktop/powersOfTwo.txt", (void *)bufferBeginLine, sizeof(bufferBeginLine)-1, TRUE);
+		ls_WriteFile("C:/Users/loren/Desktop/powersOfTwo.txt", (void *)bufferPowers, idx, TRUE);
+		ls_WriteFile("C:/Users/loren/Desktop/powersOfTwo.txt", (void *)bufferEndLine, sizeof(bufferEndLine)-1, TRUE);
 		idx = 0;
 
 	}
@@ -799,7 +808,7 @@ void ls_powersOfTwo(u32 lastPower)
 void ls_primes(u64 upperLimit)
 {
 	char bufferBegin[] = "u64 primes[] = \r\n{\r\n\t";
-	ls_writeTextFile("C:/Users/loren/Desktop/primes.txt", (void *)bufferBegin, sizeof(bufferBegin) - 1, TRUE);
+	ls_WriteFile("C:/Users/loren/Desktop/primes.txt", (void *)bufferBegin, sizeof(bufferBegin) - 1, TRUE);
 
 	u32 newline = 0;
 	for (u64 i = 1; i < upperLimit; i++)
@@ -817,13 +826,13 @@ void ls_primes(u64 upperLimit)
 					newline = 0;
 					print += "\r\n\t";
 				}
-				ls_writeTextFile("C:/Users/loren/Desktop/primes.txt", (void *)print.data, print.size, TRUE);
+				ls_WriteFile("C:/Users/loren/Desktop/primes.txt", (void *)print.data, print.size, TRUE);
 			}
 		}
 	}
 
 	char end[] = "};";
-	ls_writeTextFile("C:/Users/loren/Desktop/primes.txt", (void *)end, sizeof(end), TRUE);
+	ls_WriteFile("C:/Users/loren/Desktop/primes.txt", (void *)end, sizeof(end), TRUE);
 }
 
 #endif
@@ -870,6 +879,7 @@ f64 ls_sine(f64 x)
 	return (1.9252e-16*tenth) - (0.00052653*ninth) - (1.3721e-15*eigth) + (0.013847*seventh) + (3.344e-15*sixth)
 		- (0.17589*fifth) - (3.0365e-15*fourth) + (1.0402*cube) + (1.6822e-16*square) - (1.8412*z) + (5.4606e-16);
 }
+
 f64 ls_asin(f64 x)
 {
 	if ((x < -1.0f) || (x > 1.0f))
@@ -891,6 +901,7 @@ f64 ls_asin(f64 x)
 	return (1.6544e-15*tenth) + (0.024044*ninth) - (1.1741e-14*eigth) - (0.12358*seventh) + (2.9093e-14*sixth)
 		+ (0.22158*fifth) - (2.938e-14*fourth) - (0.10393*cube) + (1.0267e-14*square) + (0.60425*z) - 6.3772e-16;
 }
+
 f64 ls_cos(f64 x)
 {
 	b32 isNegative = (x > 0) ? FALSE : TRUE;
@@ -928,6 +939,7 @@ f64 ls_cos(f64 x)
 	return (9.9058e-05*tenth) - (2.4826e-16*ninth) - (0.0032018*eigth) + (1.475e-15*seventh) + (0.054013*sixth)
 		- (3.0717e-15*fifth) - (0.47883*fourth) + (2.9256e-15*cube) + (1.6951*square) - (1.5395e-15*z) - 1;
 }
+
 f64 ls_acos(f64 x)
 {
 	if ((x < -1.0f) || (x > 1.0f))
@@ -949,10 +961,12 @@ f64 ls_acos(f64 x)
 	return -(2.3277e-15*tenth) - (0.024044*ninth) + (1.7628e-14*eigth) + (0.12358*seventh) - (4.6935e-14*sixth)
 		- (0.22158*fifth) + (5.1126e-14*fourth) + (0.10393*cube) - (1.9655e-14*square) - (0.60425*z) + 1.5708;
 }
+
 f64 ls_tan(f64 x)
 {
 	return (ls_sine(x) / ls_cos(x));
 }
+
 f64 ls_atan(f64 x)
 {
 	b32 isNegative = x < 0.0f ? TRUE : FALSE;
@@ -992,15 +1006,13 @@ char ls_lowerCase(char c)
 
 char * ls_itoa(s64 x)
 {
-	HANDLE HeapHandle = GetProcessHeap(); //@TODO: How to not do this?
-
 	char *Result = 0;
 	bool isNegative = x < 0;
 	s64 value = isNegative ? -x : x;
 
 	if (value == 0)
 	{
-		Result = (char *)ls_heapAlloc(2);
+		Result = (char *)ls_alloc(2);
 		Result[0] = '0'; Result[1] = '\0';
 		return Result;
 	}
@@ -1015,7 +1027,7 @@ char * ls_itoa(s64 x)
 	//Update few days later: Fuck it I'm changing this shitty Log10 functions that sucks freakin balls.
 
 	//@TODO @CLEANUP @FIXME: Make a Log2 / Log10 / LOGN Function Tables so that I quit having this stupid shitty problem. (Or maybe see if theres cool ASM for them)
-	Result = (char *)HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, 128);
+	Result = (char *)ls_alloc(128);
 	s32 i = 0;
 
 	while (value != 0)
@@ -1045,7 +1057,6 @@ char ls_itoc(s64 x)
 
 char * ls_ftoa(f32 x)
 {
-	HANDLE HeapHandle = GetProcessHeap();
 	char *Result = 0;
 
 	char *IntegerPart = ls_itoa((int)x);
@@ -1067,32 +1078,25 @@ char * ls_ftoa(f32 x)
 		FractPart = ls_itoa(fractValue);
 	}
 
-	BOOL hasSucceded = 0;
-
-	if (x < 0)
+    if (x < 0)
 	{
-		char *Negative = ls_concat("-", IntegerPart, 0);
-		char *Part1 = ls_concat(Negative, ".", 0);
+		char *Negative = ls_concat((char *)"-", IntegerPart, 0);
+		char *Part1 = ls_concat(Negative, (char *)".", 0);
 		Result = ls_concat(Part1, FractPart + 1, 0);
 
-		hasSucceded = HeapFree(HeapHandle, 0, Negative);
-		Assert(hasSucceded);
-		hasSucceded = HeapFree(HeapHandle, 0, Part1);
-		Assert(hasSucceded);
+		ls_free(Negative);
+	    ls_free(Part1);
 	}
 	else
 	{
-		char *Part1 = ls_concat(IntegerPart, ".", 0);
+		char *Part1 = ls_concat(IntegerPart, (char *)".", 0);
 		Result = ls_concat(Part1, FractPart + 1, 0);
 
-		hasSucceded = HeapFree(HeapHandle, 0, Part1);
-		Assert(hasSucceded);
+		ls_free(Part1);
 	}
 
-	hasSucceded = HeapFree(HeapHandle, 0, IntegerPart);
-	Assert(hasSucceded);
-	hasSucceded = HeapFree(HeapHandle, 0, FractPart);
-	Assert(hasSucceded);
+	ls_free(IntegerPart);
+	ls_free(FractPart);
 
 	return Result;
 }
@@ -1169,14 +1173,12 @@ s64 ls_atoi(char *s, int base)
 
 char * ls_concat(char *string1, char *string2, b32 hasToFree)
 {
-	HANDLE HeapHandle = GetProcessHeap();
-
 	char *Result = 0;
 	int string1Len = ls_len(string1);
 	int string2Len = ls_len(string2);
 
 	int size = string1Len + string2Len;
-	Result = (char *)HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, size + 1);
+	Result = (char *)ls_alloc(size + 1);
 
 	char *At = string1;
 	int i = 0;
@@ -1198,10 +1200,8 @@ char * ls_concat(char *string1, char *string2, b32 hasToFree)
 
 	if (hasToFree)
 	{
-		BOOL hasSucceded = HeapFree(HeapHandle, 0, string1);
-		Assert(hasSucceded);
-		hasSucceded = HeapFree(HeapHandle, 0, string2);
-		Assert(hasSucceded);
+		ls_free(string1);
+		ls_free(string2);
 	}
 
 	return Result;
@@ -1295,11 +1295,12 @@ void ls_alphaOrder(char **names, u32 numOfNames)
 	}
 }
 
+u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite, b32 append);
+u64 ls_readConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite);
+
 s32 ls_sprintf(char *dest, const char *format, ...)
 {
-	HANDLE HeapHandle = GetProcessHeap();
-
-	char *buff = (char *)ls_heapAlloc(1048576);
+	char *buff = (char *)ls_alloc(1048576);
 	const char *p = format;
 	char *s = 0;
 	char *s_label = 0;
@@ -1333,11 +1334,11 @@ s32 ls_sprintf(char *dest, const char *format, ...)
 			else { nInt = (u64)va_arg(argList, s32); }
 			s = ls_itoa(nInt);
 			i += ls_strcpy(buff + i, s, 0);
-			HeapFree(HeapHandle, 0, s);
+			ls_free(s);
 			break;
 
 		case 'c':
-			c = va_arg(argList, char);
+			c = va_arg(argList, int);
 			buff[i] = c;
 			i++;
 			break;
@@ -1346,7 +1347,7 @@ s32 ls_sprintf(char *dest, const char *format, ...)
 			nFloat = (f32)va_arg(argList, f64);
 			s = ls_ftoa(nFloat);
 			i += ls_strcpy(buff + i, s, 0);
-			HeapFree(HeapHandle, 0, s);
+			ls_free(s);
 			break;
 
 		case 's':
@@ -1366,16 +1367,14 @@ s32 ls_sprintf(char *dest, const char *format, ...)
 	i++;
 	ls_memcpy(buff, dest, i);
 
-	ls_heapFree((void *)buff);
+	ls_free((void *)buff);
 
 	return i;
 }
 
 s32 ls_printf(const char *format, ...)
 {
-	HANDLE HeapHandle = GetProcessHeap();
-
-	char *buff = (char *)ls_heapAlloc(1048576);
+	char *buff = (char *)ls_alloc(1048576);
 	const char *p = format;
 	char *s = 0;
 	char *s_label = 0;
@@ -1416,11 +1415,11 @@ s32 ls_printf(const char *format, ...)
 			else { nInt = (u64)va_arg(argList, s32); }
 			s = ls_itoa(nInt);
 			i += ls_strcpy(buff + i, s, 0);
-			HeapFree(HeapHandle, 0, s);
+			ls_free((void *)s);
 			break;
 
 		case 'c':
-			c = va_arg(argList, char);
+			c = va_arg(argList, int);
 			*(buff + i) = c;
 			i++;
 			break;
@@ -1429,7 +1428,7 @@ s32 ls_printf(const char *format, ...)
 			nFloat = (f32)va_arg(argList, f64);
 			s = ls_ftoa(nFloat);
 			i += ls_strcpy(buff + i, s, 0);
-			HeapFree(HeapHandle, 0, s);
+			ls_free((void *)s);
 			break;
 
 		case 's':
@@ -1447,7 +1446,10 @@ s32 ls_printf(const char *format, ...)
 
 	buff[i] = 0;
 	i++;
+
 	//Write buffer to stdout file.
+    ls_writeConsole(LS_STDOUT, buff, i, 0);
+/*
 	DWORD Error = 0;
 	HANDLE FileHandle = 0;
 	if ((FileHandle = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, NULL, NULL)) == INVALID_HANDLE_VALUE)
@@ -1468,18 +1470,20 @@ s32 ls_printf(const char *format, ...)
 		Error = GetLastError();
 		LogErrori("When closing Console Output Handle got error: ", Error);
 	}
-
-	ls_heapFree((void *)buff);
+*/
+	ls_free((void *)buff);
 
 	return i;
 }
 
 char ls_getc()
 {
+	char Result = 0;
 	//Read from stdin
+    ls_readConsole(LS_STDIN, &Result, 1);
+/*
 	DWORD Error = 0;
 	HANDLE FileHandle = 0;
-	char Result = 0;
 	if ((FileHandle = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, NULL, NULL)) == INVALID_HANDLE_VALUE)
 	{
 		Error = GetLastError();
@@ -1498,7 +1502,7 @@ char ls_getc()
 		Error = GetLastError();
 		LogErrori("When closing Console Output Handle got error: ", Error);
 	}
-
+*/
 	return Result;
 }
 
@@ -1534,62 +1538,54 @@ void ls_getFileExtension(char *Path, char *out)
 	return;
 }
 
-u64 ls_readTextFile(char *Path, char **Dest, u64 bytesToRead)
+u64 ls_readConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite)
 {
-	DWORD Error = 0;
-	DWORD ToRead = 0;
-	HANDLE FileHandle = 0;
-	FileHandle = CreateFileA(Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	
-	LARGE_INTEGER FileSize = {};
-	GetFileSizeEx(FileHandle, &FileSize);
-	
-	if (bytesToRead == 0) { ToRead = FileSize.LowPart; }
-	else { ToRead = (DWORD)bytesToRead; }
+#ifdef LS_PLAT_WINDOWS
+    return windows_ReadConsole(ConsoleHandle, Source, bytesToWrite);
+#endif
 
-	*Dest = (char *)ls_heapAlloc(ToRead);
-
-	DWORD BytesRead = 0;
-	if(ReadFile(FileHandle, *Dest, ToRead , &BytesRead, NULL) == FALSE)
-	{
-		DWORD Error = GetLastError();
-		ls_printf("Error when opening file for reading: %ld", Error);
-	}
-
-	CloseHandle(FileHandle);
-
-	return ToRead;
+#ifdef LS_PLAT_LINUX
+    return linux_ReadConsole(ConsoleHandle, Source, bytesToWrite);
+#endif                                                           
 }
 
-u64 ls_writeTextFile(char *Path, void *Source, u64 bytesToWrite, b32 append)
+u64 ls_readFile(char *Path, char **Dest, u32 bytesToRead)
 {
-	DWORD Error = 0;
-	HANDLE FileHandle = 0;
+#ifdef LS_PLAT_WINDOWS
+    return windows_ReadFile(Path, Dest, bytesToRead);
+#endif
+    
+#ifdef LS_PLAT_LINUX
+    return linux_ReadFile(Path, Dest, bytesToRead);
+#endif
+}
 
-	u32 fileAccessRights = append ? FILE_APPEND_DATA : FILE_GENERIC_WRITE;
+u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite, b32 append)
+{
+#ifdef LS_PLAT_WINDOWS
+    return windows_WriteConsole(ConsoleHandle, Source, bytesToWrite, append);
+#endif
 
-	if ((FileHandle = CreateFileA(Path, fileAccessRights, FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
-	{
-		DWORD Error = GetLastError();
-		ls_printf("%ld", Error);
-	}
+#ifdef LS_PLAT_LINUX
+    return linux_WriteConsole(ConsoleHandle, Source, bytesToWrite);
+#endif                                                           
+}
 
-	DWORD BytesWritten = 0;
-	if (WriteFile(FileHandle, Source, (DWORD)bytesToWrite, &BytesWritten, NULL) == FALSE)
-	{
-		DWORD Error = GetLastError();
-		ls_printf("%ld", Error);
-	}
+u64 ls_writeFile(char *Path, void *Source, u32 bytesToWrite, b32 append)
+{
+#ifdef LS_PLAT_WINDOWS
+    return windows_WriteFile(Path, Source, bytesToWrite, append);
+#endif
 
-	CloseHandle(FileHandle);
-
-	return 0;
+#ifdef LS_PLAT_LINUX
+    return linux_WriteFile(Path, Source, bytesToWrite);
+#endif
 }
 
 void ls_loadBitmap(char *Path, Bitmap *bitmap)
 {
 	char *bitmapFile;
-	u64 bitmapFileSize = ls_readTextFile(Path, &bitmapFile, 0);
+	u64 bitmapFileSize = ls_readFile(Path, &bitmapFile, 0);
 
 	u32 PixelOffset = *((u32 *)((char *)bitmapFile + 10));
 	u32 HeaderSize = *((u32 *)((char *)bitmapFile + 14));
@@ -1616,9 +1612,9 @@ void ls_loadBitmap(char *Path, Bitmap *bitmap)
 void ls_loadCompressedPNG(char *Path, PNG *png)
 {
 	char *pngFile;
-	u64 pngFileSize = ls_readTextFile(Path, &pngFile, 0);
+	u64 pngFileSize = ls_readFile(Path, &pngFile, 0);
 
-	png->compressedData = (char *)ls_heapAlloc(sizeof(char)*pngFileSize);
+	png->compressedData = (char *)ls_alloc(sizeof(char)*pngFileSize);
 
 	char *At = pngFile;
 	
@@ -1631,9 +1627,9 @@ void ls_loadCompressedPNG(char *Path, PNG *png)
 	u32 chunkSize = *(u32 *)At; At += 4;
 	ls_memcpy(At, chunkType, 4); At += 4;
 
-	while (ls_strcmp(chunkType, "IEND") != 0)
+	while (ls_strcmp(chunkType, (char *)"IEND") != 0)
 	{
-		if (ls_strcmp(chunkType, "IHDR") == 0)
+		if (ls_strcmp(chunkType, (char *)"IHDR") == 0)
 		{
 			png->width				= *(u32 *)At; At += 4;
 			png->height				= *(u32 *)At; At += 4;
@@ -1643,12 +1639,12 @@ void ls_loadCompressedPNG(char *Path, PNG *png)
 			png->filterMethod		= *At; At++;
 			png->interlaceMethod	= *At; At++;
 		}
-		else if (ls_strcmp(chunkType, "PLTE") == 0)
+		else if (ls_strcmp(chunkType, (char *)"PLTE") == 0)
 		{
 			Assert((chunkSize % 3) == 0);
 			u32 numOfEntries = chunkSize / 3;
 
-			png->palette = (v3 *)ls_heapAlloc(sizeof(v3)*numOfEntries);
+			png->palette = (v3 *)ls_alloc(sizeof(v3)*numOfEntries);
 
 			for (u32 i = 0; i < numOfEntries; i++)
 			{
@@ -1657,7 +1653,7 @@ void ls_loadCompressedPNG(char *Path, PNG *png)
 				png->palette[i].b = *At; At++;
 			}
 		}
-		else if (ls_strcmp(chunkType, "IDAT") == 0)
+		else if (ls_strcmp(chunkType, (char *)"IDAT") == 0)
 		{
 			ls_memcpy(At, png->compressedData + png->size, chunkSize);
 			png->size += chunkSize;
@@ -1684,9 +1680,8 @@ void ls_Deflate(char *data, char *out)
 
 void ls_setupHex(hex *h, char *ascii)
 {
-	HANDLE HeapHandle = GetProcessHeap();
 	s32 len = ls_len(ascii);
-	h->ascii = (char *)HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, len+1);
+	h->ascii = (char *)ls_alloc(len+1);
 	ls_memcpy(ascii, h->ascii, len + 1);
 
 	h->len = len+1;
@@ -1697,9 +1692,7 @@ void ls_setupHex(hex *h, char *ascii)
 
 void ls_hexASCIIToValue(hex *h)
 {
-	HANDLE HeapHandle = GetProcessHeap();
-
-	h->value = (char *)HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, h->len);
+	h->value = (char *)ls_alloc(h->len);
 
 	char c = 0;
 	for(int i = 0; i < h->len-1; i++)
@@ -1717,8 +1710,7 @@ void ls_hexValueToASCII(hex *h)
 {
 	if (h->ascii == nullptr)
 	{
-		HANDLE HeapHandle = GetProcessHeap();
-		h->ascii = (char *)HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, h->len);
+		h->ascii = (char *)ls_alloc(h->len);
 	}
 
 	for (int i = 0; i < h->len-1; i++)
@@ -1732,7 +1724,7 @@ void ls_hexValueToASCII(hex *h)
 void ls_hexToBytecode(hex *h)
 {
 	h->byteLen = (h->len / 2) + 1;
-	h->bytecode = (char *)ls_heapAlloc(h->byteLen);
+	h->bytecode = (char *)ls_alloc(h->byteLen);
 
 	for (int i = 0, j = 0; i < h->len; i += 2, j++)
 	{
@@ -1742,31 +1734,27 @@ void ls_hexToBytecode(hex *h)
 
 char *ls_64ValueToASCII(char *s)
 {
-	HANDLE HeapHandle = GetProcessHeap();
-
 	char base64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 	s32 len = ls_len(s);
-	char *Result = (char *)HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, len);
+	char *Result = (char *)ls_alloc(len);
 
 	for (int i = 0; i < len; i++)
 	{
 		Result[i] = base64[s[i]];
 	}
 
-	HeapFree(HeapHandle, 0, s);
+	ls_free(s);
 
 	return Result;
 }
 
 char *ls_hexTo64Value(hex *h)
 {
-	HANDLE HeapHandle = GetProcessHeap();
-
 	char *Result = 0;
 	char buffer[8] = {0};
 	s32 newLength = (((h->len-1) * 2) / 3) + 2;
 
-	Result = (char *)HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, newLength);
+	Result = (char *)ls_alloc(newLength);
 
 	u8 holder = 0; s32 k = 0;
 	for (int i = 0; i < (h->len-1); i += 6)
@@ -1796,10 +1784,8 @@ char *ls_hexTo64ASCII(hex *h)
 
 char *ls_stringFixedXOR(hex *h1, hex *h2)
 {
-	HANDLE HeapHandle = GetProcessHeap();
-
 	hex Result = { 0 };
-	Result.value = (char *)HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, h1->len);
+	Result.value = (char *)ls_alloc(h1->len);
 	Result.len = h1->len;
 
 	for (int i = 0; i < h1->len-1; i++)
@@ -1809,7 +1795,7 @@ char *ls_stringFixedXOR(hex *h1, hex *h2)
 	Result.value[h1->len-1] = 0;
 	ls_hexValueToASCII(&Result);
 
-	HeapFree(HeapHandle, 0, Result.value);
+	ls_free(Result.value);
 
 	return Result.ascii;
 }
@@ -1817,14 +1803,12 @@ char *ls_stringFixedXOR(hex *h1, hex *h2)
 //Smaller has to be the secon one
 char *ls_stringVariableXOR(hex *hLonger, hex *hShorter)
 {
-	HANDLE HeapHandle = GetProcessHeap();
-
 	hex Result = { 0 };
 	s32 longer = hLonger->len;
 	s32 smaller = hShorter->len;
 
 	Result.len = longer;
-	Result.value = (char *)HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, longer);
+	Result.value = (char *)ls_alloc(longer);
 
 	for (int i = 0; i < longer - 1; i++)
 	{
@@ -1837,7 +1821,7 @@ char *ls_stringVariableXOR(hex *hLonger, hex *hShorter)
 	Result.value[longer - 1] = 0;
 	ls_hexValueToASCII(&Result);
 
-	HeapFree(HeapHandle, 0, Result.value);
+	ls_free(Result.value);
 
 	return Result.ascii;
 }
@@ -2213,25 +2197,26 @@ void ls_zeroString(void *mem, size_t size)
 }
 
 
-void *ls_heapAlloc(u64 size)
+void *ls_alloc(u64 size)
 {
-	HANDLE HeapHandle = GetProcessHeap();
-	void *result = HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, size);
-	if (result == NULL)
-	{
-		int breakHere = 0;
-	}
-	return result;
+#ifdef LS_PLAT_WINDOWS
+    return windows_memAlloc(size);
+#endif
+
+#ifdef LS_PLAT_LINUX
+    return linux_memAlloc(size);
+#endif
 }
 
-void ls_heapFree(void *p)
+void ls_free(void *p)
 {
-	HANDLE HeapHandle = GetProcessHeap();
-	if (HeapFree(HeapHandle, 0, p) == 0)
-	{
-		DWORD Error = GetLastError();
-		ls_printf("Error thrown by HeapFree when freeing pointer %ld is: %ld ", p, Error);
-	}
+#ifdef LS_PLAT_WINDOWS
+    return windows_memFree(p);
+#endif
+
+#ifdef LS_PLAT_LINUX
+    return linux_memFree(p);
+#endif
 }
 
 ////////////////////////////////////////////////////
@@ -2247,8 +2232,15 @@ void ls_heapFree(void *p)
 u32 LeadingZeros32(u32 value)
 {
 	unsigned long index = 0;
+#ifdef LS_PLAT_WINDOWS
 	_BitScanReverse(&index, value);
 	return 31 - index;
+#endif
+
+#ifdef LS_PLAT_LINUX
+    index = __builtin_clz(value);
+    return index;
+#endif
 }
 
 u32 LeadingZeros64(u64 value)
@@ -2257,18 +2249,33 @@ u32 LeadingZeros64(u64 value)
 #if _M_IX86
 	return LeadingZeros(value);
 #else
+
+#ifdef LS_PLAT_WINDOWS
 	_BitScanReverse64(&index, value);
 	return 63 - index;
+#endif
+
+#ifdef LS_PLAT_LINUX
+    index = __builtin_clz(value);
+    return index;
+#endif
+
 #endif
 }
 
 f32 Log2(u64 value)
 {
 	unsigned long index = 0;
+#ifdef LS_PLAT_WINDOWS
 #if _M_IX86
 	_BitScanReverse(&index, (u32)value);
 #else
 	_BitScanReverse64(&index, value);
+#endif
+#endif
+
+#ifdef LS_PLAT_LINUX
+    index = __builtin_ctz(value);
 #endif
 
 	f32 Result = (f32)index;
@@ -2293,38 +2300,35 @@ u32	Log10(u64 value)
 
 u16 ByteSwap16(u16 value)
 {
+#ifdef LS_PLAT_WINDOWS
 	return _byteswap_ushort(value);
+#endif
+
+#ifdef LS_PLAT_LINUX
+    return __builtin_bswap16(value);
+#endif
 }
 
 u32 ByteSwap32(u32 value)
 {
+#ifdef LS_PLAT_WINDOWS
 	return _byteswap_ulong(value);
+#endif
+
+#ifdef LS_PLAT_LINUX
+    return __builtin_bswap32(value);
+#endif
 }
 
 u64 ByteSwap64(u64 value)
 {
+#ifdef LS_PLAT_WINDOWS
 	return _byteswap_uint64(value);
+#endif
+
+#ifdef LS_PLAT_LINUX
+    return __builtin_bswap64(value);
+#endif
 }
 
-//@TODO: Move to proper files for logging system
-void LogErrori_(char* Message, s32 Error)
-{
-	HANDLE HeapHandle = GetProcessHeap();
-
-	char *toString = ls_itoa(Error);
-	char *ErrorString = ls_concat(Message, toString, 0);
-	HeapFree(HeapHandle, 0, toString);
-	OutputDebugStringA(ErrorString);
-	HeapFree(HeapHandle, 0, ErrorString);
-}
-void LogErrorf_(char* Message, f32 Error)
-{
-	HANDLE HeapHandle = GetProcessHeap();
-
-	char *toString = ls_ftoa(Error);
-	char *ErrorString = ls_concat(Message, toString, 0);
-	HeapFree(HeapHandle, 0, toString);
-	OutputDebugStringA(ErrorString);
-	HeapFree(HeapHandle, 0, ErrorString);
-}
 #endif
