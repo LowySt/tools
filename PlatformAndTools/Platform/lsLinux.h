@@ -47,13 +47,14 @@ typedef double  f64;
 
 extern "C" s32 ls_printf(const char *fmt, ...);
 extern "C" s32 ls_sprintf(char *dest, const char *fmt, ...);
+extern "C" void ls_memcpy(void *src, void *dest, size_t size);
+extern "C" void ls_zeroMem(void *mem, size_t size);
 
-struct MemoryBlock
+struct MemoryBlockHeader
 {
-    MemoryBlock *next;
-    MemoryBlock *prev;
+    void *next;
+    void *prev;
 
-    void *mem;
     u32 size;
 };
 
@@ -61,10 +62,12 @@ struct MemoryArena
 {
     void *heap;
 
-    MemoryBlock freeBlocks;
+    MemoryBlockHeader *freeHead;
+
     u32 minBlockSize;
     u32 maxBlockSize;
 
+    u32 totalSize;
     u32 firstAllocSize = 0;
 };
 
@@ -113,16 +116,33 @@ void linux_assert(const char *msg, const char *file, s32 line)
     linux_WriteConsole(LS_STDERR, (void *)buff, (u32)written);
 }
 
-static void linux_breakMemoryBlock(MemoryBlock *block, u32 desiredSize)
+static void linux_breakMemoryBlock(MemoryBlockHeader *blockHeader, u32 desiredSize)
 {
-//    MemoryBlock *newBlock;
-    return;
+    u32 offsetSize = blockHeader->size - desiredSize;
+    void *nextBlockPtr = (u8 *)blockHeader + offsetSize;
 
+    MemoryBlockHeader newBlock = {blockHeader->next, blockHeader, desiredSize};
+    ls_memcpy((void *)&newBlock, nextBlockPtr, sizeof(MemoryBlockHeader));
+
+    if(blockHeader->next)
+    { ((MemoryBlockHeader *)blockHeader->next)->prev = nextBlockPtr; }
+    blockHeader->next = nextBlockPtr;
+    blockHeader->size = offsetSize;
+    
+    return;
 }
 
-static void linux_halveMemoryBlock(MemoryBlock *block)
+static void linux_removeMemoryBlockFromList(MemoryBlockHeader *blockHeader)
 {
-    linux_breakMemoryBlock(block, block->size/2);
+    ((MemoryBlockHeader *)blockHeader->prev)->next = blockHeader->next;
+    ((MemoryBlockHeader *)blockHeader->next)->prev = blockHeader->prev;
+    
+    return;
+}
+
+static void linux_halveMemoryBlock(MemoryBlockHeader *blockHeader)
+{
+    linux_breakMemoryBlock(blockHeader, blockHeader->size/2);
 }
 
 static void linux_initMemory()
@@ -135,38 +155,108 @@ static void linux_initMemory()
         struct sysinfo info = {};
         s32 error = sysinfo(&info);
         if(error != 0)
-        {
-            ls_printf("Error %d, when calling sysinfo() in linux_initMemory()\n", errno);
-        }
+        { ls_printf("Error %d, when calling sysinfo() in linux_initMemory()\n", errno); }
 
-        if (info.totalram < GBytes(8)) { allocationSize = info.totalram / 4; }
+        u32 totalRamInBytes = info.totalram*info.mem_unit;
+
+        if (totalRamInBytes < GBytes(8)) { allocationSize = totalRamInBytes / 4; }
         else { allocationSize = GBytes(2); }
     }
 
     Memory.heap = malloc(allocationSize);
     if(Memory.heap == NULL)
-    {
-        ls_printf("Error when malloc()ing memory in linux_initMemory()");
-    }
+    { ls_printf("Error when malloc()ing memory in linux_initMemory()"); }
 
-    MemoryBlock firstBlock = {NULL, NULL, Memory.heap, allocationSize};
-    Memory.freeBlocks = firstBlock;
+    MemoryBlockHeader firstBlock = {NULL, NULL, allocationSize};
+    Memory.totalSize = allocationSize;
+    ls_memcpy((void *)&firstBlock, Memory.heap, sizeof(MemoryBlockHeader));
+    
+    Memory.freeHead = (MemoryBlockHeader *)Memory.heap;
 }
 
-void *linux_memAlloc(u64 size)
+void linux_setAllocatorParams(u32 firstAllocSize, u32 minBlockSize, u32 maxBlockSize)
 {
-    void *p = malloc(size);
-    if(p == NULL)
-    {
-        ls_printf("Error when allocating memory in linux_memAlloc()\n");
-    }
+    if (firstAllocSize != 0)
+    { Memory.firstAllocSize = firstAllocSize; }
 
-    return p;
+    if (minBlockSize != 0)
+    { Memory.minBlockSize = minBlockSize; }
+
+    if (maxBlockSize != 0)
+    { Memory.maxBlockSize = maxBlockSize; }
 }
+
+void *linux_memAlloc(u64 request)
+{
+    u64 givenMemory = request >= 12 ? request : 12;
+ 
+    if(Memory.heap == 0)
+    { linux_initMemory(); }
+
+    if(Memory.freeHead->next == 0)
+    { linux_halveMemoryBlock(Memory.freeHead); }
+
+    MemoryBlockHeader *currHeader = Memory.freeHead;
+    MemoryBlockHeader *bestBlock; u32 bestBlockSize = Memory.totalSize;
+
+    b32 found = FALSE;
+    //TODO: In testing this skipped the last block cause the header 
+    //(obviously) didn't have a next ptr
+    do
+    {
+        if((currHeader->size < bestBlockSize) && (currHeader->size > givenMemory))
+        { bestBlock = currHeader; bestBlockSize = currHeader->size; }
+
+        if(currHeader->size == givenMemory) 
+        { found = TRUE; break; }
+
+        currHeader = (MemoryBlockHeader *)currHeader->next;
+    }
+    while(currHeader);
+    
+    if(!found)
+    { linux_breakMemoryBlock(bestBlock, givenMemory); }
+
+    MemoryBlockHeader *actualBlock = (MemoryBlockHeader *)bestBlock->next;
+
+    linux_removeMemoryBlockFromList(actualBlock);
+    ls_zeroMem(actualBlock, actualBlock->size);
+    
+    return actualBlock;
+}
+
+//TODO: NOTE: Do I want to zero freed pointers, 
+//just to avoid their use after they are freed??
+//To be able to invalid the pointers and not
+//compromise my allocator i require you pass the
+//address of the pointer, rather then the ptr itself
 
 void linux_memFree(void *p)
 {
-    free(p);
+    
+    MemoryBlockHeader *currHeader = Memory.freeHead;
+
+    void *prev = 0, *next = 0;
+    while((void *)currHeader < p)
+    {
+        if(currHeader->next > p) 
+        { 
+            prev = (void *)currHeader; 
+            next = currHeader->next;
+            break; 
+        }
+
+        currHeader = (MemoryBlockHeader *)currHeader->next;
+    }
+
+    u32 newHeaderSize = (u32)((u8 *)next - (u8 *)p);
+    MemoryBlockHeader newHeader = { next, prev, newHeaderSize };
+
+    ls_memcpy((void *)&newHeader, p, sizeof(MemoryBlockHeader));
+
+    ((MemoryBlockHeader *)prev)->next = p;
+    ((MemoryBlockHeader *)next)->prev = p;
+
     return;
 }
 
