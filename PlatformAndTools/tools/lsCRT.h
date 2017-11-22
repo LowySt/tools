@@ -205,7 +205,7 @@ extern "C"
 
 	void ls_loadBitmap(char *Path, Bitmap *bitmap);
 	void ls_loadCompressedPNG(char *Path, PNG *png);
-	void ls_Deflate(char *data, char *out);
+	void ls_Deflate(char *data, u64 inputSize, char *out);
 
 	////////////////////////////////////////////////////
 	//	CRYPTOGRAPHY FUNCTIONS
@@ -1701,7 +1701,7 @@ void ls_loadCompressedPNG(char *Path, PNG *png)
 		}
 		else if (ls_strcmp(chunkType, "IDAT") == 0)
 		{
-			ls_memcpy(At, png->compressedData + png->size, chunkSize);
+			ls_memcpy(At, png->compressedData + png->size, chunkSize); At += chunkSize;
 			png->size += chunkSize;
 		}
 		else if (ls_strcmp(chunkType, "bKGD") == 0)
@@ -1759,10 +1759,371 @@ void ls_loadCompressedPNG(char *Path, PNG *png)
 	return;
 }
 
-void ls_Deflate(char *data, char *out)
+/*------DEFLATE HELPERS------*/
+#define MAXBITS 15              /* maximum bits in a code */
+#define MAXLCODES 286           /* maximum number of literal/length codes */
+#define MAXDCODES 30            /* maximum number of distance codes */
+#define MAXCODES (MAXLCODES+MAXDCODES)  /* maximum codes lengths to read */
+#define FIXLCODES 288           /* number of fixed literal/length codes */
+
+struct deflateState
 {
+	char *in;
+	u32 bytesRead;
+	u64 inSize;
+
+	char *out;
+	u64 outSize;
+
+	u32 bitBuffer;
+	u32 bitCount;
+
+};
+
+struct huffman
+{
+	u16 *count;
+	u16 *symbol;
+};
+
+static u32 getBits(struct deflateState *s, u32 howMany)
+{
+	u32 Result;
+	u8 tmp;
+	while (s->bitCount < howMany)
+	{
+		tmp = s->in[s->bytesRead++];
+		s->bitBuffer = (s->bitBuffer << 8) | tmp;
+		s->bitCount += 8;
+	}
+
+	Result = (s->bitBuffer & ((1 << howMany) - 1));
+	s->bitBuffer = s->bitBuffer >> howMany;
+	s->bitCount -= howMany;
+
+	return Result;
+}
+
+static void buildHuffTable(huffman *h, u16 *length, u32 n)
+{
+	u32 symbol;					/* current symbol when stepping through length[] */
+	u32 len;					/* current length when stepping through h->count[] */
+	u16 offs[MAXBITS + 1] = {}; /* offsets in symbol table for each length */
+
+	/* It's like this because codes are sequential? Maybe? */
+	for (symbol = 0; symbol < n; symbol++)
+	{ (h->count[length[symbol]])++; }
+
+	if (h->count[0] == n)
+	{ 
+		/*Complete but undecodable*/ 
+		return; 
+	}
+
+	/* Need to check for over-subscribed or incomplete set of lengths? */
+
+	/* Generate offsets into symbol table for each length for sorting */
+	for (len = 1; len < MAXBITS; len++)
+	{ offs[len + 1] = offs[len] + h->count[len]; }
+
+	/* Put symbols in table sorted by length and
+		by symbol order within each length */
+	for (symbol = 0; symbol < n; symbol++)
+	{
+		if (length[symbol] != 0)
+		{ h->symbol[offs[length[symbol]]++] = symbol; }
+	}
 
 	return;
+}
+
+static u32 huffmanDecode(deflateState *s, huffman *h)
+{
+	s32 len;			/* len bits being decoded */
+	s32 code;			/* current number of bits in code */
+	s32 first;			/* first code of length len */
+	s32 codeCount;		/* number of codes of length len */
+	s32 index;			/* index of first code of length len in symbol table */
+	s32 bitBuffer;		/* bits from stream */
+	s32 bitsLeft;		/* bits left in next or left to process */
+	u16 *nextCodeCount; /* next number of codes */
+
+	code = first = index = 0;
+	len = 1;
+	
+	nextCodeCount = h->count + 1;
+	bitBuffer = s->bitBuffer;
+	bitsLeft = s->bitCount;
+
+	while (TRUE)
+	{
+		while (bitsLeft--)
+		{
+			code |= bitBuffer & 1;
+			bitBuffer >>= 1;
+			codeCount = *(nextCodeCount++);
+
+			/*if length len, return symbol*/
+			if (code - codeCount < first)
+			{
+				s->bitBuffer = bitBuffer;
+				s->bitCount = (s->bitCount - len) & 7;
+				return h->symbol[index + (code - first)];
+			}
+			/* Else, update for next code length*/
+
+			index += codeCount;
+			first += codeCount;
+			first <<= 1;
+			code <<= 1;
+			len++;
+		}
+
+		bitsLeft = (MAXBITS + 1) - len;
+		if (bitsLeft == 0)
+		{ break; }
+
+		bitBuffer = s->in[s->bytesRead++];
+		if (bitsLeft > 8)
+		{ bitsLeft = 8; }
+	}
+	return 0;
+}
+
+/*------DEFLATE HELPERS------*/
+
+void ls_Deflate(char *data, u64 inputSize, char *out)
+{
+	/*Setup the deflate state structure*/
+	deflateState state = {};
+	state.in = data;
+	state.inSize = inputSize;
+	state.out = out;
+
+	/* CODES FOR DECOMPRESSING HUFFMAN CODES? */
+	/* Size base for length codes 257..285 */
+	u16 lenTable[29] = { 
+		3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 
+		35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258 };
+
+	/* Extra bits for length codes 257..285 */
+	u16 lenExtTable[29] = { 
+		0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+		3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0 };
+
+	/* Offset base for distance codes 0..29 */
+	u16 distTable[30] = { 
+		1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+		257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
+		8193, 12289, 16385, 24577 };
+
+	/* Extra bits for distance codes 0..29 */
+	u16 distExtTable[30] = { 
+		0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+		7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13 };
+
+	/*---Parse zlib header---*/
+	u8 cmf = state.in[state.bytesRead++]; u8 flag = state.in[state.bytesRead++];
+	if ((cmf & 0x0F) != 8 || (cmf >> 4) != 7 || (cmf*256 + flag) % 31 != 0)
+	{ Assert(false); } 	//Not a png or corrupted?
+
+	u32 dict = 0;
+	if ((flag & 0b00100000) != 0)
+	{ dict = btol32(&state.in[state.bytesRead]); state.bytesRead += 4; }
+
+	//Parse deflate block header
+
+	u8 byte = state.in[state.bytesRead++];
+	u8 type = (byte & 0x06) >> 1;
+	while ((byte & 0x01) != 1)
+	{
+		byte >>= 3;
+
+		/*No compression*/
+		if (type == 0)
+		{
+			/* Moving 2 extra because of !Len bytes right after */
+			u16 len = btol16(&state.in[state.bytesRead]); state.bytesRead += 4;
+			ls_memcpy(&state.in[state.bytesRead], &state.out[state.outSize], len);
+			state.outSize += len;
+			state.bytesRead += len;
+		}
+		/*Compressed with fixed Huffman codes*/
+		else if (type == 1)
+		{
+
+		}
+		/*Compressed with dynamic Huffman codes*/
+		else if (type == 2)
+		{
+			u32 numOfLengths;
+			u32 numOfDists;
+			u32 numOfCodesLength;
+
+			/* descriptor code lengths (<len,dist>) */
+			u16 lengths[MAXCODES] = {};
+			
+			/* lencode memory */
+			u16 lenSymbol[MAXLCODES] = {};
+			u16 lenCount[MAXBITS + 1] = {};
+
+			/* distcode memory */
+			u16 distSymbol[MAXDCODES] = {};
+			u16 distCount[MAXBITS + 1] = {};
+
+			huffman lencode, distcode;
+
+			lencode.count = lenCount;
+			lencode.symbol = lenSymbol;
+			distcode.count = distCount;
+			distcode.symbol = distSymbol;
+
+			/* permutation of code length codes */
+			u16 order[19] = {
+				16, 17, 18, 0, 8, 7, 9, 6, 10, 5,
+				11, 4, 12, 3, 13, 2, 14, 1, 15 };
+
+			u32 i;
+
+			numOfLengths	 = getBits(&state, 5) + 257;
+			numOfDists		 = getBits(&state, 5) + 1;
+			numOfCodesLength = getBits(&state, 4) + 4;
+
+			if (numOfLengths > MAXLCODES || numOfDists > MAXDCODES)
+			{ return; /*BAD PNG*/}
+
+			/* Read the lengths of the "Code Length" Codes 
+				(stupid double huffman compression) */
+			for (i = 0; i < numOfCodesLength; i++)
+			{ lengths[order[i]] = (u16)getBits(&state, 3); }
+			for (; i < 19; i++)
+			{ lengths[order[i]] = 0; }
+
+			/* Build huffman table (use lencode as tmp) */
+			buildHuffTable(&lencode, lengths, 19);
+
+			/* Read the ACTUAL "Length/Literal" and "Distance" code lengths */
+			i = 0;
+			while (i < numOfLengths + numOfDists)
+			{
+				u32 symbol;	/*decoded value*/
+				u32 len;	/*last length to repeat*/
+
+				/* Working out Alphabet for Code Lengths */
+				symbol = huffmanDecode(&state, &lencode);
+				if (symbol < 0) 
+				{ 
+					/* Invalid Symbol */ 
+					return; 
+				}
+
+				/* Length is in range 0..15 */
+				if (symbol < 16)
+				{ lengths[i++] = symbol; }
+				else
+				{
+					len = 0;
+					/* Repeat last length 3..6 times */
+					if (symbol == 16)
+					{
+						if (i == 0)
+						{ 
+							/* Error: no last length */	
+							return; 
+						}
+
+						len = lengths[i - 1];
+						symbol = 3 + getBits(&state, 2);
+					}
+					/* Repeat zero 3..10 times */
+					else if (symbol == 17)
+					{ symbol = 3 + getBits(&state, 3); }
+					/* Repeat zero 11..138 times */
+					else
+					{ symbol = 11 + getBits(&state, 7); }
+
+					if ((i + symbol) > (numOfLengths + numOfDists))
+					{ 
+						/* Error: too many lengths */ 
+						return; 
+					}
+
+					while (symbol--)
+					{ lengths[i++] = len; }
+				}
+
+			}
+
+			/* Check for end-of-block code -- there better be one! */
+			if (lengths[256] == 0)
+			{ /* Error no EOB */ return; }
+
+			int breakHere2 = 0;
+
+			/* Build huffman table for literal/length codes */
+			buildHuffTable(&lencode, lengths, numOfLengths);
+
+			/* Build huffman table for distance codes */
+			buildHuffTable(&distcode, lengths + numOfLengths, numOfDists);
+
+			/* Finally return the data*/
+			{
+				u32 symbol;
+				u32 len;
+				u32 dist;
+
+				do
+				{
+					symbol = huffmanDecode(&state, &lencode);
+					if (symbol < 0) { /* Error: invalid symbol */ return;  }
+
+					/* Literal, write to out */
+					if (symbol < 256)
+					{ state.out[state.outSize++] = (u8)symbol; }
+					else if (symbol > 256)
+					{
+						/* Compute Length */
+						symbol -= 257;
+						if (symbol >= 29) { /* Error: Invalid*/ return; }
+
+						len = lenTable[symbol] + getBits(&state, lenExtTable[symbol]);
+
+						/* Get Distance*/
+						symbol = huffmanDecode(&state, &distcode);
+						if (symbol < 0) { /* Error: Invalid*/ return; }
+
+						dist = distTable[symbol] + getBits(&state, distExtTable[symbol]);
+
+						/* Write to Output (LZ77 style <len,dist>)*/
+						/* I'm not using memcpy because it may have problems
+						 * with overlaps */
+						while (len--)
+						{
+							state.out[state.outSize] = state.out[state.outSize - dist];
+							state.outSize++;
+						}
+					}
+				} while (symbol != 256); /* End Of Block symbol*/
+			}
+			/* DONE! */
+
+			int breakHere = 0;
+		}
+		/*Reserved*/
+		else
+		{
+		}
+
+		byte = state.in[state.bytesRead++];
+		type = (byte & 0x06) >> 1;
+	}
+	return;
+
+#undef MAXBITS
+#undef MAXLCODES
+#undef MAXDCODES
+#undef MAXCODES
+#undef FIXLCODES
 }
 
 ////////////////////////////////////////////////////
@@ -1772,12 +2133,12 @@ void ls_Deflate(char *data, char *out)
 u16 btol16(char *At)
 {
 	u16 result = 0;
-	u16 buffer[2] = { 0 };
+	u8 buffer[2] = { 0 };
 
 	ls_memcpy(At, buffer, 2);
 
-	result |= buffer[1];
-	result |= (buffer[0] << 8);
+	result |= (u16)buffer[1];
+	result |= ((u16)buffer[0] << 8);
 
 	return result;
 }
@@ -1785,14 +2146,14 @@ u16 btol16(char *At)
 u32 btol32(char *At)
 {
 	u32 result = 0;
-	u32 buffer[4] = { 0 };
+	u8 buffer[4] = { 0 };
 
 	ls_memcpy(At, buffer, 4);
 
-	result |= buffer[3];
-	result |= (buffer[2] << 8);
-	result |= (buffer[1] << 16);
-	result |= (buffer[0] << 24);
+	result |= (u32)buffer[3];
+	result |= ((u32)buffer[2] << 8);
+	result |= ((u32)buffer[1] << 16);
+	result |= ((u32)buffer[0] << 24);
 
 	return result;
 }
@@ -1800,18 +2161,18 @@ u32 btol32(char *At)
 u64 btol64(char *At)
 {
 	u64 result = 0;
-	u64 buffer[8] = { 0 };
+	u8 buffer[8] = { 0 };
 
 	ls_memcpy(At, buffer, 8);
 
-	result |= buffer[7];
-	result |= (buffer[6] << 8);
-	result |= (buffer[5] << 16);
-	result |= (buffer[4] << 24);
-	result |= (buffer[3] << 32);
-	result |= (buffer[2] << 40);
-	result |= (buffer[1] << 48);
-	result |= (buffer[0] << 56);
+	result |= (u64)buffer[7];
+	result |= ((u64)buffer[6] << 8);
+	result |= ((u64)buffer[5] << 16);
+	result |= ((u64)buffer[4] << 24);
+	result |= ((u64)buffer[3] << 32);
+	result |= ((u64)buffer[2] << 40);
+	result |= ((u64)buffer[1] << 48);
+	result |= ((u64)buffer[0] << 56);
 
 	return result;
 }
