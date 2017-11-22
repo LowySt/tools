@@ -1,8 +1,21 @@
-#ifndef LS_MATHS_HEADER
-#define LS_MATHS_HEADER
+#ifndef LS_MATHS_H
+#define LS_MATHS_H
 
-#include "Platform\win32.h"
-#include "tools\lsCRT.h"
+#ifdef LS_PLAT_WINDOWS
+#ifndef LS_WINDOWS_H
+#include "Platform\lsWindows.h"
+#endif
+#endif
+
+#ifdef LS_PLAT_LINUX
+#ifndef LS_LINUX_H
+#include "../../Platform/lsLinux.h"
+#endif
+#endif
+
+#ifndef LS_CRT_H
+#include "../lsCRT.h"
+#endif
 
 
 ///////////////////////////////////////////
@@ -13,7 +26,6 @@ union Mat2;
 union Mat3;
 union Mat4;
 
-_declspec(align(16))
 struct v2
 {
 	f32 x;
@@ -29,7 +41,6 @@ struct v2
 	f32	operator*(v2 v);
 };
 
-_declspec(align(16))
 union v3
 {
 	struct
@@ -56,7 +67,6 @@ union v3
 	f32	operator*(v3 v);
 };
 
-_declspec(align(16))
 union v4
 {
 	struct
