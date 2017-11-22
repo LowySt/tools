@@ -22,5 +22,5 @@ struct Shader
 	void setFloat(const char* name, f32 value);
 };
 
-Shader *CreateShaderProgram(MemoryArena *Memory, GLchar *vertexShaderPath, GLchar *fragmentShaderPath);
+Shader *CreateShaderProgram(GLchar *vertexShaderPath, GLchar *fragmentShaderPath);
 void UseShader(GLuint Program);

@@ -7,24 +7,29 @@
 #define LS_PLAT_LINUX
 #endif
 
-<<<<<<< HEAD
-#include <stdarg.h>
-#include "tools\Maths\Maths.h"
-=======
-
 #ifdef LS_PLAT_WINDOWS
+
 #ifndef LS_WINDOWS_H
-#include "../Platform/lsWindows.h"
-#endif
+#include "Platform/lsWindows.h"
 #endif
 
+#define LS_STDOUT 0
+#define LS_STDIN  0
+#define LS_STDERR 0
+
+#endif
 
 #ifdef LS_PLAT_LINUX
+
 #ifndef LS_LINUX_H
 #include "../Platform/lsLinux.h"
 #endif
+
+#define LS_STDOUT STDOUT_FILENO
+#define LS_STDIN  STDIN_FILENO
+#define LS_STDERR STDERR_FILENO
+
 #endif
->>>>>>> 2a23e1af221bc87f2e76d9d443c6dc7b5e8b1fd0
 
 #ifndef LS_MATHS_H
 #include "Maths/Maths.h"
@@ -1345,7 +1350,7 @@ void ls_alphaOrder(char **names, u32 numOfNames)
 	}
 }
 
-u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite, b32 append);
+u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite);
 u64 ls_readConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite);
 
 s32 ls_sprintf(char *dest, const char *format, ...)
@@ -1498,29 +1503,8 @@ s32 ls_printf(const char *format, ...)
 	i++;
 
 	//Write buffer to stdout file.
-    ls_writeConsole(LS_STDOUT, buff, i, 0);
-/*
-	DWORD Error = 0;
-	HANDLE FileHandle = 0;
-	if ((FileHandle = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, NULL, NULL)) == INVALID_HANDLE_VALUE)
-	{
-		Error = GetLastError();
-		LogErrori("When creating a file handle got error: ", Error);
-	}
+    ls_writeConsole(LS_STDOUT, buff, i);
 
-	DWORD BytesWritten = 0;
-	if (!WriteFile(FileHandle, buff, i, &BytesWritten, NULL))
-	{
-		Error = GetLastError();
-		LogErrori("When writing to Console Output got error: ", Error);
-	}
-
-	if (!CloseHandle(FileHandle))
-	{
-		Error = GetLastError();
-		LogErrori("When closing Console Output Handle got error: ", Error);
-	}
-*/
 	ls_free((void *)buff);
 
 	return i;
@@ -1529,30 +1513,8 @@ s32 ls_printf(const char *format, ...)
 char ls_getc()
 {
 	char Result = 0;
-	//Read from stdin
     ls_readConsole(LS_STDIN, &Result, 1);
-/*
-	DWORD Error = 0;
-	HANDLE FileHandle = 0;
-	if ((FileHandle = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, NULL, NULL)) == INVALID_HANDLE_VALUE)
-	{
-		Error = GetLastError();
-		LogErrori("When creating a file handle got error: ", Error);
-	}
 
-	DWORD BytesRead = 0;
-	if (ReadFile(FileHandle, &Result, 1, &BytesRead, NULL) == FALSE)
-	{
-		Error = GetLastError();
-		LogErrori("When reading from Console Input got error: ", Error);
-	}
-	
-	if (!CloseHandle(FileHandle))
-	{
-		Error = GetLastError();
-		LogErrori("When closing Console Output Handle got error: ", Error);
-	}
-*/
 	return Result;
 }
 
@@ -1591,7 +1553,7 @@ void ls_getFileExtension(char *Path, char *out)
 u64 ls_readConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite)
 {
 #ifdef LS_PLAT_WINDOWS
-    return windows_ReadConsole(ConsoleHandle, Source, bytesToWrite);
+    return windows_ReadConsole(Source, bytesToWrite);
 #endif
 
 #ifdef LS_PLAT_LINUX
@@ -1610,10 +1572,10 @@ u64 ls_readFile(char *Path, char **Dest, u32 bytesToRead)
 #endif
 }
 
-u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite, b32 append)
+u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite)
 {
 #ifdef LS_PLAT_WINDOWS
-    return windows_WriteConsole(ConsoleHandle, Source, bytesToWrite, append);
+    return windows_WriteConsole(Source, bytesToWrite);
 #endif
 
 #ifdef LS_PLAT_LINUX
@@ -1624,7 +1586,7 @@ u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite, b32 appen
 u64 ls_writeFile(char *Path, void *Source, u32 bytesToWrite, b32 append)
 {
 #ifdef LS_PLAT_WINDOWS
-    return windows_WriteFile(Path, Source, bytesToWrite, append);
+    return windows_WriteFile(Path, (char *)Source, bytesToWrite, append);
 #endif
 
 #ifdef LS_PLAT_LINUX

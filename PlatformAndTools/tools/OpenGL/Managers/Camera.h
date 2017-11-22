@@ -1,6 +1,5 @@
 #pragma once
 
-//#include "tools\Maths\Maths.h"
 #include "tools\lsCRT.h"
 
 struct Camera
@@ -32,6 +31,6 @@ struct Camera
 	};
 };
 
-Camera *createCamera(MemoryArena *Memory, v4 pos, v4 target);
+Camera *createCamera(v4 pos, v4 target);
 Mat4 LookAt(CoordSys Sys, v4 cameraPos);
 Mat4 LookAt(Camera Camera);

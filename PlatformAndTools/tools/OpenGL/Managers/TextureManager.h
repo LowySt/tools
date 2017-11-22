@@ -22,5 +22,5 @@ struct Texture
 	TEXTURE_ENUM	*Name;
 };
 
-Texture *InitTextureManager(MemoryArena *Memory, char **Paths, TEXTURE_ENUM *Names, u32 texQuantity);
-void GenAndBindTexture(const char *Path, GameInfo *Game, MemoryArena *Memory, Texture *TextureManager, u32 idx);
+Texture *InitTextureManager(char **Paths, TEXTURE_ENUM *Names, u32 texQuantity);
+void GenAndBindTexture(const char *Path, GameInfo *Game, Texture *TextureManager, u32 idx);

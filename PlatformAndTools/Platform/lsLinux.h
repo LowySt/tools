@@ -26,6 +26,10 @@
 #define MBytes(n) 1024ul*KBytes(n)
 #define GBytes(n) 1024ul*MBytes(n)
 
+//TODO: The standar streams should not be defined here.
+//They should be in lsCRT.h file, considering that the
+//platform file doesn't care about the multi-platform lib.
+
 #define LS_STDOUT STDOUT_FILENO
 #define LS_STDIN  STDIN_FILENO
 #define LS_STDERR STDERR_FILENO
@@ -77,6 +81,7 @@ extern "C"
 {
     
     void linux_assert(const char *msg, const char *file, s32 line);
+    void linux_setAllocatorParams(u32 firstAllocSize, u32 minBlockSize, u32 maxBlockSize)
     void *linux_memAlloc(u64 size);
     void linux_memFree(void *p);
         
@@ -200,8 +205,6 @@ void *linux_memAlloc(u64 request)
     MemoryBlockHeader *bestBlock; u32 bestBlockSize = Memory.totalSize;
 
     b32 found = FALSE;
-    //TODO: In testing this skipped the last block cause the header 
-    //(obviously) didn't have a next ptr
     do
     {
         if((currHeader->size < bestBlockSize) && (currHeader->size > givenMemory))
@@ -274,7 +277,8 @@ u64 linux_ReadFile(char *path, char **outputBuffer, u32 bytesToRead)
     s32 fileDesc = open(path, O_RDONLY);
     if(fileDesc < 0)
     { printf("Error %d in readFile(), when opening file descriptor for path:\n%s\n", errno, path); }
-    
+
+    //TODO: Need to use my own allocator for these kind of things.
     *outputBuffer = (char *)malloc(sizeof(char)*fileStat.st_size);   
 
     bytesRead = (u64)read(fileDesc, outputBuffer, readAmount);
