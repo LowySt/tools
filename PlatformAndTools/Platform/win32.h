@@ -239,19 +239,6 @@ extern "C" {
 #define FILE_SUPPORTS_SPARSE_VDL            0x10000000  
 #define FILE_INVALID_FILE_ID               ((LONGLONG)-1LL) 
 
-#define FILE_FLAG_WRITE_THROUGH         0x80000000
-#define FILE_FLAG_OVERLAPPED            0x40000000
-#define FILE_FLAG_NO_BUFFERING          0x20000000
-#define FILE_FLAG_RANDOM_ACCESS         0x10000000
-#define FILE_FLAG_SEQUENTIAL_SCAN       0x08000000
-#define FILE_FLAG_DELETE_ON_CLOSE       0x04000000
-#define FILE_FLAG_BACKUP_SEMANTICS      0x02000000
-#define FILE_FLAG_POSIX_SEMANTICS       0x01000000
-#define FILE_FLAG_SESSION_AWARE         0x00800000
-#define FILE_FLAG_OPEN_REPARSE_POINT    0x00200000
-#define FILE_FLAG_OPEN_NO_RECALL        0x00100000
-#define FILE_FLAG_FIRST_PIPE_INSTANCE   0x00080000
-
 #pragma endregion
 
 #if 0
@@ -385,7 +372,6 @@ extern "C" {
 	typedef float			   f32;
 	typedef double			   f64;
 
-	typedef u8				   b8;
 	typedef s32				   b32;
 
 #pragma region FixedWithIntegralDefines
@@ -482,16 +468,6 @@ extern "C" {
 // Basics
 //
 
-#define MINCHAR     0x80
-#define MAXCHAR     0x7f
-#define MINSHORT    0x8000
-#define MAXSHORT    0x7fff
-#define MINLONG     0x80000000
-#define MAXLONG     0x7fffffff
-#define MAXBYTE     0xff
-#define MAXWORD     0xffff
-#define MAXDWORD    0xffffffff
-
 #ifndef VOID
 #define VOID			void
 typedef char			CHAR;
@@ -587,19 +563,19 @@ typedef wchar_t WCHAR;    // wc,   16-bit UNICODE character
 typedef WCHAR *PWCHAR, *LPWCH, *PWCH;
 typedef CONST WCHAR *LPCWCH, *PCWCH;
 
-typedef /*_Null_terminated_*/ WCHAR *NWPSTR, *LPWSTR, *PWSTR;
-typedef /*_Null_terminated_*/ PWSTR *PZPWSTR;
-typedef /*_Null_terminated_*/ CONST PWSTR *PCZPWSTR;
-typedef /*_Null_terminated_*/ WCHAR UNALIGNED *LPUWSTR, *PUWSTR;
-typedef /*_Null_terminated_*/ CONST WCHAR *LPCWSTR, *PCWSTR;
-typedef /*_Null_terminated_*/ PCWSTR *PZPCWSTR;
-typedef /*_Null_terminated_*/ CONST PCWSTR *PCZPCWSTR;
-typedef /*_Null_terminated_*/ CONST WCHAR UNALIGNED *LPCUWSTR, *PCUWSTR;
+typedef WCHAR *NWPSTR, *LPWSTR, *PWSTR;
+typedef PWSTR *PZPWSTR;
+typedef CONST PWSTR *PCZPWSTR;
+typedef WCHAR UNALIGNED *LPUWSTR, *PUWSTR;
+typedef CONST WCHAR *LPCWSTR, *PCWSTR;
+typedef PCWSTR *PZPCWSTR;
+typedef CONST PCWSTR *PCZPCWSTR;
+typedef CONST WCHAR UNALIGNED *LPCUWSTR, *PCUWSTR;
 
-typedef /*_NullNull_terminated_*/ WCHAR *PZZWSTR;
-typedef /*_NullNull_terminated_*/ CONST WCHAR *PCZZWSTR;
-typedef /*_NullNull_terminated_*/ WCHAR UNALIGNED *PUZZWSTR;
-typedef /*_NullNull_terminated_*/ CONST WCHAR UNALIGNED *PCUZZWSTR;
+typedef WCHAR *PZZWSTR;
+typedef CONST WCHAR *PCZZWSTR;
+typedef WCHAR UNALIGNED *PUZZWSTR;
+typedef CONST WCHAR UNALIGNED *PCUZZWSTR;
 
 typedef  WCHAR *PNZWCH;
 typedef  CONST WCHAR *PCNZWCH;
@@ -705,6 +681,9 @@ typedef int             ptrdiff_t;
 typedef int             intptr_t;
 #endif
 
+typedef ULONGLONG  DWORDLONG;
+typedef DWORDLONG *PDWORDLONG;
+
 //
 // Void
 //
@@ -783,51 +762,6 @@ DECLARE_HANDLE(HMODULE);
 
 typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
 
-//
-// CeationFlags defines
-//
-
-#pragma region CreationFlags
-
-#define DEBUG_PROCESS                     0x00000001
-#define DEBUG_ONLY_THIS_PROCESS           0x00000002
-#define CREATE_SUSPENDED                  0x00000004
-#define DETACHED_PROCESS                  0x00000008
-
-#define CREATE_NEW_CONSOLE                0x00000010
-#define NORMAL_PRIORITY_CLASS             0x00000020
-#define IDLE_PRIORITY_CLASS               0x00000040
-#define HIGH_PRIORITY_CLASS               0x00000080
-
-#define REALTIME_PRIORITY_CLASS           0x00000100
-#define CREATE_NEW_PROCESS_GROUP          0x00000200
-#define CREATE_UNICODE_ENVIRONMENT        0x00000400
-#define CREATE_SEPARATE_WOW_VDM           0x00000800
-
-#define CREATE_SHARED_WOW_VDM             0x00001000
-#define CREATE_FORCEDOS                   0x00002000
-#define BELOW_NORMAL_PRIORITY_CLASS       0x00004000
-#define ABOVE_NORMAL_PRIORITY_CLASS       0x00008000
-
-#define INHERIT_PARENT_AFFINITY           0x00010000
-#define CREATE_PROTECTED_PROCESS          0x00040000
-#define EXTENDED_STARTUPINFO_PRESENT      0x00080000
-
-#define PROCESS_MODE_BACKGROUND_BEGIN     0x00100000
-#define PROCESS_MODE_BACKGROUND_END       0x00200000
-
-#define CREATE_BREAKAWAY_FROM_JOB         0x01000000
-#define CREATE_PRESERVE_CODE_AUTHZ_LEVEL  0x02000000
-#define CREATE_DEFAULT_ERROR_MODE         0x04000000
-#define CREATE_NO_WINDOW                  0x08000000
-
-#define PROFILE_USER                      0x10000000
-#define PROFILE_KERNEL                    0x20000000
-#define PROFILE_SERVER                    0x40000000
-#define CREATE_IGNORE_SYSTEM_DEFAULT      0x80000000
-
-#pragma endregion
-
 //////////////////////////////////////////////
 // WINDOWS STRUCTS
 /////////////////////////////////////////////
@@ -835,6 +769,37 @@ typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
 //
 // System Structures
 //
+
+typedef struct _SYSTEM_INFO {
+	union {
+		DWORD dwOemId;          // Obsolete field...do not use
+		struct {
+			WORD wProcessorArchitecture;
+			WORD wReserved;
+		} DUMMYSTRUCTNAME;
+	} DUMMYUNIONNAME;
+	DWORD dwPageSize;
+	LPVOID lpMinimumApplicationAddress;
+	LPVOID lpMaximumApplicationAddress;
+	DWORD_PTR dwActiveProcessorMask;
+	DWORD dwNumberOfProcessors;
+	DWORD dwProcessorType;
+	DWORD dwAllocationGranularity;
+	WORD wProcessorLevel;
+	WORD wProcessorRevision;
+} SYSTEM_INFO, *LPSYSTEM_INFO;
+
+typedef struct _MEMORYSTATUSEX {
+	DWORD dwLength;
+	DWORD dwMemoryLoad;
+	DWORDLONG ullTotalPhys;
+	DWORDLONG ullAvailPhys;
+	DWORDLONG ullTotalPageFile;
+	DWORDLONG ullAvailPageFile;
+	DWORDLONG ullTotalVirtual;
+	DWORDLONG ullAvailVirtual;
+	DWORDLONG ullAvailExtendedVirtual;
+} MEMORYSTATUSEX, *LPMEMORYSTATUSEX;
 
 typedef struct _SYSTEMTIME {
 	WORD wYear;
@@ -1062,21 +1027,12 @@ typedef struct _OVERLAPPED {
 	HANDLE  hEvent;
 } OVERLAPPED, *LPOVERLAPPED;
 
-typedef struct _OVERLAPPED *LPWSAOVERLAPPED;
+typedef struct _OVERLAPPED *    LPWSAOVERLAPPED;
 
 typedef struct _iobuf
 {
 	void* _Placeholder;
 } FILE;
-
-//
-// Multithreading structures
-//
-
-typedef DWORD(WINAPI *PTHREAD_START_ROUTINE)(
-	LPVOID lpThreadParameter
-	);
-typedef PTHREAD_START_ROUTINE LPTHREAD_START_ROUTINE;
 
 //
 //	Network Structures
@@ -1657,10 +1613,12 @@ WINBASEAPI	BOOL		WINAPI		CloseHandle(HANDLE hObject);
 WINBASEAPI	FARPROC		WINAPI		GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
 WINBASEAPI	HMODULE		WINAPI		LoadLibraryA(LPCSTR lpLibFileName);
 WINBASEAPI	VOID		WINAPI		GetSystemTime(LPSYSTEMTIME lpSystemTime);
+WINBASEAPI	BOOL		WINAPI		GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
+WINBASEAPI	VOID		WINAPI		GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
 WINBASEAPI	VOID		WINAPI		GetSystemTimeAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
 WINBASEAPI	BOOL		WINAPI		FileTimeToSystemTime(CONST FILETIME * lpFileTime, LPSYSTEMTIME lpSystemTime);
-WINBASEAPI	BOOL		WINAPI		QueryPerformanceCounter(LARGE_INTEGER * lpPerformanceCount); // Retrieves current value of Perf. Counter (Value in Counts)
-WINBASEAPI	BOOL		WINAPI		QueryPerformanceFrequency(LARGE_INTEGER * lpFrequency); // Retrieves Freq. of Perf. Counter in Counts/Seconds
+WINBASEAPI	BOOL		WINAPI		QueryPerformanceCounter(LARGE_INTEGER * lpPerformanceCount);
+WINBASEAPI	BOOL		WINAPI		QueryPerformanceFrequency(LARGE_INTEGER * lpFrequency);
 
 WINBASEAPI	VOID		WINAPI		Sleep(DWORD dwMilliseconds);
 WINBASEAPI	DWORD		WINAPI		SleepEx(DWORD dwMilliseconds, BOOL bAlertable);
@@ -1725,8 +1683,6 @@ WINBASEAPI	BOOL		WINAPI		ReadFile(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOf
 WINBASEAPI	BOOL		WINAPI		ReadFileEx(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead, LPOVERLAPPED lpOverlapped, LPOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
 WINBASEAPI	BOOL		WINAPI		WriteFile(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite, LPDWORD lpNumberOfBytesWritten, LPOVERLAPPED lpOverlapped);
 WINBASEAPI	BOOL		WINAPI		WriteFileEx(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite, LPOVERLAPPED lpOverlapped, LPOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-WINBASEAPI	BOOL		WINAPI		GetOverlappedResult(HANDLE hFile, LPOVERLAPPED lpOverlapped, LPDWORD lpNumberOfBytesTransferred, BOOL bWait);
-WINBASEAPI	BOOL		WINAPI		PeekNamedPipe(HANDLE hNamedPipe, LPVOID lpBuffer, DWORD nBufferSize, LPDWORD lpBytesRead, LPDWORD lpTotalBytesAvail, LPDWORD lpBytesLeftThisMessage);
 WINBASEAPI	BOOL		WINAPI		GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize);
 WINBASEAPI	DWORD		WINAPI		GetFileType(HANDLE hFile);
 
@@ -2467,36 +2423,6 @@ WINGDIAPI	BOOL		WINAPI		SetPixelFormat(HDC hdc, int format, CONST PIXELFORMATDES
 WINGDIAPI	int			WINAPI		StretchDIBits(HDC hdc, int xDest, int yDest, int DestWidth, int DestHeight, int xSrc, int ySrc, int SrcWidth, 
 													int SrcHeight, CONST VOID *lpBits, CONST BITMAPINFO *lpbmi, UINT iUsage, DWORD rop);
 WINGDIAPI	BOOL		WINAPI		SwapBuffers(HDC);
-
-//
-//	Multithreading Management
-//
-
-#pragma region ThreadDefines
-
-#define STACK_SIZE_PARAM_IS_A_RESERVATION   0x00010000
-
-#define THREAD_DYNAMIC_CODE_ALLOW   1		 // Opt-out of dynamic code generation.
-#define THREAD_BASE_PRIORITY_LOWRT  15		// value that gets a thread to LowRealtime-1
-#define THREAD_BASE_PRIORITY_MAX    2		// maximum thread base priority boost
-#define THREAD_BASE_PRIORITY_MIN    (-2)	// minimum thread base priority boost
-#define THREAD_BASE_PRIORITY_IDLE   (-15)	// value that gets a thread to idle
-
-#define THREAD_PRIORITY_LOWEST          THREAD_BASE_PRIORITY_MIN
-#define THREAD_PRIORITY_BELOW_NORMAL    (THREAD_PRIORITY_LOWEST+1)
-#define THREAD_PRIORITY_NORMAL          0
-#define THREAD_PRIORITY_HIGHEST         THREAD_BASE_PRIORITY_MAX
-#define THREAD_PRIORITY_ABOVE_NORMAL    (THREAD_PRIORITY_HIGHEST-1)
-#define THREAD_PRIORITY_ERROR_RETURN    (MAXLONG)
-#define THREAD_PRIORITY_TIME_CRITICAL   THREAD_BASE_PRIORITY_LOWRT
-#define THREAD_PRIORITY_IDLE            THREAD_BASE_PRIORITY_IDLE
-
-#define THREAD_MODE_BACKGROUND_BEGIN    0x00010000
-#define THREAD_MODE_BACKGROUND_END      0x00020000
-
-#pragma endregion
-
-WINBASEAPI	HANDLE		WINAPI		CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSize, LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, DWORD dwCreationFlags, LPDWORD lpThreadId);
 
 //
 // Windows Socket Functions (Network Programming)

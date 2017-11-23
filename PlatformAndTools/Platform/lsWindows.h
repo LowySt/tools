@@ -1,5 +1,5 @@
-#ifndef LS_WINDOWS_H
-#define LS_WINDOWS_H
+#ifndef WIN32_H
+#define WIN32_H
 
 #include "win32.h"
 
@@ -7,16 +7,16 @@
 #define global		static
 
 #define Byte(n)			(n)
-#define Kilobyte(n)		1024*Byte(n)
-#define Megabyte(n)		1024*Kilobyte(n)
-#define Gigabyte(n)		1024*Megabyte(n)
+#define Kilobyte(n)		1024ULL*Byte(n)
+#define Megabyte(n)		1024ULL*Kilobyte(n)
+#define Gigabyte(n)		1024ULL*Megabyte(n)
 #define Kb				Kilobyte
 #define Mb				Megabyte
 #define Gb				Gigabyte
+#define KBytes			Kb
+#define MBytes			Mb
+#define GBytes			Gb
 
-#define LS_STDIN  CONIN$
-#define LS_STDOUT CONOUT$
-#define LS_STDERR CONOUT$
 
 //Really don't have time to fukin fight with includes...
 #pragma region GL TYPES
@@ -36,220 +36,326 @@ typedef double GLdouble;
 typedef double GLclampd;
 typedef void GLvoid;
 #pragma endregion
-/*
-enum FILE_TYPE
+
+extern "C" s32 ls_printf(const char *fmt, ...);
+extern "C" s32 ls_sprintf(char *dest, const char *fmt, ...);
+extern "C" void ls_memcpy(void *src, void *dest, size_t size);
+extern "C" void ls_zeroMem(void *mem, size_t size);
+
+struct MemoryBlockHeader
 {
-	BINARY_DATA,
-	BITMAP,
+	void *next;
+	void *prev;
 
-	FILE_TYPE_MAX
+	u32 size;
 };
-
-struct FileInfo
-{
-	FILE_TYPE	FileType;
-
-	u64			size;
-	void		*data;
-
-};
-
-struct ScreenInfo
-{
-	WNDCLASSA	WindowClass;
-	HWND		WindowHandle;
-	HDC			DeviceContext;
-	HGLRC		RenderingContext;
-
-	s32			Width;
-	s32			Height;
-
-	s32			UpdateFrequency;
-};
-
-struct KeyboardManager
-{
-	b32	isQuitting	= FALSE;
-
-	b32	DownArrow	= FALSE;
-	b32 UpArrow		= FALSE;
-	b32	LeftArrow	= FALSE;
-	b32 RightArrow	= FALSE;
-
-	b32 Key_W		= FALSE;
-	b32 Key_A		= FALSE;
-	b32 Key_S		= FALSE;
-	b32 Key_D		= FALSE;
-
-	b32 Key_P		= FALSE;
-
-	b32 Key_Shift	= FALSE;
-	b32 Key_Ctrl	= FALSE;
-};
-
-struct MouseManager
-{
-	f32 mouseX;
-	f32 mouseY;
-
-	f32 xOffset;
-	f32 yOffset;
-
-	f32 MouseCenterX;
-	f32 MouseCenterY;
-	
-	b32 LeftDown	= FALSE;
-	b32 RigthDown	= FALSE;
-	b32 MiddleDown = FALSE;
-};
-
-enum VAO_Type
-{
-	VAO_TRIANGLE,
-	VAO_RECTANGLE,
-	VAO_LIGHT_CONTAINER,
-	VAO_LIGHT,
-
-	VAO_MAX
-};
-
-struct Shader;
-struct Texture;
-struct Camera;
-struct TransformManager;
-
-struct VAO_Container
-{
-	GLuint		VAO;
-	Shader		*ShaderProgram;
-	Texture		*Texture;
-
-	VAO_Type	Type;
-	u32			IndexInContainer;
-};
-
-struct OpenGLInfo
-{
-	VAO_Container		VAOs[32];
-	u32					NextAvailableIndex;
-
-	Camera				*Camera;
-	TransformManager	*Transform;
-};
-
-struct InputManager
-{
-	MouseManager		*Mouse;
-	KeyboardManager		*Keyboard;
-};
-
-struct Memory
-{
-	void		*BeginPointer;
-	
-	s32			Size;
-	s32			UsedMemory;
-	s32			RemainingMemory;
-
-	s32			MinimumAllocationSize;
-};
-
-typedef DWORD		(*WIN32_GIVEMEMORYPROC)(Memory *Memory, VOID **BasePointer, s32 Size);
-typedef VOID		(*WIN32_READTEXTFILE)(Memory *Memory, char *Path, char **Dest);
-typedef VOID		(*WIN32_READENTIREFILE)(const char *Path, FileInfo *FileInfo, Memory *Memory);
-typedef ULONGLONG	(*WIN32_TIME)();
 
 struct MemoryArena
 {
-	WIN32_GIVEMEMORYPROC	Alloc;
-	WIN32_TIME				Time;
-	WIN32_READTEXTFILE		ReadTextFile;
-	WIN32_READENTIREFILE	ReadEntireFile;
+	void *heap;
 
-	ULONGLONG				StartingTime;
-	f32						MsPerFrame;
+	MemoryBlockHeader *freeHead;
 
-	Memory					PermanentMemory;
+	u32 minBlockSize;
+	u32 maxBlockSize;
 
-	s32						PageSize;
-	s32						AllocationGranularity;	
+	u32 totalSize;
+	u32 firstAllocSize = 0;
 };
-*/
 
-s32 ls_printf(const char *fmt, ...);
+static MemoryArena Memory = {};
 
-void *windows_memAlloc(u64 size)
+extern "C"
 {
-	HANDLE HeapHandle = GetProcessHeap();
-	void *result = HeapAlloc(HeapHandle, HEAP_ZERO_MEMORY, size);
-	if (result == NULL)
+	void windows_assert(const char *msg, const char *file, s32 line);
+	void windows_setAllocatorParams(u32 firstAllocSize, u32 minBlockSize, u32 maxBlockSize);
+	void *windows_memAlloc(size_t size);
+	void windows_memFree(void *ptr);
+
+	u64 windows_ReadConsole(char *Dest, u32 bytesToRead);
+	u64 windows_WriteConsole(char *buffer, u32 bytesToWrite);
+	u64 windows_ReadFile(char *Path, char **Dest, u32 bytesToRead);
+	u64 windows_WriteFile(char *Path, char *source, u32 bytesToWrite, b32 append);
+};
+
+#endif
+
+#ifdef PLATFORM_IMPLEMENTATION
+
+u64 windows_ReadConsole(char *Dest, u32 bytesToRead)
+{
+	DWORD Error = 0;
+	HANDLE FileHandle = 0;
+	if ((FileHandle = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, NULL, NULL)) == INVALID_HANDLE_VALUE)
 	{
-        DWORD Error = GetLastError();
-        ls_printf("Error %ld when allocating memory in windows_memAlloc\n", Error);
+		Error = GetLastError();
+		ls_printf("When creating a file handle got error: %ld\n", Error);
 	}
-	return result;
+
+	DWORD BytesRead = 0;
+	if (ReadFile(FileHandle, Dest, bytesToRead, &BytesRead, NULL) == FALSE)
+	{
+		Error = GetLastError();
+		ls_printf("When Reading contents of a file got error: %ld\n", Error);
+	}
+	else
+	{
+		if (BytesRead != bytesToRead)
+		{ ls_printf("Bytes read when reading entire file don't equal the file size!!\n"); }
+	}
+
+	if (CloseHandle(FileHandle) == FALSE)
+	{ OutputDebugStringA("Couldn't close file handle at the end of Win32_ReadEntireFile function.\n"); }
+
+	return BytesRead;
+}
+
+u64 windows_WriteConsole(char *buffer, u32 bytesToWrite)
+{
+	DWORD Error = 0;
+	HANDLE FileHandle = 0;
+	if ((FileHandle = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, NULL, NULL)) == INVALID_HANDLE_VALUE)
+	{
+		Error = GetLastError();
+		OutputDebugStringA("When creating a file handle got error\n");
+	}
+
+	DWORD BytesWritten = 0;
+	if (!WriteFile(FileHandle, buffer, bytesToWrite, &BytesWritten, NULL))
+	{
+		Error = GetLastError();
+		OutputDebugStringA("When writing to Console Output got error\n");
+	}
+
+	if (!CloseHandle(FileHandle))
+	{
+		Error = GetLastError();
+		OutputDebugStringA("When closing Console Output Handle got error\n");
+	}
+
+	return BytesWritten;
+}
+
+void windows_assert(const char *msg, const char *file, s32 line)
+{
+	char buff[512] = { 0 };
+	s32 written = ls_sprintf(buff, "In file %s, line %d, Assert %s fired\n", file, line, msg);
+	windows_WriteConsole(buff, (u32)written);
+}
+
+static void windows_breakMemoryBlock(MemoryBlockHeader *blockHeader, u32 desiredSize)
+{
+	u32 offsetSize = blockHeader->size - desiredSize;
+	void *nextBlockPtr = (u8 *)blockHeader + offsetSize;
+
+	MemoryBlockHeader newBlock = { blockHeader->next, blockHeader, desiredSize };
+	ls_memcpy((void *)&newBlock, nextBlockPtr, sizeof(MemoryBlockHeader));
+
+	if (blockHeader->next)
+	{
+		((MemoryBlockHeader *)blockHeader->next)->prev = nextBlockPtr;
+	}
+	blockHeader->next = nextBlockPtr;
+	blockHeader->size = offsetSize;
+
+	return;
+}
+
+static void windows_halveMemoryBlock(MemoryBlockHeader *blockHeader)
+{
+	windows_breakMemoryBlock(blockHeader, blockHeader->size / 2);
+}
+
+static void windows_removeMemoryBlockFromList(MemoryBlockHeader *blockHeader)
+{
+	((MemoryBlockHeader *)blockHeader->prev)->next = blockHeader->next;
+	((MemoryBlockHeader *)blockHeader->next)->prev = blockHeader->prev;
+
+	return;
+}
+
+static void windows_initMemory()
+{
+	u32 allocationSize = 0;
+
+	if (Memory.firstAllocSize != 0) { allocationSize = Memory.firstAllocSize; }
+	else
+	{
+		MEMORYSTATUSEX info = { 0 }; info.dwLength = sizeof(MEMORYSTATUSEX);
+		b32 result = GlobalMemoryStatusEx(&info);
+		if (!result)
+		{ 
+			DWORD Error = GetLastError();
+			OutputDebugStringA("Error when calling GlobalMemoryStatusEx() in windows_initMemory()\n"); 
+		}
+
+		u32 totalRamInBytes = (u32)info.ullTotalVirtual;
+
+		if (totalRamInBytes < GBytes(8ULL)) { allocationSize = totalRamInBytes / 4; }
+		else { allocationSize = GBytes(2ULL); }
+	}
+
+	Memory.heap = VirtualAlloc(0, allocationSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	if (Memory.heap == NULL)
+	{
+		DWORD Error = GetLastError();
+		OutputDebugStringA("Error when calling VirtualAlloc() in windows_initMemory()");
+	}
+
+	MemoryBlockHeader firstBlock = { NULL, NULL, allocationSize };
+	Memory.totalSize = allocationSize;
+	ls_memcpy((void *)&firstBlock, Memory.heap, sizeof(MemoryBlockHeader));
+
+	Memory.freeHead = (MemoryBlockHeader *)Memory.heap;
+}
+
+void windows_setAllocatorParams(u32 firstAllocSize, u32 minBlockSize, u32 maxBlockSize)
+{
+	if (firstAllocSize != 0)
+	{ Memory.firstAllocSize = firstAllocSize; }
+
+	if (minBlockSize != 0)
+	{ Memory.minBlockSize = minBlockSize; }
+
+	if (maxBlockSize != 0)
+	{ Memory.maxBlockSize = maxBlockSize; }
+}
+
+void *windows_memAlloc(size_t request)
+{
+	u64 givenMemory = request >= 12 ? request : 12;
+
+	if (Memory.heap == 0)
+	{ windows_initMemory(); }
+
+	if (Memory.freeHead->next == 0)
+	{ windows_halveMemoryBlock(Memory.freeHead); }
+
+	MemoryBlockHeader *currHeader = Memory.freeHead;
+	MemoryBlockHeader *bestBlock = 0; u32 bestBlockSize = Memory.totalSize;
+
+	b32 found = FALSE;
+	do
+	{
+		if ((currHeader->size < bestBlockSize) && (currHeader->size > givenMemory))
+		{ bestBlock = currHeader; bestBlockSize = currHeader->size; }
+
+		if (currHeader->size == givenMemory)
+		{ found = TRUE; break; }
+
+		currHeader = (MemoryBlockHeader *)currHeader->next;
+	} 
+	while (currHeader);
+
+	if (!found)
+	{ windows_breakMemoryBlock(bestBlock, (u32)givenMemory); }
+
+	MemoryBlockHeader *actualBlock = (MemoryBlockHeader *)bestBlock->next;
+
+	windows_removeMemoryBlockFromList(actualBlock);
+	ls_zeroMem(actualBlock, actualBlock->size);
+
+	return actualBlock;
 }
 
 void windows_memFree(void *p)
 {
-	HANDLE HeapHandle = GetProcessHeap();
-	if (HeapFree(HeapHandle, 0, p) == 0)
+	MemoryBlockHeader *currHeader = Memory.freeHead;
+
+	void *prev = 0, *next = 0;
+	while ((void *)currHeader < p)
 	{
-		DWORD Error = GetLastError();
-		ls_printf("Error thrown by HeapFree when freeing pointer %ld is: %ld ", p, Error);
+		if (currHeader->next > p)
+		{
+			prev = (void *)currHeader;
+			next = currHeader->next;
+			break;
+		}
+
+		currHeader = (MemoryBlockHeader *)currHeader->next;
 	}
+
+	u32 newHeaderSize = (u32)((u8 *)next - (u8 *)p);
+	MemoryBlockHeader newHeader = { next, prev, newHeaderSize };
+
+	ls_memcpy((void *)&newHeader, p, sizeof(MemoryBlockHeader));
+
+	((MemoryBlockHeader *)prev)->next = p;
+	((MemoryBlockHeader *)next)->prev = p;
+
+	return;
 }
 
-u64 windows_ReadFile(char *path, char **outputBuffer, u32 bytesToRead)
+u64 windows_ReadFile(char *Path, char **Dest, u32 bytesToRead)
 {
 	DWORD Error = 0;
-	DWORD ToRead = 0;
 	HANDLE FileHandle = 0;
-	FileHandle = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	
 	LARGE_INTEGER FileSize = {};
-	GetFileSizeEx(FileHandle, &FileSize);
-	
-	if (bytesToRead == 0) { ToRead = FileSize.LowPart; }
-	else { ToRead = (DWORD)bytesToRead; }
 
-	*outputBuffer = (char *)ls_heapAlloc(ToRead);
+	if ((FileHandle = CreateFileA(Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
+	{
+		Error = GetLastError();
+		ls_printf("When creating a file handle got error: %ld", Error);
+	}
+	
+	u32 ToRead;
+	if (bytesToRead == 0)
+	{
+		if (GetFileSizeEx(FileHandle, &FileSize) == 0)
+		{
+			Error = GetLastError();
+			ls_printf("When getting file size got error: %ld\n", Error);
+		}
+		ToRead = FileSize.LowPart;
+	}
+	else
+	{
+		ToRead = bytesToRead;
+	}
+	
+	*Dest = (char *)windows_memAlloc(ToRead);
 
 	DWORD BytesRead = 0;
-	if(ReadFile(FileHandle, *outputBuffer, ToRead , &BytesRead, NULL) == FALSE)
+	if (ReadFile(FileHandle, *Dest, ToRead, &BytesRead, NULL) == FALSE)
 	{
-		DWORD Error = GetLastError();
-		ls_printf("Error when opening file for reading: %ld", Error);
+		Error = GetLastError();
+		ls_printf("When Reading contents of a file got error: %ld\n", Error);
+	}
+	else
+	{
+		if (BytesRead != ToRead)
+		{ ls_printf("Bytes read when reading entire file don't equal the file size!!\n"); }
 	}
 
-	CloseHandle(FileHandle);
+	if (CloseHandle(FileHandle) == FALSE)
+	{ OutputDebugStringA("Couldn't close file handle at the end of Win32_ReadEntireFile function.\n"); }
 
-	return ToRead;
+	return BytesRead;
 }
 
-u64 windows_WriteFile(char *path, void *source, u32 bytesToWrite, b32 append)
+u64 windows_WriteFile(char *Path, char *source, u32 bytesToWrite, b32 append)
 {
 	DWORD Error = 0;
 	HANDLE FileHandle = 0;
 
 	u32 fileAccessRights = append ? FILE_APPEND_DATA : FILE_GENERIC_WRITE;
 
-	if ((FileHandle = CreateFileA(path, fileAccessRights, FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
+	if ((FileHandle = CreateFileA(Path, fileAccessRights, FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
 	{
 		DWORD Error = GetLastError();
-		ls_printf("Error %ld in windows_WriteFile when creating file handle\n", Error);
+		ls_printf("Gotten Error %ld when creating file handle to file: %s\n", Error, Path);
 	}
 
 	DWORD BytesWritten = 0;
 	if (WriteFile(FileHandle, source, (DWORD)bytesToWrite, &BytesWritten, NULL) == FALSE)
 	{
 		DWORD Error = GetLastError();
-		ls_printf("Error %ld in windows_WriteFile when calling WriteFile()\n", Error);
+		ls_printf("Gotten Error %ld when writing to file %s\n", Error, Path);
 	}
 
 	CloseHandle(FileHandle);
 
-	return (u64)BytesWritten;
+	return 0;
 }
 
 #endif
