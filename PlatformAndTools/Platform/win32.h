@@ -356,6 +356,15 @@ extern "C" {
 
 #pragma endregion
 
+#ifndef _UINTPTR_T_DEFINED
+#define _UINTPTR_T_DEFINED
+#ifdef _WIN64
+	typedef unsigned __int64  uintptr_t;
+#else
+	typedef unsigned int uintptr_t;
+#endif
+#endif
+
 //
 // My own most used fixed-width types
 //
@@ -368,6 +377,7 @@ extern "C" {
 	typedef uint16_t		   u16;
 	typedef uint32_t		   u32;
 	typedef uint64_t		   u64;
+	typedef uintptr_t		   ptr;
 
 	typedef float			   f32;
 	typedef double			   f64;
@@ -1611,8 +1621,10 @@ int			CALLBACK				WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lp
 LRESULT		CALLBACK				WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
 WINBASEAPI	BOOL		WINAPI		CloseHandle(HANDLE hObject);
 WINBASEAPI	FARPROC		WINAPI		GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
+WINBASEAPI	HMODULE		WINAPI		GetModuleHandleA(LPCTSTR lpModuleName);
 WINBASEAPI	HMODULE		WINAPI		LoadLibraryA(LPCSTR lpLibFileName);
 WINBASEAPI	VOID		WINAPI		GetSystemTime(LPSYSTEMTIME lpSystemTime);
+WINBASEAPI	VOID		WINAPI		GetLocalTime(LPSYSTEMTIME lpSystemTime);
 WINBASEAPI	BOOL		WINAPI		GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
 WINBASEAPI	VOID		WINAPI		GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
 WINBASEAPI	VOID		WINAPI		GetSystemTimeAsFileTime(LPFILETIME lpSystemTimeAsFileTime);

@@ -35,6 +35,10 @@
 #include "Maths/Maths.h"
 #endif
 
+#ifndef LS_GRAPHICS_H
+#include "lsGraphics.h"
+#endif
+
 #include <stdarg.h>
 
 #define PI_32 3.1415926f
@@ -58,6 +62,22 @@ typedef struct
 	s32	  len; //Zero Terminated
 	s32   byteLen;
 } hex;
+
+struct Date
+{
+	u32 milliseconds;
+	u32 seconds;
+	u32 minutes;
+	u32 hour;
+
+	u32 day;
+	char *dayName;
+
+	u32 month;
+	char *monthName;
+
+	u32 year;
+};
 
 struct Bitmap
 {
@@ -219,6 +239,24 @@ extern "C"
 	void ls_loadBitmap(char *Path, Bitmap *bitmap);
 	void ls_loadCompressedPNG(char *Path, PNG *png);
 	void ls_Deflate(char *data, u64 inputSize, char *out);
+
+	////////////////////////////////////////////////////
+	//	GENERAL PURPOSE SYSTEM FUNCTIONS
+	////////////////////////////////////////////////////
+
+	/* The resolution depends on the OS:
+		In Windows the epoch is January 1st, 1601 (UTC) and the value is 
+		returned in microseconds (even tough resoultion is 100-nanoseconds intervals)
+		In Linux the epoch is ***  and the value is returned in *** */
+	u64 ls_getTimeSinceEpoch();
+	
+	/* If false UTC time is returned instead */
+	Date ls_getDateTime(b32 local);
+
+
+	/* Function for creating and opening a window*/
+	void ls_createWindow(WindowInfo info);
+	void ls_setupOpenGLContext(WindowInfo *Info);
 
 	////////////////////////////////////////////////////
 	//	CRYPTOGRAPHY FUNCTIONS
@@ -2091,6 +2129,151 @@ void ls_Deflate(char *data, u64 inputSize, char *out)
 #undef MAXDCODES
 #undef MAXCODES
 #undef FIXLCODES
+}
+
+////////////////////////////////////////////////////
+//	GENERAL PURPOSE SYSTEM FUNCTIONS
+////////////////////////////////////////////////////
+
+u64 ls_getTimeSinceEpoch()
+{
+#ifdef LS_PLAT_WINDOWS
+	return windows_GetTime();
+#endif
+
+#ifdef LS_PLAT_LINUX
+	return linux_GetTime();
+#endif
+}
+
+string ls_getDayName(u32 num)
+{
+	string Result;
+	switch (num)
+	{
+	case 0:
+		Result = "Monday";
+		return Result;
+	case 1:
+		Result = "Tuesday";
+		return Result;
+	case 2:
+		Result = "Wednesday";
+		return Result;
+	case 3:
+		Result = "Thursday";
+		return Result;
+	case 4:
+		Result = "Friday";
+		return Result;
+	case 5:
+		Result = "Saturday";
+		return Result;
+	case 6:
+		Result = "Sunday";
+		return Result;
+	default:
+		Result = "Error?";
+		return Result;
+	}
+}
+
+string ls_getMonthName(u32 m)
+{
+	string Result;
+	switch (m)
+	{
+	case 1:
+		Result = "January";
+		return Result;
+	case 2:
+		Result = "February";
+		return Result;
+	case 3:
+		Result = "March";
+		return Result;
+	case 4:
+		Result = "April";
+		return Result;
+	case 5:
+		Result = "May";
+		return Result;
+	case 6:
+		Result = "June";
+		return Result;
+	case 7:
+		Result = "July";
+		return Result;
+	case 8:
+		Result = "August";
+		return Result;
+	case 9:
+		Result = "September";
+		return Result;
+	case 10:
+		Result = "October";
+		return Result;
+	case 11:
+		Result = "November";
+		return Result;
+	case 12:
+		Result = "December";
+		return Result;
+	default:
+		Result = "Error?";
+		return Result;
+	}
+}
+
+Date ls_getDateTime(b32 local)
+{
+	Date Result = {};
+
+#ifdef LS_PLAT_WINDOWS
+	windowsDate wDate = windows_GetDate(local);
+	
+	Result.milliseconds = wDate.Milliseconds;
+	Result.seconds = wDate.Second;
+	Result.minutes = wDate.Minute;
+	Result.hour = wDate.Hour;
+	Result.day = wDate.Day;
+	string dayName = ls_getDayName(wDate.DayOfWeek);
+	ls_memcpy(dayName.data, Result.dayName, dayName.size);
+	Result.month = wDate.Month;
+	string monthName = ls_getMonthName(wDate.Month);
+	ls_memcpy(monthName.data, Result.monthName, monthName.size);
+	Result.year = wDate.Year;
+#endif
+
+#ifdef LS_PLAT_LINUX
+	linuxDate lDate = linux_GetDate(local);
+
+	Result.milliseconds = lDate.Milliseconds;
+	Result.seconds = lDate.Second;
+	Result.minutes = lDate.Minute;
+	Result.hour = lDate.Hour;
+	Result.day = lDate.Day;
+	Result.dayName = ls_getDayName(lDate.DayOfWeek);
+	Result.month = lDate.Month;
+	Result.monthName = ls_getMonthName(lDate.Month);
+	Result.year = lDate.Year;
+#endif
+
+	return Result;
+}
+
+void ls_createWindow(WindowInfo *info)
+{
+#ifdef LS_PLAT_WINDOWS
+	windows_setupWindow(info);
+#endif
+}
+
+void ls_setupOpenGLContext(WindowInfo *info)
+{
+#ifdef LS_PLAT_WINDOWS
+	windows_setupOpenGLContext(info);
+#endif
 }
 
 ////////////////////////////////////////////////////

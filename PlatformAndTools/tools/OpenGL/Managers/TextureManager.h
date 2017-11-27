@@ -23,4 +23,5 @@ struct Texture
 };
 
 Texture *InitTextureManager(char **Paths, TEXTURE_ENUM *Names, u32 texQuantity);
+void FreeTextureManager(Texture *Tex);
 void GenAndBindTexture(const char *Path, GameInfo *Game, Texture *TextureManager, u32 idx);

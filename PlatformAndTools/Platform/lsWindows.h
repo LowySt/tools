@@ -37,10 +37,32 @@ typedef double GLclampd;
 typedef void GLvoid;
 #pragma endregion
 
+struct WindowInfo;
+
 extern "C" s32 ls_printf(const char *fmt, ...);
 extern "C" s32 ls_sprintf(char *dest, const char *fmt, ...);
 extern "C" void ls_memcpy(void *src, void *dest, size_t size);
 extern "C" void ls_zeroMem(void *mem, size_t size);
+
+struct windowsDate
+{
+	u32 Year;
+	u32 Month;
+	u32 DayOfWeek;
+	u32 Day;
+	u32 Hour;
+	u32 Minute;
+	u32 Second;
+	u32 Milliseconds;
+};
+
+struct MemoryBlockList
+{
+	MemoryBlockList *next;
+	MemoryBlockList *prev;
+
+	void *blockAddr;
+};
 
 struct MemoryBlockHeader
 {
@@ -50,11 +72,48 @@ struct MemoryBlockHeader
 	u32 size;
 };
 
+/* This allocation system is similar to the buddy system. It consists 
+ * of a flat block of memory allocated at the process startup (Right now
+ * the amount allocated is either asked for by the caller, or determined
+ * by looking at the system physical memory and availability).
+ *
+ * The flat memory is then fragmented depending on demand, and the pointers
+ * to the fragments are what is returned when asking for memory.
+ * To know which blocks are still available, the memory itself is formatted to
+ * give this information. Headers at the beginning of each free block act as a
+ * double linked list, pointing to previous and next free block, as well as
+ * keeping track of the fragment's size.
+ * 
+ * When allocating a free block, its contents are zeroed (wiping also the header
+ * we just mentioned), the previous and next block's links are adjusted (just like
+ * when removing an entry form a linked list) and the pointer to that location in
+ * memory is then returned to the user.
+ * 
+ * As of right now the implementation doesn't allow free block merging (in case of
+ * excessive fragmentation). That would probably require the addition of a footer.
+ *
+ * When freeing a pointer, to be able to properly determine the size of the block
+ * this pointer originated from, we also keep a double linked list of the allocated
+ * blocks, to be able to perform pointer arithmetic between the "pointer to be freed"
+ * and everything else in memory, giving me distances between these pointers, hence
+ * the dimensions of the blocks.
+ *
+ * The allocated List is also stored in a flat memory block, allocated at startup
+ * time (its dimension is constast for now, 1024 entries). So to be able to remove 
+ * and insert entries in the list, without working with allocation/freeing, we always
+ * add an entry at the tail of the list, and when removing we move the tail in place
+ * of the removed entry, to avoid the fragmentation of the alloc list. The order (while
+ * it may be relevant, considering that alloc/free usually come in pairs) should not
+ * be critical, that's why the tail is moved.
+ */
+
 struct MemoryArena
 {
 	void *heap;
 
 	MemoryBlockHeader *freeHead;
+	MemoryBlockList *allocList;
+	MemoryBlockList *allocTail;
 
 	u32 minBlockSize;
 	u32 maxBlockSize;
@@ -76,6 +135,10 @@ extern "C"
 	u64 windows_WriteConsole(char *buffer, u32 bytesToWrite);
 	u64 windows_ReadFile(char *Path, char **Dest, u32 bytesToRead);
 	u64 windows_WriteFile(char *Path, char *source, u32 bytesToWrite, b32 append);
+
+	u64 windows_GetTime();
+	windowsDate windows_GetDate(b32 localTime); /*If param is false UTC time is retrieved*/
+	void windows_setupWindow(WindowInfo *Input);
 };
 
 #endif
@@ -166,13 +229,16 @@ static void windows_halveMemoryBlock(MemoryBlockHeader *blockHeader)
 	windows_breakMemoryBlock(blockHeader, blockHeader->size / 2);
 }
 
-static void windows_removeMemoryBlockFromList(MemoryBlockHeader *blockHeader)
+static void windows_removeFromFreeList(MemoryBlockHeader *blockHeader)
 {
 	((MemoryBlockHeader *)blockHeader->prev)->next = blockHeader->next;
 	((MemoryBlockHeader *)blockHeader->next)->prev = blockHeader->prev;
 
 	return;
 }
+
+/* TODO: For now I'm arbitrarily setting the allocList size to 1024 possible 
+ * entries I think it should be enough. At least for now... */
 
 static void windows_initMemory()
 {
@@ -196,10 +262,13 @@ static void windows_initMemory()
 	}
 
 	Memory.heap = VirtualAlloc(0, allocationSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	Memory.allocList = (MemoryBlockList *)VirtualAlloc(0, sizeof(MemoryBlockList)*1024, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	Memory.allocTail = Memory.allocList;
+
 	if (Memory.heap == NULL)
 	{
 		DWORD Error = GetLastError();
-		OutputDebugStringA("Error when calling VirtualAlloc() in windows_initMemory()");
+OutputDebugStringA("Error when calling VirtualAlloc() in windows_initMemory()");
 	}
 
 	MemoryBlockHeader firstBlock = { NULL, NULL, allocationSize };
@@ -209,27 +278,70 @@ static void windows_initMemory()
 	Memory.freeHead = (MemoryBlockHeader *)Memory.heap;
 }
 
+static void windows_addToAllocList(void *p)
+{
+	MemoryBlockList *curr = Memory.allocList;
+	MemoryBlockList *newNode = 0;
+	while (curr->next)
+	{ curr = curr->next; }
+
+	newNode = curr + 1;
+	newNode->prev = curr;
+	curr->next = newNode;
+
+	newNode->blockAddr = p;
+	Memory.allocTail = newNode;
+}
+
+static void windows_removeFromAllocList(void *p)
+{
+	MemoryBlockList *curr = Memory.allocList;
+
+	do
+	{
+		if (curr->blockAddr == p)
+		{
+			curr->blockAddr = Memory.allocTail->blockAddr;
+			(Memory.allocTail->prev)->next = 0;
+			Memory.allocTail = Memory.allocTail - 1;
+			return;
+		}
+		curr = curr->next;
+	} while (curr);
+
+}
+
 void windows_setAllocatorParams(u32 firstAllocSize, u32 minBlockSize, u32 maxBlockSize)
 {
 	if (firstAllocSize != 0)
-	{ Memory.firstAllocSize = firstAllocSize; }
+	{
+		Memory.firstAllocSize = firstAllocSize;
+	}
 
 	if (minBlockSize != 0)
-	{ Memory.minBlockSize = minBlockSize; }
+	{
+		Memory.minBlockSize = minBlockSize;
+	}
 
 	if (maxBlockSize != 0)
-	{ Memory.maxBlockSize = maxBlockSize; }
+	{
+		Memory.maxBlockSize = maxBlockSize;
+	}
 }
 
 void *windows_memAlloc(size_t request)
 {
-	u64 givenMemory = request >= 12 ? request : 12;
+	u64 givenMemory = request >= sizeof(MemoryBlockHeader) ? request : sizeof(MemoryBlockHeader);
 
 	if (Memory.heap == 0)
-	{ windows_initMemory(); }
+	{
+		windows_initMemory();
+	}
 
 	if (Memory.freeHead->next == 0)
-	{ windows_halveMemoryBlock(Memory.freeHead); }
+	{
+		windows_halveMemoryBlock(Memory.freeHead);
+	}
 
 	MemoryBlockHeader *currHeader = Memory.freeHead;
 	MemoryBlockHeader *bestBlock = 0; u32 bestBlockSize = Memory.totalSize;
@@ -238,48 +350,97 @@ void *windows_memAlloc(size_t request)
 	do
 	{
 		if ((currHeader->size < bestBlockSize) && (currHeader->size > givenMemory))
-		{ bestBlock = currHeader; bestBlockSize = currHeader->size; }
+		{
+			bestBlock = currHeader; bestBlockSize = currHeader->size;
+		}
 
 		if (currHeader->size == givenMemory)
-		{ found = TRUE; break; }
+		{
+			found = TRUE; break;
+		}
 
 		currHeader = (MemoryBlockHeader *)currHeader->next;
-	} 
-	while (currHeader);
+	} while (currHeader);
 
 	if (!found)
-	{ windows_breakMemoryBlock(bestBlock, (u32)givenMemory); }
+	{
+		windows_breakMemoryBlock(bestBlock, (u32)givenMemory);
+	}
 
 	MemoryBlockHeader *actualBlock = (MemoryBlockHeader *)bestBlock->next;
 
-	windows_removeMemoryBlockFromList(actualBlock);
+	windows_removeFromFreeList(actualBlock);
 	ls_zeroMem(actualBlock, actualBlock->size);
+
+	windows_addToAllocList((void *)actualBlock);
 
 	return actualBlock;
 }
+
+/* NOTE: To be able to determine the size of the block that I'm freeing,
+ * I need to know the distance between my pointer, and the pointer of the
+ * next block (wether the next block is free or allocated). This means I either
+ * need to keep track of the block sizes relative to their base pointer
+ * (for example with an hash table) or keep a list of the allocated blocks
+ * and walk it after I found the range in which the memory to be freed lives in.
+ * By walking the allocated list I can find if there are blocks between my pointer
+ * and the next free block, thus giving me the accurate size of the new free block.
+ *
+ * For now I'm choosing to go the allocated list route. Maybe the hash table is
+ * better performance wise. Need to research this more.
+ */
 
 void windows_memFree(void *p)
 {
 	MemoryBlockHeader *currHeader = Memory.freeHead;
 
 	void *prev = 0, *next = 0;
+	u32 newBlockSize = 0;
+
 	while ((void *)currHeader < p)
 	{
+		if (currHeader->next == NULL)
+		{
+			Assert(false);
+			int breakHere = 0;
+		}
 		if (currHeader->next > p)
 		{
 			prev = (void *)currHeader;
 			next = currHeader->next;
+
+			void *closestAllocBlock = (void *)UINTPTR_MAX;
+			MemoryBlockList *curr = Memory.allocList;
+			while(curr->next)
+			{
+				if (curr->blockAddr > next)
+				{ break; }
+
+				if ((curr->blockAddr > p) && (curr->blockAddr < closestAllocBlock))
+				{ closestAllocBlock = curr->blockAddr; }
+
+				curr = curr->next;
+			}
+
+			if (closestAllocBlock < next)
+			{ newBlockSize = (u32)((u8 *)closestAllocBlock - (u8 *)p); }
+			else
+			{ newBlockSize = (u32)((u8 *)next - (u8 *)p); }
+			
 			break;
 		}
 
 		currHeader = (MemoryBlockHeader *)currHeader->next;
 	}
 
-	u32 newHeaderSize = (u32)((u8 *)next - (u8 *)p);
-	MemoryBlockHeader newHeader = { next, prev, newHeaderSize };
-
+	MemoryBlockHeader newHeader = { next, prev, newBlockSize };
 	ls_memcpy((void *)&newHeader, p, sizeof(MemoryBlockHeader));
 
+	windows_removeFromAllocList(p);
+
+	//TODO: FIXME: Check for head / last block exceptions
+	//TODO: FIXME: Check for head / last block exceptions
+	//TODO: FIXME: Check for head / last block exceptions
 	((MemoryBlockHeader *)prev)->next = p;
 	((MemoryBlockHeader *)next)->prev = p;
 
@@ -356,6 +517,126 @@ u64 windows_WriteFile(char *Path, char *source, u32 bytesToWrite, b32 append)
 	CloseHandle(FileHandle);
 
 	return 0;
+}
+
+u64 windows_GetTime()
+{
+	/*Contains a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 (UTC).*/
+	FILETIME FileTime = {};
+	GetSystemTimeAsFileTime(&FileTime);
+
+	ULARGE_INTEGER Time = {};
+	Time.LowPart = FileTime.dwLowDateTime;
+	Time.HighPart = FileTime.dwHighDateTime;
+
+	/*Returning microseconds since January 1, 1601 (UTC)*/
+	ULONGLONG Result = (Time.QuadPart / 1000);
+
+	return (u64)Result;
+}
+
+windowsDate windows_GetDate(b32 localTime)
+{
+	SYSTEMTIME time = {};
+
+	if (localTime) { GetLocalTime(&time); }
+	else { GetSystemTime(&time); }
+	
+	windowsDate result = {};
+
+	result.Year			= (u32)time.wYear;;
+	result.Month		= (u32)time.wMonth;;
+	result.DayOfWeek	= (u32)time.wDayOfWeek;;
+	result.Day			= (u32)time.wDay;;
+	result.Hour			= (u32)time.wHour;;
+	result.Minute		= (u32)time.wMinute;;
+	result.Second		= (u32)time.wSecond;;
+	result.Milliseconds = (u32)time.wMilliseconds;;
+
+	return result;
+}
+
+void windows_setupWindow(WindowInfo *In)
+{
+	HMODULE hInstance = GetModuleHandleA(0);
+	HWND WindowHandle = 0;
+
+	WNDCLASSA WindowClass = { 0 };
+	WindowClass.style = In->properties; //CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
+	WindowClass.lpfnWndProc = In->WindowProc;
+	WindowClass.hInstance = hInstance;
+	WindowClass.hCursor = 0;
+	WindowClass.lpszMenuName = In->menuName; //"Window Menu";
+	WindowClass.lpszClassName = In->className; //"Window Class";
+
+	if (!RegisterClassA(&WindowClass))
+	{
+		DWORD Error = GetLastError();
+		ls_printf("When Registering WindowClass in Win32_SetupScreen got error: %d", Error);
+	}
+
+	//@NOTE: WindowProc function needs to be fully operational before calling CreateWindow(Ex)(A/W) Because it calls it and uses it's return to create the window.
+	//It can be set to return DefWindowProc(A/W) to return all default values and not have to handle them
+	if ((WindowHandle = CreateWindowExA(0L, WindowClass.lpszClassName, In->windowName /*"Win 32 Platform"*/, 
+									In->style /*WS_OVERLAPPED | WS_VISIBLE*/, CW_USEDEFAULT, CW_USEDEFAULT, In->Width, In->Height, 0, 0, hInstance, 0)) == nullptr)
+	{
+		DWORD Error = GetLastError();
+		ls_printf("When Retrieving a WindowHandle in Win32_SetupScreen got error: %d", Error);
+	}
+
+	//@TODO Make this error path more @ROBUST. SetCapture actually returns an Handle to the previous Window owning mouse capture
+	//If that window wasn't me, it will just post errors without meaning, even if stuff worked.
+	if (SetCapture(WindowHandle) == NULL)
+	{
+		DWORD Error = GetLastError();
+		ls_printf("When Setting Mouse Capture in Win32_SetupScreen got error: %d", Error);
+	}
+
+	In->WindowHandle = WindowHandle;
+
+	/* @TODO: @NOTE: Should I even do this here ? */
+	if (SetCursorPos(In->Width / 2, In->Height / 2) == NULL)
+	{
+		DWORD Error = GetLastError();
+		ls_printf("When Setting Cursor Position in Win32_SetupScreen got error: %d", Error);
+	}
+}
+
+void windows_setupOpenGLContext(WindowInfo *In)
+{
+	PIXELFORMATDESCRIPTOR PixelFormat = {};
+
+	PixelFormat.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+	PixelFormat.nVersion = 1;
+	PixelFormat.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+	PixelFormat.iPixelType = PFD_TYPE_RGBA;
+	PixelFormat.cColorBits = 32;	//Colordepth of the framebuffer
+	PixelFormat.cDepthBits = 24;	//Number of bits for the depthbuffer
+	PixelFormat.cStencilBits = 8;	//Number of bits for the stencilbuffer
+
+	HDC DeviceContext = 0;
+	HGLRC RenderingContext = 0;
+
+	DeviceContext = GetDC(In->WindowHandle);
+	s32 PixelFormatValue = ChoosePixelFormat(DeviceContext, &PixelFormat);
+	SetPixelFormat(DeviceContext, PixelFormatValue, &PixelFormat);
+
+	RenderingContext = wglCreateContext(DeviceContext);
+	wglMakeCurrent(DeviceContext, RenderingContext);
+	LoadGLFunc(DeviceContext);
+
+	/*Create better context (that allows me to use RenderDoc) with extension function.
+	Don't know If I should pass the 3rd param which is a list of tuples <name, value>
+	option to pass for the rendering context creation*/
+	HGLRC OldContext = RenderingContext;
+	RenderingContext = wglCreateContextAttribsARB(DeviceContext, NULL, NULL);
+	wglDeleteContext(OldContext);
+	wglMakeCurrent(DeviceContext, RenderingContext);
+
+	In->DeviceContext = DeviceContext;
+	In->RenderingContext = RenderingContext;
+
+	glEnable(GL_DEPTH_TEST);
 }
 
 #endif
