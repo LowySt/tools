@@ -114,6 +114,7 @@ struct MemoryArena
 	MemoryBlockHeader *freeHead;
 	MemoryBlockList *allocList;
 	MemoryBlockList *allocTail;
+	u32 allocListSize;
 
 	u32 minBlockSize;
 	u32 maxBlockSize;
@@ -262,8 +263,9 @@ static void windows_initMemory()
 	}
 
 	Memory.heap = VirtualAlloc(0, allocationSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-	Memory.allocList = (MemoryBlockList *)VirtualAlloc(0, sizeof(MemoryBlockList)*1024, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	Memory.allocList = (MemoryBlockList *)VirtualAlloc(0, sizeof(MemoryBlockList)* 32768, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 	Memory.allocTail = Memory.allocList;
+	Memory.allocListSize = 0;
 
 	if (Memory.heap == NULL)
 	{
@@ -280,17 +282,48 @@ OutputDebugStringA("Error when calling VirtualAlloc() in windows_initMemory()");
 
 static void windows_addToAllocList(void *p)
 {
+	/*Useless, I now keep track of the tail.
 	MemoryBlockList *curr = Memory.allocList;
 	MemoryBlockList *newNode = 0;
 	while (curr->next)
 	{ curr = curr->next; }
+	*/
+	MemoryBlockList *tail = Memory.allocTail;
+	MemoryBlockList *newNode = 0;
 
-	newNode = curr + 1;
-	newNode->prev = curr;
-	curr->next = newNode;
+	/* @TODO: @FIXME: REFACTOR NEEDED!
+	 * As of right now if I allocate too many things
+	 * And I hadn't created enough space in the alloc list
+	 * I get fucked. How should I solve that?
+	 * Just allocate a lot of memory because who gives a shit?
+	 * 
+	 * Consider this: 1024 List entries are not enough for stupid small problems.
+	 * Also 1024 Entries only occupy 24 KB. Which is super negligible...
+	 * Let's bite the bullet for now and give it:
+	 * 8192 Entries which occupy 192 KB. Still negligible but should be enough for
+	 * Most applications.
+	 *
+	 * Ok... tried again, and 8192 entries are again not enough... this makes me
+	 * Think I should instead make it dynamic, and use a percentage of the main Memory...
+	 * Maybe make it parametrized so the user can choose the behaviour?
+	 * For now I've again increased it to 16384 (2^14)
+	 *
+	 * Again not enough (I'm keeping track of this info to understand if this is
+	 * a one-time "special" problem, or something that will happen often).
+	 * Bump it up to 2^15, 32768
+	 *
+	 * 32768 worked. I'll keep it like this for now. More testing required!
+	 * 32768 Entries -> 24 Bytes * 32768 = 786432 Bytes = 768 KB (Still not that bad)
+	 */
+
+	newNode = tail + 1;
+	newNode->next = 0;
+	newNode->prev = tail;
+	tail->next = newNode;
 
 	newNode->blockAddr = p;
 	Memory.allocTail = newNode;
+	Memory.allocListSize++;
 }
 
 static void windows_removeFromAllocList(void *p)
@@ -304,6 +337,7 @@ static void windows_removeFromAllocList(void *p)
 			curr->blockAddr = Memory.allocTail->blockAddr;
 			(Memory.allocTail->prev)->next = 0;
 			Memory.allocTail = Memory.allocTail - 1;
+			Memory.allocListSize--;
 			return;
 		}
 		curr = curr->next;
@@ -362,12 +396,19 @@ void *windows_memAlloc(size_t request)
 		currHeader = (MemoryBlockHeader *)currHeader->next;
 	} while (currHeader);
 
+	MemoryBlockHeader *actualBlock;
 	if (!found)
 	{
+		// @TODO: @FIXCRASH
+		// The crash happens because bestBlock has the wrong size.
+		
 		windows_breakMemoryBlock(bestBlock, (u32)givenMemory);
+		actualBlock = (MemoryBlockHeader *)bestBlock->next;
 	}
-
-	MemoryBlockHeader *actualBlock = (MemoryBlockHeader *)bestBlock->next;
+	else
+	{
+		actualBlock = (MemoryBlockHeader *)currHeader;
+	}
 
 	windows_removeFromFreeList(actualBlock);
 	ls_zeroMem(actualBlock, actualBlock->size);
@@ -397,13 +438,17 @@ void windows_memFree(void *p)
 	void *prev = 0, *next = 0;
 	u32 newBlockSize = 0;
 
+	if (p < currHeader)
+	{
+		Assert(false);
+		int breakHere = 0;
+	}
+
 	while ((void *)currHeader < p)
 	{
-		if (currHeader->next == NULL)
-		{
-			Assert(false);
-			int breakHere = 0;
-		}
+		Assert(currHeader->next != NULL);
+		Assert(currHeader->next != p);
+		
 		if (currHeader->next > p)
 		{
 			prev = (void *)currHeader;
@@ -411,16 +456,22 @@ void windows_memFree(void *p)
 
 			void *closestAllocBlock = (void *)UINTPTR_MAX;
 			MemoryBlockList *curr = Memory.allocList;
-			while(curr->next)
+			do
 			{
-				if (curr->blockAddr > next)
-				{ break; }
+				/* The list is not ordered because
+				 * When I free pointers I move the tail
+				 * I gave up ordering for quick/easy list
+				 * entry removal... Are there other quick exits?
+				 *
+				 * if (curr->blockAddr > next)
+				 * { break; }
+				 */
 
 				if ((curr->blockAddr > p) && (curr->blockAddr < closestAllocBlock))
 				{ closestAllocBlock = curr->blockAddr; }
 
 				curr = curr->next;
-			}
+			} while (curr);
 
 			if (closestAllocBlock < next)
 			{ newBlockSize = (u32)((u8 *)closestAllocBlock - (u8 *)p); }
@@ -432,6 +483,9 @@ void windows_memFree(void *p)
 
 		currHeader = (MemoryBlockHeader *)currHeader->next;
 	}
+
+	Assert(prev);
+	Assert(next);
 
 	MemoryBlockHeader newHeader = { next, prev, newBlockSize };
 	ls_memcpy((void *)&newHeader, p, sizeof(MemoryBlockHeader));
@@ -474,7 +528,7 @@ u64 windows_ReadFile(char *Path, char **Dest, u32 bytesToRead)
 		ToRead = bytesToRead;
 	}
 	
-	*Dest = (char *)windows_memAlloc(ToRead);
+	*Dest = (char *)windows_memAlloc(ToRead + 1);
 
 	DWORD BytesRead = 0;
 	if (ReadFile(FileHandle, *Dest, ToRead, &BytesRead, NULL) == FALSE)
@@ -555,6 +609,8 @@ windowsDate windows_GetDate(b32 localTime)
 
 	return result;
 }
+
+#ifdef I_WANT_GRAPHICS
 
 void windows_setupWindow(WindowInfo *In)
 {
@@ -638,5 +694,6 @@ void windows_setupOpenGLContext(WindowInfo *In)
 
 	glEnable(GL_DEPTH_TEST);
 }
+#endif
 
 #endif

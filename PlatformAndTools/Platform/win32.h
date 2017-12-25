@@ -2473,7 +2473,7 @@ WINSOCK_API_LINKAGE		int		WSAAPI		listen(SOCKET s, int backlog);
 }
 
 #ifdef _DEBUG
-#define Assert(condition) if(!condition){DebugBreak();}
+#define Assert(condition) if(!(condition)){DebugBreak();}
 #else
 #define Assert(condition) ((void)0);
 #endif
