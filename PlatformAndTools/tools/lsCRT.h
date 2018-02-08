@@ -206,18 +206,22 @@ extern "C"
 	//	STRING FUNCTIONS
 	////////////////////////////////////////////////////
 
-	s32 ls_len(char * string);
-	char ls_lowerCase(char c);
-	char *ls_itoa(s64 x);
-	char ls_itoc(s64 x);
-	u32 ls_ctoi(char c);
-	s64 ls_atoi(char *s, int base);
-	char * ls_ftoa(f32 x);
+	s32		ls_len(char * string);
+	char	ls_lowerCase(char c);
+	char	*ls_itoa(s64 x);
+	char	ls_itoc(s64 x);
+	u32		ls_ctoi(char c);
+	s64		ls_atoi(char *s, int base);
+	char	*ls_ftoa(f32 x);
 
-	char * ls_concat(char *string1, char *string2, b32 hasToFree);
-	s32 ls_strcmp(char *string1, char *string2);
-	s32 ls_strcpy(char *dest, char *src, bool nullTerminate);
-	void ls_strncpy(void *src, void *dest, size_t size);
+	char	*ls_concat(char *string1, char *string2, b32 hasToFree);
+	s32		ls_strcmp(char *string1, char *string2);
+	s32		ls_strcpy(char *dest, char *src, bool nullTerminate);
+	void	ls_strncpy(void *src, void *dest, size_t size);
+	char	*ls_breakByLine(char *data, u32 *bytesRead, u32 *stringSize);
+	char	*ls_breakBySpace(char *data, u32 *bytesRead);
+	u32		ls_offsetToFirstChar(char *data, char c);
+
 
 	void ls_alphaOrder(char **names, u32 numOfNames);
 
@@ -234,6 +238,7 @@ extern "C"
 
 	//If bytesToRead is set to 0 the entire file will be read.
     u64 ls_readFile(char *Path, char **Dest, u32 bytesToRead);
+	void ls_readFileString(char *Path, string *dest, u32 bytesToRead);
 	u64 ls_writeFile(char *Path, void *Source, u32 bytesToWrite, b32 append);
 
 	void ls_loadBitmap(char *Path, Bitmap *bitmap);
@@ -319,6 +324,13 @@ struct string
 		ls_memcpy((void *)src, (void *)data, len);
 	}
 	
+	string(char *src)
+	{
+		u32 len = ls_len(src);
+		size = len;
+		data = src;
+	}
+
 	string(int v)
 	{
 		size = v;
@@ -407,8 +419,9 @@ struct string
 		}
 	}
 
-	void remove(char c)
+	u32 remove(char c)
 	{
+		u32 Result = 0;
 		for (u32 i = 0; i < size; i++)
 		{
 			if (data[i] == c)
@@ -417,12 +430,22 @@ struct string
 				ls_memcpy(data + i + 1, data + i, size - i - 1);
 				data[size - 1] = 0;
 				i--;
+				Result++;
 			}
 		}
+
+		return Result;
+	}
+
+	void free()
+	{
+		ls_free(this->data);
+		this->data = 0;
+		size = 0;
 	}
 };
 
-struct hashTable
+struct hashtable
 {
 	struct hashEntry
 	{
@@ -440,10 +463,14 @@ struct hashTable
 
 	u32 baseHash(string id)
 	{
-		u32 it = -1;
-		for (u32 i = 0; i < id.size; i++)
+		/* For some reason I was doing this
+		 * u32 it = -1;
+		 * Why was I starting at -1??
+		 */
+		u32 it = (id.data[0] - 'A');
+		for (u32 i = 1; i < id.size; i++)
 		{
-			it += id.data[i] * i;
+			it += (id.data[i] * i);
 		}
 		return it % size;
 	}
@@ -474,7 +501,7 @@ struct hashTable
 		ls_free((void *)temp);
 	}
 
-	hashTable(u32 tableSize = 64, u32 (*func)(string) = 0)
+	hashtable(u32 tableSize = 64, u32 (*func)(string) = 0)
 	{
 		size = tableSize;
 		entries = (hashEntry *)ls_alloc(sizeof(hashEntry) * size);
@@ -511,6 +538,26 @@ struct hashTable
 		}
 	}
 
+	u32 addUnique(string id, u32 value)
+	{
+		u32 index = hashFunction ? hashFunction(id) : baseHash(id);
+
+		if (longestLink > 3)
+		{
+			growTable();
+		}
+
+		if (entries[index].id.data == 0)
+		{
+			entries[index].id = &id;
+			entries[index].val = value;
+			elementsInTable++;
+			return index;
+		}
+		else
+		{ return -1; }
+	}
+
 	u32 find(string id)
 	{
 		u32 index = hashFunction ? hashFunction(id) : baseHash(id);
@@ -525,6 +572,67 @@ struct hashTable
 			return At->val;
 		}
 		return entries[index].val;
+	}
+
+	s32 findLargest()
+	{
+		// NOTE: TOOD: This doesn't look through the linked list for
+		// Colliding entries...
+		s32 largest = -2147483647;
+		for (u32 i = 0; i < size; i++)
+		{
+			largest = entries[i].val > largest ? entries[i].val : largest;
+		}
+
+		return largest;
+	}
+
+	void modify(string id, u32 val)
+	{
+		u32 index = hashFunction ? hashFunction(id) : baseHash(id);
+		if (entries[index].id != id)
+		{
+			hashEntry *At = &entries[index];
+			while (At->id != id)
+			{
+				if (At->next == 0) { Assert(false); }
+				At = At->next;
+			}
+			At->val = val;
+		}
+		entries[index].val = val;
+	}
+
+	void addTo(string id, s32 addend)
+	{
+		u32 index = hashFunction ? hashFunction(id) : baseHash(id);
+		if (entries[index].id != id)
+		{
+			hashEntry *At = &entries[index];
+			while (At->id != id)
+			{
+				if (At->next == 0) { Assert(false); }
+				At = At->next;
+			}
+			At->val += addend;
+		}
+		entries[index].val += addend;
+	}
+
+	void subTo(string id, s32 subdend)
+	{
+		u32 index = hashFunction ? hashFunction(id) : baseHash(id);
+		if (entries[index].id != id)
+		{
+			hashEntry *At = &entries[index];
+			while (At->id != id)
+			{
+				if (At->next == 0) { Assert(false); }
+				At = At->next;
+			}
+			At->val -= subdend;
+		}
+		entries[index].val -= subdend;
 	}
 };
 
@@ -1370,6 +1478,89 @@ void ls_strncpy(void *src, void *dest, size_t size)
 	*To = 0;
 }
 
+/*This function returns the entire line, null terminated, 
+ * WITHOUT carriage return or newline. The bytesRead report
+ * the every single byte, so they will count \r\n as well.*/
+char *ls_breakByLine(char *data, u32 *bytesRead, u32 *stringSize)
+{
+	char *At = (char *)data;
+
+	u32 count = 0;
+	while (*At)
+	{
+		if (*At == '\r') { break; }
+		if (*At == '\n') { break; }
+		At++;
+		count++;
+	}
+
+	char *line = (char *)ls_alloc(sizeof(char)*(count + 1));
+	ls_memcpy(data, line, count);
+	if (stringSize) { *stringSize = count; }
+
+	At++;
+	count++;
+	if (*At == '\r') { At++; count++; }
+	if (*At == '\n') { At++; count++; }
+	*bytesRead = count;
+
+	return line;
+}
+
+char *ls_breakBySpace(char *data, u32 *bytesRead)
+{
+	char *At = data;
+
+	u32 count = 0;
+	while (*At)
+	{
+		if (*At == ' ') { break; }
+		At++;
+		count++;
+	}
+
+	char *line = (char *)ls_alloc(sizeof(char)*(count + 1));
+	ls_memcpy(data, line, count);
+
+	while (*At == ' ') { At++; count++; }
+	if (bytesRead) { *bytesRead = count; }
+
+	return line;
+}
+
+char *ls_breakByChar(char *data, u32 *bytesRead, char c)
+{
+	char *At = data;
+
+	u32 count = 0;
+	while (*At)
+	{
+		if (*At == c) { break; }
+		At++;
+		count++;
+	}
+
+	char *line = (char *)ls_alloc(sizeof(char)*(count + 1));
+	ls_memcpy(data, line, count);
+
+	//Remove the unwanted char
+	count++;
+	if (bytesRead) { *bytesRead = count; }
+
+	return line;
+}
+
+u32 ls_offsetToFirstChar(char *data, char c)
+{
+	char *At = data;
+	u32 offset = 0;
+
+	while ((*At != c) && (*At != 0))
+	{ At++; offset++; }
+
+	return offset;
+}
+
 void ls_alphaOrder(char **names, u32 numOfNames)
 {
 	char temp[256] = { 0 };
@@ -1474,7 +1665,7 @@ s32 ls_printf(const char *format, ...)
 	b32 isLong = FALSE;
 	b32 isUnsigned = FALSE;
 
-
+	u64 uLongInt = 0;
 	s64 nInt = 0;
 	char c = 0;
 	f32 nFloat = 0.0f;
@@ -1527,6 +1718,13 @@ s32 ls_printf(const char *format, ...)
 		case 's':
 			s_label = va_arg(argList, char *);
 			i += ls_strcpy(buff + i, s_label, 0);
+			break;
+
+		case 'p':
+			uLongInt = (u64)va_arg(argList, void *);
+			s = ls_itoa(nInt);
+			i += ls_strcpy(buff + i, s, 0);
+			ls_free((void *)s);
 			break;
 
 		case '%':
@@ -1607,6 +1805,17 @@ u64 ls_readFile(char *Path, char **Dest, u32 bytesToRead)
     
 #ifdef LS_PLAT_LINUX
     return linux_ReadFile(Path, Dest, bytesToRead);
+#endif
+}
+
+void ls_readFileString(char *Path, string *dest, u32 bytesToRead)
+{
+#ifdef LS_PLAT_WINDOWS
+	dest->size = (u32)windows_ReadFile(Path, &dest->data, bytesToRead);
+#endif
+
+#ifdef LS_PLAT_LINUX
+	dest->size = (u32)linux_ReadFile(Path, &dest->data, bytesToRead);
 #endif
 }
 
@@ -2265,14 +2474,18 @@ Date ls_getDateTime(b32 local)
 void ls_createWindow(WindowInfo *info)
 {
 #ifdef LS_PLAT_WINDOWS
+#ifdef I_WANT_GRAPHICS
 	windows_setupWindow(info);
+#endif
 #endif
 }
 
 void ls_setupOpenGLContext(WindowInfo *info)
 {
 #ifdef LS_PLAT_WINDOWS
+#ifdef I_WANT_GRAPHICS
 	windows_setupOpenGLContext(info);
+#endif
 #endif
 }
 

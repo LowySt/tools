@@ -263,7 +263,7 @@ static void windows_initMemory()
 	}
 
 	Memory.heap = VirtualAlloc(0, allocationSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-	Memory.allocList = (MemoryBlockList *)VirtualAlloc(0, sizeof(MemoryBlockList)* 32768, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	Memory.allocList = (MemoryBlockList *)VirtualAlloc(0, sizeof(MemoryBlockList)* 65536, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 	Memory.allocTail = Memory.allocList;
 	Memory.allocListSize = 0;
 
@@ -314,6 +314,15 @@ static void windows_addToAllocList(void *p)
 	 *
 	 * 32768 worked. I'll keep it like this for now. More testing required!
 	 * 32768 Entries -> 24 Bytes * 32768 = 786432 Bytes = 768 KB (Still not that bad)
+	 *
+	 * Problem presented itself again. I apparently filled 32k entries. Now, the program 
+	 * didn't seem to really need that many entries, which means that might be a bug in the
+	 * ls_free function not correctly removing entries sometimes??
+	 * !!! RECTIFY !!!
+	 *
+	 * Pretty sure it's not an ls_free bug, but rather, I was using an hashTable which
+	 * constantly had to grow. So if there's a bug, it's probably in the hashTable
+	 * (Which I wrote quickly and without too many checks... it kinda sucks.)
 	 */
 
 	newNode = tail + 1;
