@@ -178,7 +178,10 @@ u64 windows_WriteConsole(char *buffer, u32 bytesToWrite)
 {
 	DWORD Error = 0;
 	HANDLE FileHandle = 0;
-	if ((FileHandle = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, NULL, NULL)) == INVALID_HANDLE_VALUE)
+
+	//SECURITY_ATTRIBUTES attribs = {sizeof(SECURITY_ATTRIBUTES), NULL, FALSE};
+
+	if ((FileHandle = CreateFileA("CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, NULL, NULL)) == INVALID_HANDLE_VALUE)
 	{
 		Error = GetLastError();
 		OutputDebugStringA("When creating a file handle got error\n");

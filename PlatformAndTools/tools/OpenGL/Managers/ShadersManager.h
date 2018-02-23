@@ -19,7 +19,9 @@ struct Shader
 
 	void setVec3(const char* name, v3 v);
 	void setVec3(const char* name, f32 x, f32 y, f32 z);
+	void setMat4(const char* name, f32 *values);
 	void setFloat(const char* name, f32 value);
+	void setInt(const char* name, int value);
 };
 
 Shader *CreateShaderProgram(GLchar *vertexShaderPath, GLchar *fragmentShaderPath);
