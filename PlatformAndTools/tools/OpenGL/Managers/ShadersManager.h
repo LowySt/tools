@@ -5,6 +5,8 @@
 #include "tools\lsCRT.h"
 #include "tools\Maths\Maths.h"
 
+struct Texture;
+
 struct Shader
 {
 	GLuint Program;
@@ -17,6 +19,7 @@ struct Shader
 	GLchar *fragmentShaderPath;
 	GLchar *fragmentShaderName;
 
+	void setTexture(const char* name, Texture* Texture, s32 idx);
 	void setVec3(const char* name, v3 v);
 	void setVec3(const char* name, f32 x, f32 y, f32 z);
 	void setMat4(const char* name, f32 *values);
