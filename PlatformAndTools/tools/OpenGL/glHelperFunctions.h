@@ -151,6 +151,9 @@ extern "C"
 	__declspec(selectany) PFNGLLINKPROGRAMPROC						glLinkProgram;
 	__declspec(selectany) PFNGLUSEPROGRAMPROC						glUseProgram;
 
+	__declspec(selectany) PFNGLGETUNIFORMFVPROC						glGetUniformfv;
+	__declspec(selectany) PFNGLGETUNIFORMIVPROC						glGetUniformiv;
+	__declspec(selectany) PFNGLGETUNIFORMUIVPROC					glGetUniformuiv;
 	__declspec(selectany) PFNGLGETUNIFORMLOCATIONPROC				glGetUniformLocation;
 	__declspec(selectany) PFNGLUNIFORM4FPROC						glUniform4f;
 	__declspec(selectany) PFNGLUNIFORM3FPROC						glUniform3f;
@@ -359,6 +362,9 @@ extern "C"
 			glLinkProgram						= (PFNGLLINKPROGRAMPROC)GetAnyGLFuncAddress("glLinkProgram");
 			glUseProgram						= (PFNGLUSEPROGRAMPROC)GetAnyGLFuncAddress("glUseProgram");
 
+			glGetUniformfv						= (PFNGLGETUNIFORMFVPROC)GetAnyGLFuncAddress("glGetUniformfv");
+			glGetUniformiv						= (PFNGLGETUNIFORMIVPROC)GetAnyGLFuncAddress("glGetUniformiv");
+			glGetUniformuiv						= (PFNGLGETUNIFORMUIVPROC)GetAnyGLFuncAddress("glGetUniformuiv");
 			glGetUniformLocation				= (PFNGLGETUNIFORMLOCATIONPROC)GetAnyGLFuncAddress("glGetUniformLocation");
 			glUniform4f							= (PFNGLUNIFORM4FPROC)GetAnyGLFuncAddress("glUniform4f");
 			glUniform3f							= (PFNGLUNIFORM3FPROC)GetAnyGLFuncAddress("glUniform3f");
