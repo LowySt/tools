@@ -2,8 +2,10 @@
 .code
 
 MOVREL MACRO reg1, reg2, reg3, offset
+
 MOV reg1, qword ptr [reg2 + offset]
 MOV qword ptr [reg3 + offset], reg1 
+
 ENDM
 
 MOVREL8 MACRO reg1, reg2, reg3
@@ -665,7 +667,7 @@ u128_mul PROC
 	MOV r12, rax					;store low half of multiplication (ignore overflow)
 	POP rdx
 
-	MPM rax, rdx, r8, 0				;multiply rax with r8 (2° param) -> result is stored in rdx:rax
+	MPM rax, rdx, r8, 0				;multiply rax with r8 (2Â° param) -> result is stored in rdx:rax
 	ADD r12, rdx					;sum the partial result of the mul together
 
 	MOV qword ptr [rcx + 8], r12	;moves high bytes of mul from r12 to result in rcx + 8

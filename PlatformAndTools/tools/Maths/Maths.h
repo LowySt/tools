@@ -18,6 +18,9 @@
 #endif
 
 
+#define PI_32 3.1415926f
+#define LS_EPSILON 0.00001f
+
 ///////////////////////////////////////////
 // VECTOR DEFINITIONS
 ///////////////////////////////////////////
@@ -144,6 +147,9 @@ struct v4i
 
 extern "C"
 {
+	b32 isZero(f32 v);
+	b32 isVal(f32 x, f32 val);
+
 	v2	vec2(f32 x, f32 y);
 	v3	vec3(f32 x, f32 y, f32 z);
 	v4	vec4(f32 x, f32 y, f32 z, f32 w);
@@ -308,6 +314,18 @@ extern "C"
 ///////////////////////////////////////////
 // VECTOR DEFINITIONS
 ///////////////////////////////////////////
+
+b32 isZero(f32 v)
+{
+	if (ls_fabs(v) < LS_EPSILON) { return TRUE; }
+	return FALSE;
+}
+
+b32 isVal(f32 x, f32 val)
+{
+	if (ls_fabs(x - val) < LS_EPSILON) { return TRUE; }
+	return FALSE;
+}
 
 v2 vec2(f32 x, f32 y)
 {

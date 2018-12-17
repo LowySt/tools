@@ -1,0 +1,8 @@
+*.suo
+*.exe
+*.bat
+*.db
+*.ipch
+*.pdb
+*.sln
+*.4coder

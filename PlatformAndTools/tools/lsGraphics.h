@@ -18,7 +18,7 @@
 
 /*Window Style*/
 #define LS_THIN_BORDER			WS_BORDER
-#define	LS_THICK_BORDER			WS_THICKFRAME
+#define LS_THICK_BORDER			WS_THICKFRAME
 #define LS_TITLE_BAR			WS_CAPTION
 #define LS_CHILD				WS_CHILD
 #define LS_CLIP_CHILD			WS_CLIPCHILDREN
@@ -53,8 +53,8 @@ struct WindowInfo
 	char *windowName;
 
 #ifdef LS_PLAT_WINDOWS
-	HWND WindowHandle;
-	HDC	DeviceContext;
+	HWND  WindowHandle;
+	HDC   DeviceContext;
 	HGLRC RenderingContext;
 
 	LRESULT(*WindowProc)(HWND, UINT, WPARAM, LPARAM);

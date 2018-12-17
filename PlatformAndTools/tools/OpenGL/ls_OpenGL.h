@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Platform\lsWindows.h"
-
 #if !defined(_GDI32_)
 #define WINGDIAPI DECLSPEC_IMPORT
 #else
