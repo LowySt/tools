@@ -1,0 +1,6 @@
+*.obj
+*.bat
+*.exe
+*.pdb
+*.4coder
+Tools/test/
