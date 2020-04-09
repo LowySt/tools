@@ -133,12 +133,14 @@ extern "C"
     char   *ls_itoa(s64 x);
     char   *ls_ftoa(f64 x);
     char   *ls_strstr(char *a, char *b);
-    s64     ls_atoi(char *s);
-    f32     ls_atof(char *s);
+    s64     ls_atoi(char *s, u32 len);
+    f32     ls_atof(char *s, u32 len);
     s32     ls_strcmp(char *a, char *b);
     s32     ls_strncmp(char *a, char *b, u32 n);
     
+    s32     ls_vsprintf(char *dest, const char *fmt, va_list argList);
     s32 	ls_sprintf(char *dest, const char *format, ...);
+    s32     ls_vprintf(const char *fmt, va_list argList);
     s32 	ls_printf(const char *format, ...);
     char    ls_getc();
     
@@ -213,221 +215,6 @@ extern "C"
     f32 Ceil(f32 v);
 }
 
-struct dataBuffer
-{
-    void *data;
-    u32 used;
-    u32 size;
-    
-    u32 readPos;
-    
-    dataBuffer()
-    {
-        data = ls_alloc(sizeof(char)*64);
-        used = 0;
-        size = 64;
-        readPos = 0;
-    }
-    
-    dataBuffer(u32 s)
-    {
-        data = ls_alloc(sizeof(char)*s);
-        used = 0;
-        size = s;
-        readPos = 0;
-    }
-    
-    dataBuffer(u8 *a, u32 arrSize)
-    {
-        data = ls_alloc(sizeof(char)*(arrSize + 64));
-        ls_memcpy(a, data, arrSize);
-        used = arrSize;
-        size = arrSize + 64;
-        readPos = 0;
-    }
-    
-    void init(u32 s = 0)
-    {
-        if(s == 0) { data = ls_alloc(sizeof(char)*64); size = 64; }
-        else { data = ls_alloc(sizeof(char)*s); size = s; }
-        
-        used = 0;
-        readPos = 0;
-    }
-    
-    dataBuffer operator+(u8 v)
-    {
-        u32 newSize = used < size ? size : size + 64;
-        dataBuffer Result = newSize;
-        
-        ls_memcpy(data, Result.data, used);
-        Result.used = used + 1;
-        *((u8 *)Result.data + used) = v;
-        return Result;
-    }
-    
-    void operator+=(u8 v)
-    {
-        this->add(&v, sizeof(u8));
-    }
-    
-    
-    dataBuffer operator+(u16 v)
-    {
-        u32 newSize = used < (size - 1) ? size : size + 64;
-        dataBuffer Result = newSize;
-        
-        ls_memcpy(data, Result.data, used);
-        Result.used = used + 2;
-        *(u16 *)((u8 *)Result.data + used) = v;
-        return Result;
-    }
-    
-    void operator+=(u16 v)
-    {
-        this->add(&v, sizeof(u16));
-    }
-    
-    dataBuffer operator+(u32 v)
-    {
-        u32 newSize = used < (size - 3) ? size : size + 64;
-        dataBuffer Result = newSize;
-        
-        ls_memcpy(data, Result.data, used);
-        Result.used = used + 4;
-        *(u32 *)((u8 *)Result.data + used) = v;
-        return Result;
-    }
-    
-    void operator+=(u32 v)
-    {
-        this->add(&v, sizeof(u32));
-    }
-    
-    dataBuffer operator+(u64 v)
-    {
-        u32 newSize = used < (size - 7) ? size : size + 64;
-        dataBuffer Result = newSize;
-        
-        ls_memcpy(data, Result.data, used);
-        Result.used = used + 8;
-        *(u64 *)((u8 *)Result.data + used) = v;
-        return Result;
-    }
-    
-    void operator+=(u64 v)
-    { this->add(&v, sizeof(u64)); }
-    
-    dataBuffer operator+(string s)
-    {
-        u32 newSize = 0;
-        u32 stringOccupancy = sizeof(s.len) + s.len;
-        if(used < (size - stringOccupancy))
-        { newSize = size; }
-        else
-        { newSize = size + s.len + 64; }
-        dataBuffer Result = dataBuffer(newSize);
-        
-        ls_memcpy(data, Result.data, used);
-        Result.used = used;
-        ls_memcpy(&s.len, (u8 *)Result.data + Result.used, sizeof(s.len));
-        Result.used += sizeof(s.len);
-        ls_memcpy(s.data, (u8 *)Result.data + Result.used, s.len);
-        Result.used += s.len;
-        
-        return Result;
-    };
-    
-    void operator+=(string s)
-    {
-        this->add(&s.len, sizeof(s.len));
-        this->add(s.data, s.len);
-    }
-    
-    void add(void *v, u32 len)
-    {
-        if(used <= (size - len))
-        {
-            ls_memcpy(v, (u8 *)data + used, len);
-            used += len;
-            return;
-        }
-        
-        data = ls_realloc(data, size, size + len + 64);
-        size = size + len + 64;
-        
-        ls_memcpy(v, (u8 *)data + used, len);
-        used += len;
-        return;
-    }
-    
-    u8 readU8()
-    {
-        u8 Result = *((u8 *)data + readPos);
-        used -= 1;
-        readPos += 1;
-        
-        return Result;
-    }
-    
-    u16 readU16()
-    {
-        u16 Result = *((u16*)((u8 *)data + readPos));
-        used -= 2;
-        readPos += 2;
-        
-        return Result;
-    }
-    
-    u32 readU32()
-    {
-        u32 Result = *((u32*)((u8 *)data + readPos));
-        used -= 4;
-        readPos += 4;
-        
-        return Result;
-    }
-    
-    u64 readU64()
-    {
-        u64 Result = *((u64*)((u8 *)data + readPos));
-        used -= 8;
-        readPos += 8;
-        
-        return Result;
-    }
-    
-    string readString()
-    {
-        u32 strLen = readU32();
-        string Result = ls_strAlloc(strLen);
-        
-        ls_memcpy((u8 *)data + readPos, Result.data, strLen);
-        used -= strLen;
-        readPos += strLen;
-        
-        Result.len = strLen;
-        
-        return Result;
-    }
-    
-    void zeroPadUntilOffset(u32 offset)
-    {
-        u8 zero = 0x0;
-        
-        while(used < offset)
-        { this->add(&zero, sizeof(u8)); }
-    }
-    
-    void free()
-    {
-        if(data) { ls_free(data); }
-        data = 0;
-        size = 0;
-        used = 0;
-    }
-};
-
 #define ARRAY_IDX_NOT_FOUND (u32)-1
 template<typename T>
 struct Array
@@ -441,6 +228,7 @@ struct Array
     
     T& operator[](u32 index)
     {
+        Assert(index < count); //NOTE: Should this be a crash or an error?
         return data[index];
     }
     
@@ -716,15 +504,19 @@ char *ls_ftoa(f64 x)
     return Result;
 }
 
-s64 ls_atoi(char *s)
+s64 ls_atoi(char *s, u32 len)
 {
     if(!s) { Assert(FALSE); }
     
     s64 Result = 0;
-    s32 len = 0;
+    s32 numLen = 0;
     
     char *At = s;
-    while(ls_isANumber(*At)) { At += 1; len += 1; }
+    while(ls_isANumber(*At))
+    {
+        if(numLen > len) { Assert(!"Bad String Passed to atoi"); }
+        At += 1; numLen += 1;
+    }
     
     b32 isNegative = s[0] == '-' ? TRUE : FALSE;
     b32 hasPositive = s[0] == '+' ? TRUE : FALSE;
@@ -733,7 +525,7 @@ s64 ls_atoi(char *s)
     {
         s32 endPoint = hasPositive ? 1 : 0;
         s64 pow10 = 1;
-        for (int i = (len - 1), k = 0; i >= endPoint; i--, k++)
+        for (int i = (numLen - 1), k = 0; i >= endPoint; i--, k++)
         {
             Result += ( (s[i] - 48) * pow10 );
             pow10 *= 10;
@@ -742,7 +534,7 @@ s64 ls_atoi(char *s)
     else
     {
         s64 pow10 = 1;
-        for (int i = (len - 1), k = 0; i > 0; i--, k++)
+        for (int i = (numLen - 1), k = 0; i > 0; i--, k++)
         {
             Result -= ( (s[i] - 48) * pow10 );
             pow10 *= 10;
@@ -752,10 +544,8 @@ s64 ls_atoi(char *s)
     return Result;
 }
 
-f32 ls_atof(char *s)
+f32 ls_atof(char *s, u32 len)
 {
-    //TODO: Need to fix this shit.
-    s32 len = ls_len(s);
     f32 base = 0;
     f32 decimal = 0;
     
@@ -775,7 +565,7 @@ f32 ls_atof(char *s)
     ls_memcpy(s, buffer, count);
     done += count + 1;
     
-    base = (f32)ls_atoi(buffer);
+    base = (f32)ls_atoi(buffer, count);
     
     //string clear
     for(u32 i = 0; i < 32; i++) { buffer[i] = 0; }
@@ -788,7 +578,7 @@ f32 ls_atof(char *s)
     
     ls_memcpy(s + done, buffer, count);
     
-    decimal = (f32)ls_atoi(buffer);
+    decimal = (f32)ls_atoi(buffer, count);
     
     f32 Result = 0.0f;
     
@@ -911,14 +701,11 @@ s32 ls_strncmp(char *a, char *b, u32 n)
 u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite);
 u64 ls_readConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite);
 
-/* Write a formatted string to dest.
-* Returns the numbers of chars written without counting
-* the null terminator (which is appended anyway)
-*/
-s32 ls_sprintf(char *dest, const char *format, ...)
+s32 ls_vsprintf(char *dest, const char *format, va_list argList)
 {
     const u32 buffSize = KB(1);
-    char *buff = (char *)ls_alloc(buffSize);
+    char buff[buffSize] = {};
+    
     const char *p = format;
     string s = {};
     char *s_label = 0;
@@ -928,9 +715,6 @@ s32 ls_sprintf(char *dest, const char *format, ...)
     s64 nInt = 0;
     char c = 0;
     f32 nFloat = 0.0f;
-    
-    va_list argList;
-    va_start(argList, format);
     
     s32 i = 0;
     for (p = format; *p != 0; p++)
@@ -1025,21 +809,34 @@ s32 ls_sprintf(char *dest, const char *format, ...)
             break;
         }
     }
-    va_end(argList);
     
     buff[i] = 0;
     i++;
     ls_memcpy(buff, dest, i);
     
-    ls_free((void *)buff);
-    
     return (i - 1);
 }
 
-s32 ls_printf(const char *format, ...)
+/* Write a formatted string to dest.
+* Returns the numbers of chars written without counting
+* the null terminator (which is appended anyway)
+*/
+s32 ls_sprintf(char *dest, const char *format, ...)
+{
+    va_list argList;
+    va_start(argList, format);
+    
+    s32 ret = ls_vsprintf(dest, format, argList);
+    
+    va_end(argList);
+    
+    return ret;
+}
+
+s32 ls_vprintf(const char *format, va_list argList)
 {
     const u32 buffSize = KB(1);
-    char *buff = (char *)ls_alloc(buffSize);
+    char buff[buffSize] = {};
     
     const char *p = format;
     char *s_label = 0;
@@ -1050,9 +847,6 @@ s32 ls_printf(const char *format, ...)
     s64 nInt = 0;
     char c = 0;
     f32 nFloat = 0.0f;
-    
-    va_list argList;
-    va_start(argList, format);
     
     s32 i = 0;
     for (p = format; *p != 0; p++)
@@ -1156,7 +950,6 @@ s32 ls_printf(const char *format, ...)
             break;
         }
     }
-    va_end(argList);
     
     buff[i] = 0;
     i++;
@@ -1164,9 +957,19 @@ s32 ls_printf(const char *format, ...)
     //Write buffer to stdout file.
     ls_writeConsole(LS_STDOUT, buff, i);
     
-    ls_free((void *)buff);
-    
     return i;
+}
+
+s32 ls_printf(const char *format, ...)
+{
+    va_list argList;
+    va_start(argList, format);
+    
+    s32 ret = ls_vprintf(format, argList);
+    
+    va_end(argList);
+    
+    return ret;
 }
 
 char ls_getc()

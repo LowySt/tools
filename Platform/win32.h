@@ -776,6 +776,8 @@ extern "C" {
         
         typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
         
+        typedef DWORD (__stdcall *LPTHREAD_START_ROUTINE) (LPVOID lpThreadParameter);
+        
         //////////////////////////////////////////////
         // WINDOWS STRUCTS
         /////////////////////////////////////////////
@@ -1857,6 +1859,8 @@ extern "C" {
         WINBASEAPI	FARPROC	 WINAPI		GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
         WINBASEAPI	HMODULE	 WINAPI		GetModuleHandleA(LPCTSTR lpModuleName);
         WINBASEAPI	HMODULE	 WINAPI		LoadLibraryA(LPCSTR lpLibFileName);
+        WINBASEAPI    HANDLE      WINAPI        CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSize, LPTHREAD_START_ROUTINE lpStartAddress,
+                                                             LPVOID lpParameter, DWORD dwCreationFlags, LPDWORD lpThreadId );
         
         WINBASEAPI	VOID		WINAPI		GetSystemTime(LPSYSTEMTIME lpSystemTime);
         WINBASEAPI	VOID		WINAPI		GetLocalTime(LPSYSTEMTIME lpSystemTime);

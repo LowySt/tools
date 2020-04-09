@@ -407,6 +407,8 @@ void *windows_memAlloc(size_t size)
         //TODO: Add Merging
         
         MemoryList *free = curr->free;
+        Assert(free != 0x0);
+        
         do
         {
             u32 sliceSize = free->sliceSize;

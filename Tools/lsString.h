@@ -4,13 +4,14 @@
 #include "win32.h"
 #include "lsCRT.h"
 
-#define ls_strConst(s) {s, sizeof(s)/sizeof(s[0]), sizeof(s)/sizeof(s[0])}
+//NOTE: The minus 1 is to ignore the NULL terminator at the end of string literals.
+#define ls_strConst(s) {s, sizeof(s)/sizeof(s[0])-1, sizeof(s)/sizeof(s[0])-1}
 
 struct string
 {
-    char *data = 0;
-    u32  len = 0;
-    u32  size = 0;
+    char *data;
+    u32  len;
+    u32  size;
 };
 
 struct view
@@ -867,19 +868,13 @@ string ls_itoh(u64 x)
 
 s64 ls_stoi(string s)
 {
-    char buff[32] = {};
-    ls_memcpy(s.data, buff, s.len);
-    s64 Result = ls_atoi(buff);
-    
+    s64 Result = ls_atoi(s.data, s.len);
     return Result;
 }
 
 f32 ls_stof(string s)
 {
-    char buff[32] = {};
-    ls_memcpy(s.data, buff, s.len);
-    f64 Result = ls_atof(buff);
-    
+    f64 Result = ls_atof(s.data, s.len);
     return Result;
 }
 
@@ -1026,7 +1021,6 @@ view ls_viewNextLine(view v)
     
     return Result;
 }
-
 
 //     OperateOn    //
 //------------------//
