@@ -18,16 +18,20 @@ extern "C"
     s32 ls_floor(s32 v);
     s32 ls_ceil(s32 v);
     s32 ls_abs(s32 x);
-    f32 ls_fabs(f32 x);
+    f64 ls_fabs(f64 x);
     s64 ls_e10(s32 x);
+    u64 ls_powui(u64 v, u32 exp);
     s64 ls_powi(s64 v, u32 exp);
     f64 ls_powf(f64 v, s32 exp);
     s64 ls_truncate(f64 x);
     f64 ls_truncEpsilon(f64 x);
-    f32 rad(f32 x);
-    f32 ls_sqrt(f32 x);
+    f32 ls_rad(f32 x);
+    f64 ls_sqrt(f64 x);
     u32 ls_gcd(u32 a, u32 b);
     b32 ls_isPrime(u32 a);
+    
+    //NOTE: This only has 12 digits of precision!
+    f32 ls_reciprocal(f32 x);
     
     f64 ls_sine(f64 x);
     f64 ls_asin(f64 x);
@@ -46,9 +50,9 @@ struct v2 { f32 x, y; };
 struct v3 { f32 x, y, z; };
 struct v4 { f32 x, y, z, w; };
 
-struct v2i { s32 x, y; };
-struct v3i { s32 x, y, z; };
-struct v4i { s32 x, y, z, w; };
+struct v2i { s64 x, y; };
+struct v3i { s64 x, y, z; };
+struct v4i { s64 x, y, z, w; };
 
 extern "C"
 {
@@ -69,6 +73,8 @@ extern "C"
     
 	v2 NormalizeV2(v2 v); v3 NormalizeV3(v3 v); v4 NormalizeV4(v4 v);
     v2 NormalizeV2i(v2i v); v3 NormalizeV3i(v3i v); v4 NormalizeV4i(v4i v);
+    
+    v4i ls_v4iSubs64(v4i v, s64 s);
     
 #if 0
     b32 operator==(v2 v, v2 w); b32 operator==(v3 v, v3 w); b32 operator==(v4 v, v4 w);
@@ -156,6 +162,11 @@ extern "C"
 	Mat4 OrthoProj(f32 near, f32 far, f32 right, f32 top);
 	Mat4 OrthoProjEx(f32 near, f32 far, f32 right, f32 top, f32 left, f32 bottom);
     
+    Mat2 ls_mat2Mulf32(Mat2 m, f32 value);
+    
+    Mat3 ls_mat3Mulf32(Mat3 m, f32 value);
+    
+    Mat4 ls_mat4Mulf32(Mat4 m, f32 value);
 #if 0
     Mat2 operator+(Mat2 m, f32 value); Mat3 operator+(Mat3 m, f32 value); Mat4 operator+(Mat4 m, f32 value);
     Mat2 operator+(Mat2 n, Mat2 m); Mat3 operator+(Mat3 n, Mat3 m); Mat4 operator+(Mat4 n, Mat4 m);
@@ -189,7 +200,7 @@ s32 ls_abs(s32 x)
     return (x < 0) ? x*(-1) : x;
 }
 
-f32 ls_fabs(f32 x)
+f64 ls_fabs(f64 x)
 {
     return (x < 0.0f) ? x*(-1.0f) : x;
 }
@@ -198,6 +209,20 @@ s64 ls_e10(s32 x)
 {
     s64 Result = 1;
     for (int i = 0; i < x; i++) { Result *= 10; }
+    return Result;
+}
+
+u64 ls_powui(u64 v, u32 exp)
+{
+    u64 Result = 1;
+    while (exp)
+    {
+        if (exp & 1)
+        { Result *= v; }
+        
+        exp >>= 1;
+        v *= v;
+    }
     return Result;
 }
 
@@ -242,22 +267,40 @@ f64 ls_truncEpsilon(f64 x)
     return x;
 }
 
-f32 rad(f32 x)
+f32 ls_rad(f32 x)
 {
     return ((x*PI_32) / 180.0f);
 }
 
-f32 ls_sqrt(f32 x)
+f64 ls_sqrt(f64 x)
 {
 #ifdef LS_PLAT_WINDOWS
-    __m128 Result = _mm_set_ps1(x);
-    Result = _mm_rsqrt_ps(Result);
+    __m128d Result = _mm_set_pd1(x);
+    Result = _mm_invsqrt_pd(Result);
     
-    return (1 / Result.m128_f32[0]);
+    //NOTE: Not using reciprocal builtin because
+    // I don't know how 12 bits of precision are here...
+    return ((f64)1.0f / Result.m128d_f64[0]);
 #endif
     
 #ifdef LS_PLAT_LINUX
     f32 Result = __builtin_sqrtf(x);
+    return Result;
+#endif
+}
+
+//NOTE: This only has 12 digits of precision!
+f32 ls_reciprocal(f32 x)
+{
+#ifdef LS_PLAT_WINDOWS
+    __m128 Result = _mm_set_ps1(x);
+    Result = _mm_rcp_ps(Result);
+    
+    return Result.m128_f32[0];
+#endif
+    
+#ifdef LS_PLAT_LINUX
+    f32 Result = UNKNOWN_BUILTIN(x);
     return Result;
 #endif
 }
@@ -636,6 +679,12 @@ v4 NormalizeV4i(v4i v)
 	return Result;
 }
 
+v4i ls_v4iSubs64(v4i v, s64 s)
+{
+    v4i Result = { v.x - s, v.y - s, v.z - s, v.w - s };
+    return Result;
+}
+
 #if 0
 b32 operator==(v2 v, v2 w)
 {
@@ -814,10 +863,48 @@ v3 operator^(v3 v, v3 w)
     
 	return Result;
 }
-
+#endif
 ///////////////////////////////////////////
 // MATRIX OPERATIONS
 ///////////////////////////////////////////
+
+Mat2 ls_mat2Mulf32(Mat2 m, f32 value)
+{
+	Mat2 Result =
+	{
+		m.values[0][0] * value, m.values[0][1] * value,
+		m.values[1][0] * value, m.values[1][1] * value
+	};
+    
+	return Result;
+}
+
+Mat3 ls_mat3Mulf32(Mat3 m, f32 value)
+{
+	Mat3 Result =
+	{
+		m.values[0][0] * value, m.values[0][1] * value, m.values[0][2] * value,
+		m.values[1][0] * value, m.values[1][1] * value, m.values[1][2] * value,
+		m.values[2][0] * value, m.values[2][1] * value, m.values[2][2] * value
+	};
+    
+	return Result;
+}
+
+Mat4 ls_mat4Mulf32(Mat4 m, f32 value)
+{
+	Mat4 Result =
+	{
+		m.values[0][0] * value, m.values[0][1] * value, m.values[0][2] * value, m.values[0][3] * value,
+		m.values[1][0] * value, m.values[1][1] * value, m.values[1][2] * value, m.values[1][3] * value,
+		m.values[2][0] * value, m.values[2][1] * value, m.values[2][2] * value, m.values[2][3] * value,
+		m.values[3][0] * value, m.values[3][1] * value, m.values[3][2] * value, m.values[3][3] * value
+	};
+    
+	return Result;
+}
+
+#if 0
 
 Mat2 operator+(Mat2 m, f32 value)
 {
@@ -1043,17 +1130,6 @@ Mat4 operator-(Mat4 n, Mat4 m)
 	return Result;
 }
 
-Mat2 operator*(Mat2 m, f32 value)
-{
-	Mat2 Result =
-	{
-		m.values[0][0] * value, m.values[0][1] * value,
-		m.values[1][0] * value, m.values[1][1] * value
-	};
-    
-	return Result;
-}
-
 Mat2 operator*(Mat2 n, Mat2 m)
 {
 	Mat2 Result =
@@ -1063,18 +1139,6 @@ Mat2 operator*(Mat2 n, Mat2 m)
         
 		(n.values[1][0] * m.values[0][0]) + (n.values[1][1] * m.values[1][0]),
 		(n.values[1][0] * m.values[0][1]) + (n.values[1][1] * m.values[1][1])
-	};
-    
-	return Result;
-}
-
-Mat3 operator*(Mat3 m, f32 value)
-{
-	Mat3 Result =
-	{
-		m.values[0][0] * value, m.values[0][1] * value, m.values[0][2] * value,
-		m.values[1][0] * value, m.values[1][1] * value, m.values[1][2] * value,
-		m.values[2][0] * value, m.values[2][1] * value, m.values[2][2] * value
 	};
     
 	return Result;
@@ -1095,19 +1159,6 @@ Mat3 operator*(Mat3 n, Mat3 m)
 		(n.values[2][0] * m.values[0][0]) + (n.values[2][1] * m.values[1][0]) + (n.values[2][2] * m.values[2][0]),
 		(n.values[2][0] * m.values[0][1]) + (n.values[2][1] * m.values[1][1]) + (n.values[2][2] * m.values[2][1]),
 		(n.values[2][0] * m.values[0][2]) + (n.values[2][1] * m.values[1][2]) + (n.values[2][2] * m.values[2][2])
-	};
-    
-	return Result;
-}
-
-Mat4 operator*(Mat4 m, f32 value)
-{
-	Mat4 Result =
-	{
-		m.values[0][0] * value, m.values[0][1] * value, m.values[0][2] * value, m.values[0][3] * value,
-		m.values[1][0] * value, m.values[1][1] * value, m.values[1][2] * value, m.values[1][3] * value,
-		m.values[2][0] * value, m.values[2][1] * value, m.values[2][2] * value, m.values[2][3] * value,
-		m.values[3][0] * value, m.values[3][1] * value, m.values[3][2] * value, m.values[3][3] * value
 	};
     
 	return Result;
@@ -1189,13 +1240,13 @@ f32 Determinant3(Mat3 m)
 {
 	f32 Result = 0.0f;
     
-	Result += (m.row1[0] * m.row2[1] * m.row3[2]);
-	Result += (m.row1[1] * m.row2[2] * m.row3[0]);
-	Result += (m.row1[2] * m.row2[0] * m.row3[1]);
+	Result += (m.row1.x * m.row2.y * m.row3.z);
+	Result += (m.row1.y * m.row2.z * m.row3.x);
+	Result += (m.row1.z * m.row2.x * m.row3.y);
     
-	Result -= (m.row1[2] * m.row2[1] * m.row3[0]);
-	Result -= (m.row1[0] * m.row2[2] * m.row3[1]);
-	Result -= (m.row1[1] * m.row2[0] * m.row3[2]);
+	Result -= (m.row1.z * m.row2.y * m.row3.x);
+	Result -= (m.row1.x * m.row2.z * m.row3.y);
+	Result -= (m.row1.y * m.row2.x * m.row3.z);
     
 	return Result;
 }
@@ -1209,17 +1260,18 @@ f32 Determinant4(Mat4 m)
 	Mat3 Minor3;
 	Mat3 Minor4;
     
-	v3 row1 = vec3(m.row1[1], m.row1[2], m.row1[3]);
-	v3 row2 = vec3(m.row2[1], m.row2[2], m.row2[3]);
-	v3 row3 = vec3(m.row3[1], m.row3[2], m.row3[3]);
-	v3 row4 = vec3(m.row4[1], m.row4[2], m.row4[3]);
+	v3 row1 = vec3(m.row1.y, m.row1.z, m.row1.w);
+	v3 row2 = vec3(m.row2.y, m.row2.z, m.row2.w);
+	v3 row3 = vec3(m.row3.y, m.row3.z, m.row3.w);
+	v3 row4 = vec3(m.row4.y, m.row4.z, m.row4.w);
     
 	Minor1.row1 = row2; Minor1.row2 = row3; Minor1.row3 = row4;
 	Minor2.row1 = row1; Minor2.row2 = row3; Minor2.row3 = row4;
 	Minor3.row1 = row1; Minor3.row2 = row2; Minor3.row3 = row4;
 	Minor4.row1 = row1; Minor4.row2 = row2; Minor4.row3 = row3;
     
-	Result = m.row1[0] * Determinant3(Minor1) - m.row2[0] * Determinant3(Minor2) + m.row3[0] * Determinant3(Minor3) - m.row4[0] * Determinant3(Minor4);
+	Result = m.row1.x * Determinant3(Minor1) - m.row2.x * Determinant3(Minor2) +
+        m.row3.x * Determinant3(Minor3) - m.row4.x * Determinant3(Minor4);
     
 	return Result;
 }
@@ -1254,10 +1306,10 @@ Mat4 Identity4()
 Mat2 MatOfMinors2(Mat2 m)
 {
 	Mat2 Result = {};
-	Result.values[0][0] = m.row2[1];
-	Result.values[0][0] = m.row2[0];
-	Result.values[0][0] = m.row1[1];
-	Result.values[0][0] = m.row1[0];
+	Result.values[0][0] = m.row2.y;
+	Result.values[0][0] = m.row2.x;
+	Result.values[0][0] = m.row1.y;
+	Result.values[0][0] = m.row1.x;
     
 	return Result;
 }
@@ -1267,26 +1319,26 @@ Mat3 MatOfMinors3(Mat3 m)
 	Mat3 Result = {};
 	Mat2 Minor11, Minor12, Minor13, Minor21, Minor22, Minor23, Minor31, Minor32, Minor33;
     
-	Minor11.row1 = vec2(m.row2[1], m.row2[2]);
-	Minor11.row2 = vec2(m.row3[1], m.row3[2]);
-	Minor12.row1 = vec2(m.row2[0], m.row2[2]);
-	Minor12.row2 = vec2(m.row3[0], m.row3[2]);
-	Minor13.row1 = vec2(m.row2[0], m.row2[1]);
-	Minor13.row2 = vec2(m.row3[0], m.row3[1]);
+	Minor11.row1 = vec2(m.row2.y, m.row2.z);
+	Minor11.row2 = vec2(m.row3.y, m.row3.z);
+	Minor12.row1 = vec2(m.row2.x, m.row2.z);
+	Minor12.row2 = vec2(m.row3.x, m.row3.z);
+	Minor13.row1 = vec2(m.row2.x, m.row2.y);
+	Minor13.row2 = vec2(m.row3.x, m.row3.y);
     
-	Minor21.row1 = vec2(m.row1[1], m.row1[2]);
-	Minor21.row2 = vec2(m.row3[1], m.row3[2]);
-	Minor22.row1 = vec2(m.row1[0], m.row1[2]);
-	Minor22.row2 = vec2(m.row3[0], m.row3[2]);
-	Minor23.row1 = vec2(m.row1[0], m.row1[1]);
-	Minor23.row2 = vec2(m.row3[0], m.row3[1]);
+	Minor21.row1 = vec2(m.row1.y, m.row1.z);
+	Minor21.row2 = vec2(m.row3.y, m.row3.z);
+	Minor22.row1 = vec2(m.row1.x, m.row1.z);
+	Minor22.row2 = vec2(m.row3.x, m.row3.z);
+	Minor23.row1 = vec2(m.row1.x, m.row1.y);
+	Minor23.row2 = vec2(m.row3.x, m.row3.y);
     
-	Minor31.row1 = vec2(m.row1[1], m.row1[2]);
-	Minor31.row2 = vec2(m.row2[1], m.row2[2]);
-	Minor32.row1 = vec2(m.row1[0], m.row1[2]);
-	Minor32.row2 = vec2(m.row2[0], m.row2[2]);
-	Minor33.row1 = vec2(m.row1[0], m.row1[1]);
-	Minor33.row2 = vec2(m.row2[0], m.row2[1]);
+	Minor31.row1 = vec2(m.row1.y, m.row1.z);
+	Minor31.row2 = vec2(m.row2.y, m.row2.z);
+	Minor32.row1 = vec2(m.row1.x, m.row1.z);
+	Minor32.row2 = vec2(m.row2.x, m.row2.z);
+	Minor33.row1 = vec2(m.row1.x, m.row1.y);
+	Minor33.row2 = vec2(m.row2.x, m.row2.y);
     
 	Result.values[0][0] = Determinant2(Minor11);
 	Result.values[0][1] = Determinant2(Minor12);
@@ -1309,57 +1361,57 @@ Mat4 MatOfMinors4(Mat4 m)
     
 	Mat3 Minor11, Minor12, Minor13, Minor14, Minor21, Minor22, Minor23, Minor24, Minor31, Minor32, Minor33, Minor34, Minor41, Minor42, Minor43, Minor44;
     
-	Minor11.row1 = vec3(m.row2[1], m.row2[2], m.row2[3]);
-	Minor11.row2 = vec3(m.row3[1], m.row3[2], m.row3[3]);
-	Minor11.row3 = vec3(m.row4[1], m.row4[2], m.row4[3]);
-	Minor12.row1 = vec3(m.row2[0], m.row2[2], m.row2[3]);
-	Minor12.row2 = vec3(m.row3[0], m.row3[2], m.row3[3]);
-	Minor12.row3 = vec3(m.row4[0], m.row4[2], m.row4[3]);
-	Minor13.row1 = vec3(m.row2[0], m.row2[1], m.row2[3]);
-	Minor13.row2 = vec3(m.row3[0], m.row3[1], m.row3[3]);
-	Minor13.row3 = vec3(m.row4[0], m.row4[1], m.row4[3]);
-	Minor14.row1 = vec3(m.row2[0], m.row2[1], m.row2[2]);
-	Minor14.row2 = vec3(m.row3[0], m.row3[1], m.row3[2]);
-	Minor14.row3 = vec3(m.row4[0], m.row4[1], m.row4[2]);
+	Minor11.row1 = vec3(m.row2.y, m.row2.z, m.row2.w);
+	Minor11.row2 = vec3(m.row3.y, m.row3.z, m.row3.w);
+	Minor11.row3 = vec3(m.row4.y, m.row4.z, m.row4.w);
+	Minor12.row1 = vec3(m.row2.x, m.row2.z, m.row2.w);
+	Minor12.row2 = vec3(m.row3.x, m.row3.z, m.row3.w);
+	Minor12.row3 = vec3(m.row4.x, m.row4.z, m.row4.w);
+	Minor13.row1 = vec3(m.row2.x, m.row2.y, m.row2.w);
+	Minor13.row2 = vec3(m.row3.x, m.row3.y, m.row3.w);
+	Minor13.row3 = vec3(m.row4.x, m.row4.y, m.row4.w);
+	Minor14.row1 = vec3(m.row2.x, m.row2.y, m.row2.z);
+	Minor14.row2 = vec3(m.row3.x, m.row3.y, m.row3.z);
+	Minor14.row3 = vec3(m.row4.x, m.row4.y, m.row4.z);
     
-	Minor21.row1 = vec3(m.row1[1], m.row1[2], m.row1[3]);
-	Minor21.row2 = vec3(m.row3[1], m.row3[2], m.row3[3]);
-	Minor21.row3 = vec3(m.row4[1], m.row4[2], m.row4[3]);
-	Minor22.row1 = vec3(m.row1[0], m.row1[2], m.row1[3]);
-	Minor22.row2 = vec3(m.row3[0], m.row3[2], m.row3[3]);
-	Minor22.row3 = vec3(m.row4[0], m.row4[2], m.row4[3]);
-	Minor23.row1 = vec3(m.row1[0], m.row1[1], m.row1[3]);
-	Minor23.row2 = vec3(m.row3[0], m.row3[1], m.row3[3]);
-	Minor23.row3 = vec3(m.row4[0], m.row4[1], m.row4[3]);
-	Minor24.row1 = vec3(m.row1[0], m.row1[1], m.row1[2]);
-	Minor24.row2 = vec3(m.row3[0], m.row3[1], m.row3[2]);
-	Minor24.row3 = vec3(m.row4[0], m.row4[1], m.row4[2]);
+	Minor21.row1 = vec3(m.row1.y, m.row1.z, m.row1.w);
+	Minor21.row2 = vec3(m.row3.y, m.row3.z, m.row3.w);
+	Minor21.row3 = vec3(m.row4.y, m.row4.z, m.row4.w);
+	Minor22.row1 = vec3(m.row1.x, m.row1.z, m.row1.w);
+	Minor22.row2 = vec3(m.row3.x, m.row3.z, m.row3.w);
+	Minor22.row3 = vec3(m.row4.x, m.row4.z, m.row4.w);
+	Minor23.row1 = vec3(m.row1.x, m.row1.y, m.row1.w);
+	Minor23.row2 = vec3(m.row3.x, m.row3.y, m.row3.w);
+	Minor23.row3 = vec3(m.row4.x, m.row4.y, m.row4.w);
+	Minor24.row1 = vec3(m.row1.x, m.row1.y, m.row1.z);
+	Minor24.row2 = vec3(m.row3.x, m.row3.y, m.row3.z);
+	Minor24.row3 = vec3(m.row4.x, m.row4.y, m.row4.z);
     
-	Minor31.row1 = vec3(m.row1[1], m.row1[2], m.row1[3]);
-	Minor31.row2 = vec3(m.row2[1], m.row2[2], m.row2[3]);
-	Minor31.row3 = vec3(m.row4[1], m.row4[2], m.row4[3]);
-	Minor32.row1 = vec3(m.row1[0], m.row1[2], m.row1[3]);
-	Minor32.row2 = vec3(m.row2[0], m.row2[2], m.row2[3]);
-	Minor32.row3 = vec3(m.row4[0], m.row4[2], m.row4[3]);
-	Minor33.row1 = vec3(m.row1[0], m.row1[1], m.row1[3]);
-	Minor33.row2 = vec3(m.row2[0], m.row2[1], m.row2[3]);
-	Minor33.row3 = vec3(m.row4[0], m.row4[1], m.row4[3]);
-	Minor34.row1 = vec3(m.row1[0], m.row1[1], m.row1[2]);
-	Minor34.row2 = vec3(m.row2[0], m.row2[1], m.row2[2]);
-	Minor34.row3 = vec3(m.row4[0], m.row4[1], m.row4[2]);
+	Minor31.row1 = vec3(m.row1.y, m.row1.z, m.row1.w);
+	Minor31.row2 = vec3(m.row2.y, m.row2.z, m.row2.w);
+	Minor31.row3 = vec3(m.row4.y, m.row4.z, m.row4.w);
+	Minor32.row1 = vec3(m.row1.x, m.row1.z, m.row1.w);
+	Minor32.row2 = vec3(m.row2.x, m.row2.z, m.row2.w);
+	Minor32.row3 = vec3(m.row4.x, m.row4.z, m.row4.w);
+	Minor33.row1 = vec3(m.row1.x, m.row1.y, m.row1.w);
+	Minor33.row2 = vec3(m.row2.x, m.row2.y, m.row2.w);
+	Minor33.row3 = vec3(m.row4.x, m.row4.y, m.row4.w);
+	Minor34.row1 = vec3(m.row1.x, m.row1.y, m.row1.z);
+	Minor34.row2 = vec3(m.row2.x, m.row2.y, m.row2.z);
+	Minor34.row3 = vec3(m.row4.x, m.row4.y, m.row4.z);
     
-	Minor41.row1 = vec3(m.row1[1], m.row1[2], m.row1[3]);
-	Minor41.row2 = vec3(m.row2[1], m.row2[2], m.row2[3]);
-	Minor41.row3 = vec3(m.row3[1], m.row3[2], m.row3[3]);
-	Minor42.row1 = vec3(m.row1[0], m.row1[2], m.row1[3]);
-	Minor42.row2 = vec3(m.row2[0], m.row2[2], m.row2[3]);
-	Minor42.row3 = vec3(m.row3[0], m.row3[2], m.row3[3]);
-	Minor43.row1 = vec3(m.row1[0], m.row1[1], m.row1[3]);
-	Minor43.row2 = vec3(m.row2[0], m.row2[1], m.row2[3]);
-	Minor43.row3 = vec3(m.row3[0], m.row3[1], m.row3[3]);
-	Minor44.row1 = vec3(m.row1[0], m.row1[1], m.row1[2]);
-	Minor44.row2 = vec3(m.row2[0], m.row2[1], m.row2[2]);
-	Minor44.row3 = vec3(m.row3[0], m.row3[1], m.row3[2]);
+	Minor41.row1 = vec3(m.row1.y, m.row1.z, m.row1.w);
+	Minor41.row2 = vec3(m.row2.y, m.row2.z, m.row2.w);
+	Minor41.row3 = vec3(m.row3.y, m.row3.z, m.row3.w);
+	Minor42.row1 = vec3(m.row1.x, m.row1.z, m.row1.w);
+	Minor42.row2 = vec3(m.row2.x, m.row2.z, m.row2.w);
+	Minor42.row3 = vec3(m.row3.x, m.row3.z, m.row3.w);
+	Minor43.row1 = vec3(m.row1.x, m.row1.y, m.row1.w);
+	Minor43.row2 = vec3(m.row2.x, m.row2.y, m.row2.w);
+	Minor43.row3 = vec3(m.row3.x, m.row3.y, m.row3.w);
+	Minor44.row1 = vec3(m.row1.x, m.row1.y, m.row1.z);
+	Minor44.row2 = vec3(m.row2.x, m.row2.y, m.row2.z);
+	Minor44.row3 = vec3(m.row3.x, m.row3.y, m.row3.z);
     
 	Result.values[0][0] = Determinant3(Minor11);
 	Result.values[0][1] = Determinant3(Minor12);
@@ -1388,8 +1440,8 @@ Mat2 Transpose2(Mat2 m)
 {
 	Mat2 Result = {};
 	
-	v2 row1 = { m.row1[0], m.row2[0] };
-	v2 row2 = { m.row1[1], m.row2[1] };
+	v2 row1 = { m.row1.x, m.row2.x };
+	v2 row2 = { m.row1.y, m.row2.y };
     
 	Result.row1 = row1;
 	Result.row2 = row2;
@@ -1401,9 +1453,9 @@ Mat3 Transpose3(Mat3 m)
 {
 	Mat3 Result = {};
     
-	v3 row1 = { m.row1[0], m.row2[0], m.row3[0] };
-	v3 row2 = { m.row1[1], m.row2[1], m.row3[1] };
-	v3 row3 = { m.row1[2], m.row2[2], m.row3[2] };
+	v3 row1 = { m.row1.x, m.row2.x, m.row3.x };
+	v3 row2 = { m.row1.y, m.row2.y, m.row3.y };
+	v3 row3 = { m.row1.z, m.row2.z, m.row3.z };
     
 	Result.row1 = row1;
 	Result.row2 = row2;
@@ -1416,10 +1468,10 @@ Mat4 Transpose4(Mat4 m)
 {
 	Mat4 Result = {};
     
-	v4 row1 = { m.row1[0], m.row2[0], m.row3[0], m.row4[0] };
-	v4 row2 = { m.row1[1], m.row2[1], m.row3[1], m.row4[1] };
-	v4 row3 = { m.row1[2], m.row2[2], m.row3[2], m.row4[2] };
-	v4 row4 = { m.row1[3], m.row2[3], m.row3[3], m.row4[3] };
+	v4 row1 = { m.row1.x, m.row2.x, m.row3.x, m.row4.x };
+	v4 row2 = { m.row1.y, m.row2.y, m.row3.y, m.row4.y };
+	v4 row3 = { m.row1.z, m.row2.z, m.row3.z, m.row4.z };
+	v4 row4 = { m.row1.z, m.row2.z, m.row3.z, m.row4.z };
     
 	Result.row1 = row1;
 	Result.row2 = row2;
@@ -1437,7 +1489,7 @@ Mat2 Inverse2(Mat2 m)
 	f32 InverseDet = 1.0f / Determinant2(m);
 	Mat2 TransMinor = Transpose2(MatOfMinors2(m));
     
-	Result = TransMinor * InverseDet;
+	Result = ls_mat2Mulf32(TransMinor, InverseDet);
     
 	return Result;
 }
@@ -1449,7 +1501,7 @@ Mat3 Inverse3(Mat3 m)
 	f32 InverseDet = 1.0f / Determinant3(m);
 	Mat3 TransMinor = Transpose3(MatOfMinors3(m));
     
-	Result = TransMinor * InverseDet;
+	Result = ls_mat3Mulf32(TransMinor, InverseDet);
     
 	return Result;
 }
@@ -1461,7 +1513,7 @@ Mat4 Inverse4(Mat4 m)
 	f32 InverseDet = 1.0f / Determinant4(m);
 	Mat4 TransMinor = Transpose4(MatOfMinors4(m));
     
-	Result = TransMinor * InverseDet;
+	Result = ls_mat4Mulf32(TransMinor, InverseDet);
     
 	return Result;
 }
@@ -1472,9 +1524,9 @@ Mat3 NormalMatrix(Mat4 m)
     
 	Mat4 tmp = Transpose4(Inverse4(m));
     
-	Result.row1 = vec3(tmp.row1[0], tmp.row1[1], tmp.row1[2]);
-	Result.row2 = vec3(tmp.row2[0], tmp.row2[1], tmp.row2[2]);
-	Result.row3 = vec3(tmp.row3[0], tmp.row3[1], tmp.row3[2]);
+	Result.row1 = vec3(tmp.row1.x, tmp.row1.y, tmp.row1.z);
+	Result.row2 = vec3(tmp.row2.x, tmp.row2.y, tmp.row2.z);
+	Result.row3 = vec3(tmp.row3.x, tmp.row3.y, tmp.row3.z);
     
 	return Result;
 }
@@ -1482,7 +1534,7 @@ Mat3 NormalMatrix(Mat4 m)
 Mat2 UniformScale2(f32 factor)
 {
 	Mat2 Result = Identity2();
-	Result = Result * factor;
+	Result = ls_mat2Mulf32(Result, factor);
     
 	return Result;
 }
@@ -1490,7 +1542,7 @@ Mat2 UniformScale2(f32 factor)
 Mat3 UniformScale3(f32 factor)
 {
 	Mat3 Result = Identity3();
-	Result = Result * factor;
+	Result = ls_mat3Mulf32(Result, factor);
     
 	return Result;
 }
@@ -1498,7 +1550,7 @@ Mat3 UniformScale3(f32 factor)
 Mat4 UniformScale4(f32 factor)
 {
 	Mat4 Result = Identity4();
-	Result = Result * factor;
+	Result = ls_mat4Mulf32(Result, factor);
     
 	return Result;
 }

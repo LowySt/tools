@@ -2,19 +2,26 @@
 #define LS_BIGINT_HEADER
 
 #include "lsCRT.h"
+#include "lsString.h"
 
 struct u128
 {
-	u64 l;
-	u64 h;
+    u64 l;
+    u64 h;
 };
 
 struct u256
 {
-	u64 l;
-	u64 m;
-	u64 t;
-	u64 h;
+    union {
+        struct {
+            u64 l;
+            u64 m;
+            u64 t;
+            u64 h;
+        };
+        
+        u64 arr[4];
+    };
 };
 
 struct u512
@@ -38,6 +45,8 @@ struct u512
             u64 th;
             u64 hh;
         };
+        
+        u64 arr[8];
     };
 };
 
@@ -79,6 +88,8 @@ struct u1024
             u64 th;
             u64 hh;
         };
+        
+        u64 arr[16];
     };
 };
 
@@ -134,6 +145,7 @@ struct u2048
 			u64 b256;
 		};
         
+        u64 arr[32];
 	};
 };
 
@@ -444,6 +456,17 @@ extern "C"
     //
     // u256 Operations
     //
+    
+    
+    //               a  b  c  d *
+    //               e  f  g  h =
+    //               ------------
+    //               ha hb hc hd
+    //            ga gb gc gd 0  
+    //         fa fb fc fd 0  0
+    //      ea eb ec ed 0  0  0
+    //    ----------------------
+    //                          
     
     u256 u256_add(u256 *v, u64 w);
     u256 u256_addBig(u256 *v, u256 *w);
@@ -927,17 +950,67 @@ void operator-=(u256 &v1, u64 v)
 void operator-=(u256 &v1, u256 v)
 { v1 = u256_subBig(&v1, &v); }
 
-u256 operator*(u256 v1, u64 v)
-{ return u256_mul(&v1, v); }
 
+/*
 u256 operator*(u256 v1, u256 v)
 {  return u256_mulBig(&v1, &v); }
 
-void operator*=(u256 &v1, u64 v)
-{ v1 = u256_mul(&v1, v); }
-
 void operator*=(u256 &v1, u256 v)
 { v1 = u256_mulBig(&v1, &v); }
+**/
+
+// Example in 256 bits (every letter represents a 64bit value)
+// v->           a  b  c  d *
+// w->           e  f  g  h =
+//               ------------
+//            0  ha hb hc hd
+//         0  ga gb gc gd 0  
+//      0  fa fb fc fd 0  0
+//      ea eb ec ed 0  0  0
+//    ----------------------
+//                          
+
+u256 u256_multTest(u256 v, u256 w)
+{
+    u256 result = {};
+    
+    u64 tmp = 0;
+    
+    u64 highPartOne = 0;
+    u64 highPartTwo = 0;
+    
+    // Column 1
+    result.arr[0] = _umul128(v.arr[0], w.arr[0], &highPartOne);
+    
+    /* Column 2 - 4*/
+    for(u64 i = 2; i < 4; i++)
+    {
+        result.arr[i] += _addcarry_u64(0, result.arr[i-1], highPartOne, &result.arr[i-1]);
+        
+        for(u64 j = 0; j < i; j++) {
+            tmp = _umul128(v.arr[i-j-1], w.arr[j], &highPartOne);
+            result.arr[i] += _addcarry_u64(0, highPartTwo, highPartOne, &highPartTwo);
+            result.arr[i] += _addcarry_u64(0, result.arr[i-1], tmp, &result.arr[i-1]);
+        }
+        
+        highPartOne = highPartTwo;
+        highPartTwo = 0;
+    }
+    
+    return result;
+}
+
+u256 operator*(u256 v1, u256 v)
+{  return u256_multTest(v1, v); }
+
+void operator*=(u256 &v1, u256 v)
+{ v1 = u256_multTest(v1, v); }
+
+u256 operator*(u256 v1, u64 v)
+{ return u256_mul(&v1, v); }
+
+void operator*=(u256 &v1, u64 v)
+{ v1 = u256_mul(&v1, v); }
 
 u256 operator/(u256 v1, u64 v)
 { u256 temp = {v,0,0,0}; u256 r = {};
@@ -1206,17 +1279,68 @@ void operator-=(u512 &v1, u64 v)
 void operator-=(u512 &v1, u512 v)
 { v1 = u512_subBig(&v1, &v); }
 
-u512 operator*(u512 v1, u64 v)
-{ return u512_mul(&v1, v); }
 
+/*
 u512 operator*(u512 v1, u512 v)
 { return u512_mulBig(&v1, &v); }
 
-void operator*=(u512 &v1, u64 v)
-{ v1 = u512_mul(&v1, v); }
-
 void operator*=(u512 &v1, u512 v)
 { v1 = u512_mulBig(&v1, &v); }
+*/
+
+// Example in 256 bits (every letter represents a 64bit value)
+// v->           a  b  c  d *
+// w->           e  f  g  h =
+//               ------------
+//            0  ha hb hc hd
+//         0  ga gb gc gd 0  
+//      0  fa fb fc fd 0  0
+//      ea eb ec ed 0  0  0
+//    ----------------------
+//                          
+
+u512 u512_multTest(u512 v, u512 w)
+{
+    u512 result = {};
+    
+    u64 tmp = 0;
+    
+    u64 highPartOne = 0;
+    u64 highPartTwo = 0;
+    
+    // Column 1
+    result.arr[0] = _umul128(v.arr[0], w.arr[0], &highPartOne);
+    
+    /* Column 2 - 8*/
+    for(u64 i = 2; i < 8; i++)
+    {
+        result.arr[i] += _addcarry_u64(0, result.arr[i-1], highPartOne, &result.arr[i-1]);
+        
+        for(u64 j = 0; j < i; j++) {
+            tmp = _umul128(v.arr[i-j-1], w.arr[j], &highPartOne);
+            result.arr[i] += _addcarry_u64(0, highPartTwo, highPartOne, &highPartTwo);
+            result.arr[i] += _addcarry_u64(0, result.arr[i-1], tmp, &result.arr[i-1]);
+        }
+        
+        highPartOne = highPartTwo;
+        highPartTwo = 0;
+    }
+    
+    return result;
+}
+
+u512 operator*(u512 v1, u512 v)
+{ return u512_multTest(v1, v); }
+
+void operator*=(u512 &v1, u512 v)
+{ v1 = u512_multTest(v1, v); }
+
+
+u512 operator*(u512 v1, u64 v)
+{ return u512_mul(&v1, v); }
+
+void operator*=(u512 &v1, u64 v)
+{ v1 = u512_mul(&v1, v); }
 
 u512 operator/(u512 v1, u64 v)
 { u512 temp = {v,0,0,0,0,0,0,0}; u512 r = {};
@@ -1341,6 +1465,7 @@ u512 operator~(u512 v1)
 //
 // u1024 Operations
 //
+
 /*@TODO WROOOOOONG LOGICAL OP... IS IT WRONG THO?*/
 
 b32 operator==(u1024 v1, u64 v)
@@ -1426,14 +1551,14 @@ b32 operator>(u1024 v1, u64 v)
 
 b32 operator>(u1024 v1, u1024 v) // @TODO: I'm having doubts on this function
 {
-    return ((v1.hh >= v.hh) && (v1.th >= v.th) &&
-            (v1.mh >= v.mh) && (v1.lh >= v.lh) &&
-            (v1.ht >= v.ht) && (v1.tt >= v.tt) &&
-            (v1.mt >= v.mt) && (v1.lt >= v.lt) &&
-            (v1.hm >= v.hm) && (v1.tm >= v.tm) &&
-            (v1.mm >= v.mm) && (v1.lm >= v.lm) &&
-            (v1.hl >= v.hl) && (v1.tl >= v.tl) &&
-            (v1.ml >= v.ml) && (v1.ll > v.ll));
+    return ((v1.hh >= v.hh) || (v1.th >= v.th) ||
+            (v1.mh >= v.mh) || (v1.lh >= v.lh) ||
+            (v1.ht >= v.ht) || (v1.tt >= v.tt) ||
+            (v1.mt >= v.mt) || (v1.lt >= v.lt) ||
+            (v1.hm >= v.hm) || (v1.tm >= v.tm) ||
+            (v1.mm >= v.mm) || (v1.lm >= v.lm) ||
+            (v1.hl >= v.hl) || (v1.tl >= v.tl) ||
+            (v1.ml >= v.ml) || (v1.ll > v.ll));
 }
 
 b32 operator>=(u1024 v1, u64 v)
@@ -1450,62 +1575,62 @@ b32 operator>=(u1024 v1, u64 v)
 
 b32 operator>=(u1024 v1, u1024 v)
 {
-    return ((v1.hh >= v.hh) && (v1.th >= v.th) &&
-            (v1.mh >= v.mh) && (v1.lh >= v.lh) &&
-            (v1.ht >= v.ht) && (v1.tt >= v.tt) &&
-            (v1.mt >= v.mt) && (v1.lt >= v.lt) &&
-            (v1.hm >= v.hm) && (v1.tm >= v.tm) &&
-            (v1.mm >= v.mm) && (v1.lm >= v.lm) &&
-            (v1.hl >= v.hl) && (v1.tl >= v.tl) &&
-            (v1.ml >= v.ml) && (v1.ll >= v.ll));
+    return ((v1.hh >= v.hh) || (v1.th >= v.th) ||
+            (v1.mh >= v.mh) || (v1.lh >= v.lh) ||
+            (v1.ht >= v.ht) || (v1.tt >= v.tt) ||
+            (v1.mt >= v.mt) || (v1.lt >= v.lt) ||
+            (v1.hm >= v.hm) || (v1.tm >= v.tm) ||
+            (v1.mm >= v.mm) || (v1.lm >= v.lm) ||
+            (v1.hl >= v.hl) || (v1.tl >= v.tl) ||
+            (v1.ml >= v.ml) || (v1.ll >= v.ll));
 }
 
 b32 operator<(u1024 v1, u64 v)
 {
-    return ((v1.hh == 0) && (v1.th == 0) &&
-            (v1.mh == 0) && (v1.lh == 0) &&
-            (v1.ht == 0) && (v1.tt == 0) &&
-            (v1.mt == 0) && (v1.lt == 0) &&
-            (v1.hm == 0) && (v1.tm == 0) &&
-            (v1.mm == 0) && (v1.lm == 0) &&
-            (v1.hl == 0) && (v1.tl == 0) &&
-            (v1.ml == 0) && (v1.ll < v));
+    return ((v1.hh == 0) || (v1.th == 0) ||
+            (v1.mh == 0) || (v1.lh == 0) ||
+            (v1.ht == 0) || (v1.tt == 0) ||
+            (v1.mt == 0) || (v1.lt == 0) ||
+            (v1.hm == 0) || (v1.tm == 0) ||
+            (v1.mm == 0) || (v1.lm == 0) ||
+            (v1.hl == 0) || (v1.tl == 0) ||
+            (v1.ml == 0) || (v1.ll < v));
 }
 
 b32 operator<(u1024 v1, u1024 v)
 {
-    return ((v1.hh <= v.hh) && (v1.th <= v.th) &&
-            (v1.mh <= v.mh) && (v1.lh <= v.lh) &&
-            (v1.ht <= v.ht) && (v1.tt <= v.tt) &&
-            (v1.mt <= v.mt) && (v1.lt <= v.lt) &&
-            (v1.hm <= v.hm) && (v1.tm <= v.tm) &&
-            (v1.mm <= v.mm) && (v1.lm <= v.lm) &&
-            (v1.hl <= v.hl) && (v1.tl <= v.tl) &&
-            (v1.ml <= v.ml) && (v1.ll < v.ll));
+    return ((v1.hh <= v.hh) || (v1.th <= v.th) ||
+            (v1.mh <= v.mh) || (v1.lh <= v.lh) ||
+            (v1.ht <= v.ht) || (v1.tt <= v.tt) ||
+            (v1.mt <= v.mt) || (v1.lt <= v.lt) ||
+            (v1.hm <= v.hm) || (v1.tm <= v.tm) ||
+            (v1.mm <= v.mm) || (v1.lm <= v.lm) ||
+            (v1.hl <= v.hl) || (v1.tl <= v.tl) ||
+            (v1.ml <= v.ml) || (v1.ll < v.ll));
 }
 
 b32 operator<=(u1024 v1, u64 v)
 {
-    return ((v1.hh == 0) && (v1.th == 0) &&
-            (v1.mh == 0) && (v1.lh == 0) &&
-            (v1.ht == 0) && (v1.tt == 0) &&
-            (v1.mt == 0) && (v1.lt == 0) &&
-            (v1.hm == 0) && (v1.tm == 0) &&
-            (v1.mm == 0) && (v1.lm == 0) &&
-            (v1.hl == 0) && (v1.tl == 0) &&
-            (v1.ml == 0) && (v1.ll <= v));
+    return ((v1.hh == 0) || (v1.th == 0) ||
+            (v1.mh == 0) || (v1.lh == 0) ||
+            (v1.ht == 0) || (v1.tt == 0) ||
+            (v1.mt == 0) || (v1.lt == 0) ||
+            (v1.hm == 0) || (v1.tm == 0) ||
+            (v1.mm == 0) || (v1.lm == 0) ||
+            (v1.hl == 0) || (v1.tl == 0) ||
+            (v1.ml == 0) || (v1.ll <= v));
 }
 
 b32 operator<=(u1024 v1, u1024 v)
 {
-    return ((v1.hh <= v.hh) && (v1.th <= v.th) &&
-            (v1.mh <= v.mh) && (v1.lh <= v.lh) &&
-            (v1.ht <= v.ht) && (v1.tt <= v.tt) &&
-            (v1.mt <= v.mt) && (v1.lt <= v.lt) &&
-            (v1.hm <= v.hm) && (v1.tm <= v.tm) &&
-            (v1.mm <= v.mm) && (v1.lm <= v.lm) &&
-            (v1.hl <= v.hl) && (v1.tl <= v.tl) &&
-            (v1.ml <= v.ml) && (v1.ll <= v.ll));
+    return ((v1.hh <= v.hh) || (v1.th <= v.th) ||
+            (v1.mh <= v.mh) || (v1.lh <= v.lh) ||
+            (v1.ht <= v.ht) || (v1.tt <= v.tt) ||
+            (v1.mt <= v.mt) || (v1.lt <= v.lt) ||
+            (v1.hm <= v.hm) || (v1.tm <= v.tm) ||
+            (v1.mm <= v.mm) || (v1.lm <= v.lm) ||
+            (v1.hl <= v.hl) || (v1.tl <= v.tl) ||
+            (v1.ml <= v.ml) || (v1.ll <= v.ll));
 }
 
 /*ARITHMETIC OP*/
@@ -1537,14 +1662,71 @@ void operator-=(u1024 &v1, u1024 v)
 u1024 operator*(u1024 v1, u64 v)
 { return u1024_mul(&v1, v); }
 
+//NOTE: ASM Multiplication doesn't work, so I'm
+//      substituting it with C && intrinsics.
+/*
 u1024 operator*(u1024 v1, u1024 v)
 { return u1024_mulBig(&v1, &v); }
+*/
+
+/*
+void operator*=(u1024 &v1, u1024 v)
+{ v1 = u1024_mulBig(&v1, &v); }
+*/
+
+// Example in 256 bits (every letter represents a 64bit value)
+// v->           a  b  c  d *
+// w->           e  f  g  h =
+//               ------------
+//            0  ha hb hc hd
+//         0  ga gb gc gd 0  
+//      0  fa fb fc fd 0  0
+//      ea eb ec ed 0  0  0
+//    ----------------------
+//                          
+
+u1024 u1024_multTest(u1024 v, u1024 w)
+{
+    u1024 result = {};
+    
+    u64 tmp = 0;
+    
+    u64 highPartOne = 0;
+    u64 highPartTwo = 0;
+    
+    //u8  carry = 0;
+    
+    // Column 1
+    result.arr[0] = _umul128(v.arr[0], w.arr[0], &highPartOne);
+    
+    /* Column 2 - 16*/
+    for(u64 i = 2; i < 16; i++)
+    {
+        result.arr[i] += _addcarry_u64(0, result.arr[i-1], highPartOne, &result.arr[i-1]);
+        
+        for(u64 j = 0; j < i; j++) {
+            tmp = _umul128(v.arr[i-j-1], w.arr[j], &highPartOne);
+            result.arr[i] += _addcarry_u64(0, highPartTwo, highPartOne, &highPartTwo);
+            result.arr[i] += _addcarry_u64(0, result.arr[i-1], tmp, &result.arr[i-1]);
+        }
+        
+        highPartOne = highPartTwo;
+        highPartTwo = 0;
+    }
+    
+    return result;
+}
+
+u1024 operator*(u1024 v1, u1024 v)
+{ return u1024_multTest(v1, v); }
+
+void operator*=(u1024 &v1, u1024 v)
+{ v1 = u1024_multTest(v1, v); }
+
+
 
 void operator*=(u1024 &v1, u64 v)
 { v1 = u1024_mul(&v1, v); }
-
-void operator*=(u1024 &v1, u1024 v)
-{ v1 = u1024_mulBig(&v1, &v); }
 
 u1024 operator/(u1024 v1, u64 v)
 { u1024 temp = {v,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
@@ -1770,17 +1952,70 @@ void operator-=(u2048 &v1, u64 v)
 void operator-=(u2048 &v1, u2048 v)
 { v1 = u2048_subBig(&v1, &v); }
 
-u2048 operator*(u2048 v1, u64 v)
-{ return u2048_mul(&v1, v); }
-
+/*
 u2048 operator*(u2048 v1, u2048 v)
 { return u2048_mulBig(&v1, &v); }
 
-void operator*=(u2048 &v1, u64 v)
-{ v1 = u2048_mul(&v1, v); }
-
 void operator*=(u2048 &v1, u2048 v)
 { v1 = u2048_mulBig(&v1, &v); }
+*/
+
+// Example in 256 bits (every letter represents a 64bit value)
+// v->           a  b  c  d *
+// w->           e  f  g  h =
+//               ------------
+//            0  ha hb hc hd
+//         0  ga gb gc gd 0  
+//      0  fa fb fc fd 0  0
+//      ea eb ec ed 0  0  0
+//    ----------------------
+//                          
+
+u2048 u2048_multTest(u2048 v, u2048 w)
+{
+    u2048 result = {};
+    
+    u64 tmp = 0;
+    
+    u64 highPartOne = 0;
+    u64 highPartTwo = 0;
+    
+    //u8  carry = 0;
+    
+    // Column 1
+    result.arr[0] = _umul128(v.arr[0], w.arr[0], &highPartOne);
+    
+    /* Column 2 - 32*/
+    for(u64 i = 2; i < 32; i++)
+    {
+        result.arr[i] += _addcarry_u64(0, result.arr[i-1], highPartOne, &result.arr[i-1]);
+        
+        for(u64 j = 0; j < i; j++) {
+            tmp = _umul128(v.arr[i-j-1], w.arr[j], &highPartOne);
+            result.arr[i] += _addcarry_u64(0, highPartTwo, highPartOne, &highPartTwo);
+            result.arr[i] += _addcarry_u64(0, result.arr[i-1], tmp, &result.arr[i-1]);
+        }
+        
+        highPartOne = highPartTwo;
+        highPartTwo = 0;
+    }
+    
+    return result;
+}
+
+
+u2048 operator*(u2048 v1, u2048 v)
+{ return u2048_multTest(v1, v); }
+
+void operator*=(u2048 &v1, u2048 v)
+{ v1 = u2048_multTest(v1, v); }
+
+
+u2048 operator*(u2048 v1, u64 v)
+{ return u2048_mul(&v1, v); }
+
+void operator*=(u2048 &v1, u64 v)
+{ v1 = u2048_mul(&v1, v); }
 
 u2048 operator/(u2048 v1, u64 v)
 { u2048 temp = {v,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
@@ -2794,14 +3029,14 @@ string u128_str(u128 v)
     {
         if((i%3 == 0) && (first != TRUE))
         {
-            ls_appendChar(&Result, '.');
+            ls_strAppendChar(&Result, '.');
         }
         
         u64 r = (cpy % 10).l;
         cpy = cpy / 10;
         
         string val = ls_itos(r);
-        ls_append(&Result, val);
+        ls_strAppend(&Result, val);
         ls_strFree(&val);
         i++;
         
@@ -2842,14 +3077,14 @@ string u256_str(u256 v)
     {
         if((i%3 == 0) && (first != TRUE))
         {
-            ls_appendChar(&Result, '.');
+            ls_strAppendChar(&Result, '.');
         }
         
         u64 r = (cpy % 10).l;
         cpy = cpy / 10;
         
         string val = ls_itos(r);
-        ls_append(&Result, val);
+        ls_strAppend(&Result, val);
         ls_strFree(&val);
         i++;
         
@@ -2890,14 +3125,14 @@ string u512_str(u512 v)
     {
         if((i%3 == 0) && (first != TRUE))
         {
-            ls_appendChar(&Result, '.');
+            ls_strAppendChar(&Result, '.');
         }
         
         u64 r = (cpy % 10).ll;
         cpy = cpy / 10;
         
         string val = ls_itos(r);
-        ls_append(&Result, val);
+        ls_strAppend(&Result, val);
         ls_strFree(&val);
         i++;
         
@@ -2918,7 +3153,8 @@ u1024 u1024_pow(u1024 v, u32 exp)
     {
         if (exp & 1)
         {
-            Result *= v;
+            Result = u1024_multTest(Result, v);
+            //Result *= v;
         }
         
         exp >>= 1;
@@ -2939,14 +3175,14 @@ string u1024_str(u1024 v)
     {
         if((i%3 == 0) && (first != TRUE))
         {
-            ls_appendChar(&Result, '.');
+            ls_strAppendChar(&Result, '.');
         }
         
         u64 r = (cpy % 10).ll;
         cpy = cpy / 10;
         
         string val = ls_itos(r);
-        ls_append(&Result, val);
+        ls_strAppend(&Result, val);
         ls_strFree(&val);
         i++;
         
@@ -2995,14 +3231,14 @@ string u2048_str(u2048 v)
     {
         if((i%3 == 0) && (first != TRUE))
         {
-            ls_appendChar(&Result, '.');
+            ls_strAppendChar(&Result, '.');
         }
         
         u64 r = (cpy % 10).b8;
         cpy = cpy / 10;
         
         string val = ls_itos(r);
-        ls_append(&Result, val);
+        ls_strAppend(&Result, val);
         ls_strFree(&val);
         i++;
         
@@ -3043,14 +3279,14 @@ string u4096_str(u4096 v)
     {
         if((i%3 == 0) && (first != TRUE))
         {
-            ls_appendChar(&Result, '.');
+            ls_strAppendChar(&Result, '.');
         }
         
         u64 r = (cpy % 10).b8;
         cpy = cpy / 10;
         
         string val = ls_itos(r);
-        ls_append(&Result, val);
+        ls_strAppend(&Result, val);
         ls_strFree(&val);
         i++;
         
@@ -3096,14 +3332,14 @@ string u8192_str(u8192 v)
     {
         if((i%3 == 0) && (first != TRUE))
         {
-            ls_appendChar(&Result, '.');
+            ls_strAppendChar(&Result, '.');
         }
         
         u64 r = (cpy % 10).b8;
         cpy = cpy / 10;
         
         string val = ls_itos(r);
-        ls_append(&Result, val);
+        ls_strAppend(&Result, val);
         ls_strFree(&val);
         i++;
         
@@ -3150,14 +3386,14 @@ string u16384_str(u16384 v)
     {
         if((i%3 == 0) && (first != TRUE))
         {
-            ls_appendChar(&Result, '.');
+            ls_strAppendChar(&Result, '.');
         }
         
         u64 r = (cpy % 10).b8;
         cpy = cpy / 10;
         
         string val = ls_itos(r);
-        ls_append(&Result, val);
+        ls_strAppend(&Result, val);
         ls_strFree(&val);
         i++;
         

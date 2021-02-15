@@ -2963,7 +2963,7 @@ u1024_mulBig PROC
 	;
 
 	MPM2 rax, rdx, 0, r8, 0
-
+    
 	MOV qword ptr [rcx], rax
 	MOV r12, rdx
 	POP rdx
@@ -2973,10 +2973,10 @@ u1024_mulBig PROC
 	;
 
 	MPM2 rax, rdx, 0, r8, 8
-	AMP r12, r13, rax, rdx
-
+    AMP r12, r13, rax, rdx
+    
 	MULBIGONCE rax, rdx, r8, r12, r13, 8
-	
+    	
 	MOV qword ptr [rcx + 8], r12
 
 	;

@@ -87,6 +87,7 @@ u64 windows_ReadFile(char *, char **, u32);
 u64 windows_ReadFileByOffset(char *, char **, u64, u32);
 u64 windows_WriteConsole(char *, u32);
 u64 windows_WriteFile(char *, void *, u32, b32);
+b32 windows_fileExists(char *AbsPath);
 u32 windows_countFilesInDir(char *);
 u32 windows_countFilesInDirByExt(char *, char *);
 u32 windows_countFilesInDirRecursive(char *, u32);
@@ -129,15 +130,21 @@ extern "C"
     char	ls_itoc(s64 x);
     u32	 ls_ctoi(char c);
     
-    //NOTE:TODO: itoa/ftoa should not allocate on the heap. Better to have it on the stack.
+    //NOTE: On heap
     char   *ls_itoa(s64 x);
     char   *ls_ftoa(f64 x);
+    
+    //NOTE: On stack
+    u32    ls_itoa_t(s64 x, char *buff, u32 buffMax);
+    u32    ls_ftoa_t(f64 x, char *buff, u32 buffMax);
+    
     char   *ls_strstr(char *a, char *b);
     s64     ls_atoi(char *s, u32 len);
     f32     ls_atof(char *s, u32 len);
     s32     ls_strcmp(char *a, char *b);
     s32     ls_strncmp(char *a, char *b, u32 n);
     
+    //TODO: Add precision Modifiers to Floating Point Printing
     s32     ls_vsprintf(char *dest, const char *fmt, va_list argList);
     s32 	ls_sprintf(char *dest, const char *format, ...);
     s32     ls_vprintf(const char *fmt, va_list argList);
@@ -156,6 +163,7 @@ extern "C"
     u64  ls_readFile(char *Path, char **Dest, u32 bytesToRead);
     u64  ls_ReadFileByOffset(char *Path, char **Dest, u64 offset, u32 bytesToRead);
     u64  ls_writeFile(char *Path, void *Source, u32 bytesToWrite, b32 append);
+    b32  ls_fileExists(char *AbsPath);
     u32  ls_countFilesInDir(char *Dir);
     u32  ls_countFilesInDirByExt(char *Dir, char *ext);
     u32  ls_countFilesInDirRecursive(char *Dir);
@@ -353,7 +361,9 @@ ls_dangerousNotToBeCalledInitFunctionHere();
 #include <immintrin.h>
 
 #ifdef LS_PLAT_WINDOWS
+#ifndef __GNUG__
 #include <intrin.h>
+#endif
 #endif
 
 #ifdef LS_PLAT_LINUX
@@ -451,6 +461,47 @@ char *ls_itoa(s64 x)
     return Result;
 }
 
+u32 ls_itoa_t(s64 x, char *buff, u32 buffMax)
+{
+    char *Result = buff;
+    bool isNegative = x < 0;
+    s64 value = isNegative ? -x : x;
+    
+    if(buffMax < 2) { return 0; }
+    
+    if (value == 0)
+    {
+        Result[0] = '0'; Result[1] = '\0';
+        return 1;
+    }
+    
+    s32 i = 0;
+    while (value != 0)
+    {
+        if(i == buffMax) { return i; }
+        Result[i++] = value % 10 + '0';
+        value = value / 10;
+    }
+    
+    if (isNegative) { 
+        if(i == buffMax) { return i; }
+        Result[i++] = '-'; 
+    }
+    
+    if(i == buffMax) { return i; }
+    Result[i] = '\0';
+    
+    //Flip string, it's in reverse.
+    for (int t = 0; t < i / 2; t++)
+    {
+        Result[t] ^= Result[i - t - 1];
+        Result[i - t - 1] ^= Result[t];
+        Result[t] ^= Result[i - t - 1];
+    }
+    
+    return i;
+}
+
 char *ls_ftoa(f64 x)
 {
     char ResultBuffer[32] = {};
@@ -495,13 +546,60 @@ char *ls_ftoa(f64 x)
     BuffIdx += fractLen;
     
     
-    ls_free(&IntegerPart);
-    ls_free(&FractPart);
+    ls_free(IntegerPart);
+    ls_free(FractPart);
     
     char *Result = (char *)ls_alloc(sizeof(char) * BuffIdx);
     ls_memcpy(ResultBuffer, Result, BuffIdx);
     
     return Result;
+}
+
+u32 ls_ftoa_t(f64 x, char *buff, u32 buffMax)
+{
+    char *ResultBuffer = buff;
+    u32 BuffIdx = 0;
+    
+    char IntegerPart[32] = {};
+    u32 intLen = ls_itoa_t((int)x, IntegerPart, 32);
+    
+    char FractPart[32] = {};
+    u32 fractLen = 0;
+    
+    if(intLen >= buffMax) { return 0; }
+    
+    ls_memcpy(IntegerPart, ResultBuffer, intLen);
+    BuffIdx += intLen;
+    
+    f32 absX = (x < 0.0f) ? x*(-1.0f) : x;
+    if (absX < 1.0f)
+    {
+        s32 fractValue = s32((absX + 1.0f) * 1000000);
+        fractLen = ls_itoa_t(fractValue, FractPart, 32);
+    }
+    else if (x >= 10.0f)
+    {
+        f32 fixedX = (absX - (int)absX) + 1.0f;
+        s32 fractValue = s32(fixedX * 1000000);
+        fractLen = ls_itoa_t(fractValue, FractPart, 32);
+    }
+    else
+    {
+        s32 fractValue = s32(absX * 1000000);
+        fractLen = ls_itoa_t(fractValue, FractPart, 32);
+    }
+    
+    if(fractLen + intLen + 1 >= buffMax) { return 0; }
+    
+    //NOTE: If Integer is negative Integer part is gonna already
+    //Have the '-' prepended. No reason to add another one.
+    ResultBuffer[BuffIdx] = '.';
+    BuffIdx += 1;
+    
+    ls_memcpy(FractPart, ResultBuffer + BuffIdx, fractLen);
+    BuffIdx += fractLen;
+    
+    return BuffIdx;
 }
 
 s64 ls_atoi(char *s, u32 len)
@@ -514,7 +612,7 @@ s64 ls_atoi(char *s, u32 len)
     char *At = s;
     while(ls_isANumber(*At))
     {
-        if(numLen > len) { Assert(!"Bad String Passed to atoi"); }
+        if((numLen + 1) > len) { break; }
         At += 1; numLen += 1;
     }
     
@@ -701,10 +799,9 @@ s32 ls_strncmp(char *a, char *b, u32 n)
 u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite);
 u64 ls_readConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite);
 
-s32 ls_vsprintf(char *dest, const char *format, va_list argList)
+s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_list argList)
 {
-    const u32 buffSize = KB(1);
-    char buff[buffSize] = {};
+    char *buff = dest;
     
     const char *p = format;
     string s = {};
@@ -716,15 +813,22 @@ s32 ls_vsprintf(char *dest, const char *format, va_list argList)
     char c = 0;
     f32 nFloat = 0.0f;
     
+    s8 maxLen = -1;
+    
     s32 i = 0;
     for (p = format; *p != 0; p++)
     {
-        if(i >= buffSize)
+        //Reset Modifiers after every copied parameter
+        b32 isLong = FALSE;
+        maxLen = -1;
+        
+        if(i >= destLen)
         {
             Assert(FALSE);
             int BufferOverrun = 0;
         }
         
+        // Just copy wathever is not a passed parameter
         if (*p != '%')
         {
             buff[i] = *p;
@@ -732,7 +836,18 @@ s32 ls_vsprintf(char *dest, const char *format, va_list argList)
             continue;
         }
         
-        switch (*++p)
+        p += 1; //Skip the '%'
+        
+        //Now check for modifiers
+        if(*p == '.')
+        {
+            p += 1;
+            Assert(ls_isANumber(*p) && *p != '0');
+            maxLen = ls_ctoi(*p);
+            p += 1;
+        }
+        
+        switch (*p)
         {
             case 'l':
             isLong = TRUE;
@@ -770,11 +885,24 @@ s32 ls_vsprintf(char *dest, const char *format, va_list argList)
             
             case 'f':
             {
-                nFloat = (f32)va_arg(argList, f32);
+                nFloat = va_arg(argList, f64);
                 char *s = ls_ftoa(nFloat);
                 u32 sLen = ls_len(s);
-                ls_memcpy(s, buff + i, sLen);
-                i += sLen;
+                
+                u32 dotLen = 1;
+                while(s[dotLen-1] != '.') { dotLen++; }
+                
+                if(maxLen != -1 && maxLen < sLen - dotLen) 
+                {
+                    ls_memcpy(s, buff + i, dotLen + maxLen);
+                    i += dotLen + maxLen;
+                }
+                else 
+                {
+                    ls_memcpy(s, buff + i, sLen);
+                    i += sLen;
+                }
+                
                 ls_free(s);
             } break;
             
@@ -812,9 +940,19 @@ s32 ls_vsprintf(char *dest, const char *format, va_list argList)
     
     buff[i] = 0;
     i++;
-    ls_memcpy(buff, dest, i);
     
-    return (i - 1);
+    return i;
+}
+
+s32 ls_vsprintf(char *dest, const char *format, va_list argList)
+{
+    const u32 buffSize = KB(1);
+    char buff[buffSize] = {};
+    
+    s32 charactersWritten = ls_formatStringInternal_(format, buff, buffSize, argList);
+    ls_memcpy(buff, dest, charactersWritten);
+    
+    return charactersWritten - 1; //Remove NULL terminator
 }
 
 /* Write a formatted string to dest.
@@ -835,129 +973,15 @@ s32 ls_sprintf(char *dest, const char *format, ...)
 
 s32 ls_vprintf(const char *format, va_list argList)
 {
-    const u32 buffSize = KB(1);
+    const u32 buffSize = KB(4);
     char buff[buffSize] = {};
     
-    const char *p = format;
-    char *s_label = 0;
-    b32 isLong = FALSE;
-    b32 isUnsigned = FALSE;
-    
-    u64 uLongInt = 0;
-    s64 nInt = 0;
-    char c = 0;
-    f32 nFloat = 0.0f;
-    
-    s32 i = 0;
-    for (p = format; *p != 0; p++)
-    {
-        if(i >= buffSize)
-        {
-            Assert(FALSE);
-            int BufferOverrun = 0;
-        }
-        
-        
-        if (*p != '%')
-        {
-            buff[i] = *p;
-            i++;
-            continue;
-        }
-        
-        switch (*++p)
-        {
-            //@TODO THIS IS WRONG ON SO MANY LEVELS
-            case 'u':
-            isUnsigned = TRUE;
-            p++;
-            
-            case 'l':
-            isLong = TRUE;
-            p++;
-            
-            case 'd':
-            {
-                if(isLong)
-                { nInt = isUnsigned ? va_arg(argList, u64) : va_arg(argList, s64); }
-                else { nInt = (u64)va_arg(argList, s32); }
-                char *s = ls_itoa(nInt);
-                u32 sLen = ls_len(s);
-                ls_memcpy(s, buff + i, sLen);
-                i += sLen;
-                ls_free(s);
-            } break;
-            
-            case 'c':
-            {
-                if(*(p+1) == 's')
-                {
-                    s_label = va_arg(argList, char *);
-                    char *At = s_label;
-                    u32 labelLen = ls_len(s_label);
-                    ls_memcpy(s_label, buff + i, labelLen);
-                    i += labelLen;
-                    p += 1;
-                }
-                else
-                {
-                    c = va_arg(argList, int);
-                    *(buff + i) = c;
-                    i++;
-                }
-            }
-            break;
-            
-            case 'f':
-            {
-                nFloat = (f32)va_arg(argList, f64);
-                char *s = ls_ftoa(nFloat);
-                u32 sLen = ls_len(s);
-                ls_memcpy(s, buff + i, sLen);
-                i += sLen;
-                ls_free(s);
-            } break;
-            
-            case 's':
-            {
-                string tmp = va_arg(argList, string);
-                ls_memcpy(tmp.data, buff + i, tmp.len);
-                i += tmp.len;
-            }
-            break;
-            
-            case 'b':
-            {
-                s_label = va_arg(argList, char *);
-                u32 size = va_arg(argList, u32);
-                ls_memcpy(s_label, buff + i, size);
-                i += size;
-            } break;
-            
-            case 'p':
-            {
-                uLongInt = (u64)va_arg(argList, void *);
-                char *s = ls_itoa(uLongInt);
-                u32 sLen = ls_len(s);
-                ls_memcpy(s, buff + i, sLen);
-                i += sLen;
-                ls_free(s);
-            } break;
-            
-            case '%':
-            buff[i] = '%';
-            i++;
-            break;
-        }
-    }
-    
-    buff[i] = 0;
-    i++;
+    s32 charactersWritten = ls_formatStringInternal_(format, buff, buffSize, argList);
     
     //Write buffer to stdout file.
-    ls_writeConsole(LS_STDOUT, buff, i);
+    ls_writeConsole(LS_STDOUT, buff, charactersWritten);
     
-    return i;
+    return charactersWritten;
 }
 
 s32 ls_printf(const char *format, ...)
@@ -1066,6 +1090,13 @@ u64 ls_writeFile(char *Path, void *Source, u32 bytesToWrite, b32 append)
     
 #ifdef LS_PLAT_LINUX
     return linux_WriteFile(Path, Source, bytesToWrite);
+#endif
+}
+
+b32 ls_fileExists(char *AbsPath)
+{
+#ifdef LS_PLAT_WINDOWS
+    return windows_fileExists(AbsPath);
 #endif
 }
 
@@ -1221,9 +1252,9 @@ u64 ls_getUnix64Time()
 
 Date ls_getDateTime(b32 local)
 {
-    char *dayLookup[7] = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"};
+    const char *dayLookup[7] = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"};
     u32  dayLenLookup[7] = { 7, 8, 10, 9, 7, 9, 7 };
-    char *monthLookup[12] = {"January", "February", "March", "April", "May", "June",
+    const char *monthLookup[12] = {"January", "February", "March", "April", "May", "June",
         "July", "August", "September", "October", "November", "December",};
     u32  monthLenLookup[12] = { 8, 9, 6, 6, 4, 5, 5, 7, 10, 8, 9, 9 };
     
@@ -1237,11 +1268,9 @@ Date ls_getDateTime(b32 local)
     Result.minutes = wDate.Minute;
     Result.hour = wDate.Hour;
     Result.day = wDate.Day;
-    char *dayName = dayLookup[wDate.DayOfWeek];
-    ls_memcpy(dayName, Result.dayName, dayLenLookup[wDate.DayOfWeek]);
+    ls_memcpy((void *)dayLookup[wDate.DayOfWeek], Result.dayName, dayLenLookup[wDate.DayOfWeek]);
     Result.month = wDate.Month;
-    char *monthName = monthLookup[wDate.Month];
-    ls_memcpy(monthName, Result.monthName, monthLenLookup[wDate.Month]);
+    ls_memcpy((void *)monthLookup[wDate.Month], Result.monthName, monthLenLookup[wDate.Month]);
     Result.year = wDate.Year;
 #endif
     
@@ -1561,8 +1590,13 @@ u32 LeadingZeros32(u32 value)
 {
     unsigned long index = 0;
 #ifdef LS_PLAT_WINDOWS
+#ifdef __GNUG__
+    index = __builtin_clz(value);
+    return index;
+#else
     _BitScanReverse(&index, value);
     return 31 - index;
+#endif
 #endif
     
 #ifdef LS_PLAT_LINUX
@@ -1579,8 +1613,13 @@ u32 LeadingZeros64(u64 value)
 #else
     
 #ifdef LS_PLAT_WINDOWS
+#ifdef __GNUG__
+    index = __builtin_clz(value);
+    return index;
+#else
     _BitScanReverse64(&index, value);
     return 63 - index;
+#endif
 #endif
     
 #ifdef LS_PLAT_LINUX
@@ -1591,12 +1630,21 @@ u32 LeadingZeros64(u64 value)
 #endif
 }
 
+// 63 - bsr = clz
+// clz - 63 = - bsr
+// 63 - clz = bsr
+
 u32 HighestBitIdx32(u32 value)
 {
     unsigned long index = 0;
 #ifdef LS_PLAT_WINDOWS
+#ifdef __GNUG__
+    index = __builtin_clz(value);
+    return 31 - index;
+#else
     _BitScanReverse(&index, value);
     return index;
+#endif
 #endif
 }
 
@@ -1608,8 +1656,13 @@ u32 HighestBitIdx64(u64 value)
 #else
     
 #ifdef LS_PLAT_WINDOWS
+#ifdef __GNUG__
+    index = __builtin_clz(value);
+    return 63 - index;
+#else
     _BitScanReverse64(&index, value);
     return index;
+#endif
 #endif
     
 #endif
@@ -1620,9 +1673,9 @@ f32 Log2(u64 value)
     unsigned long index = 0;
 #ifdef LS_PLAT_WINDOWS
 #if _M_IX86
-    _BitScanReverse(&index, (u32)value);
+    index = HighestBitIdx32((u32)value);
 #else
-    _BitScanReverse64(&index, value);
+    index = HighestBitIdx64(value);
 #endif
 #endif
     
@@ -1688,7 +1741,11 @@ u16 ByteSwap16(u16 value)
 u32 ByteSwap32(u32 value)
 {
 #ifdef LS_PLAT_WINDOWS
+#ifdef __GNUG__
+    return __builtin_bswap32(value);
+#else
     return _byteswap_ulong(value);
+#endif
 #endif
     
 #ifdef LS_PLAT_LINUX
@@ -1699,7 +1756,11 @@ u32 ByteSwap32(u32 value)
 u64 ByteSwap64(u64 value)
 {
 #ifdef LS_PLAT_WINDOWS
+#ifdef __GNUG__
+    return __builtin_bswap64(value);
+#else
     return _byteswap_uint64(value);
+#endif
 #endif
     
 #ifdef LS_PLAT_LINUX
@@ -1709,11 +1770,17 @@ u64 ByteSwap64(u64 value)
 
 f32 Ceil(f32 v)
 {
+    
 #ifdef LS_PLAT_WINDOWS
+#ifdef __GNUG__
+    //Shit
+    return (int)(v+1);
+#else
     __m128 Result = _mm_set_ps1(v);
     Result = _mm_ceil_ps(Result);
     
     return (Result.m128_f32[0]);
+#endif
 #endif
     
 #ifdef LS_PLAT_LINUX

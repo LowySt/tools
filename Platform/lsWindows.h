@@ -46,6 +46,29 @@ struct windowsDate
 };
 
 
+LARGE_INTEGER __global_QueryPerfFreq;
+struct RegionTimer
+{
+    LARGE_INTEGER BeginRegion;
+    LARGE_INTEGER EndRegion;
+};
+
+#define RegionTimerBegin(T) QueryPerformanceCounter(&T.BeginRegion)
+#define RegionTimerEnd(T)   QueryPerformanceCounter(&T.EndRegion);
+#define RegionTimerGet(T)   \
+((T.EndRegion.QuadPart - T.BeginRegion.QuadPart) / __global_QueryPerfFreq.QuadPart)
+
+#ifdef _DEBUG
+#define DebugTimerBegin(T) QueryPerformanceCounter(&T.BeginRegion)
+#define DebugTimerEnd(T)   QueryPerformanceCounter(&T.EndRegion);
+#define DebugTimerGet(T)   \
+((T.EndRegion.QuadPart - T.BeginRegion.QuadPart) / __global_QueryPerfFreq.QuadPart)
+#else
+#define DebugTimerBegin(T)
+#define DebugTimerEnd(T)
+#define DebugTimerGet(T) 0
+#endif
+
 //NOTE: Memory System
 #define MAX_ARENA_NUM 256
 
@@ -115,6 +138,7 @@ extern "C"
 	u64 windows_ReadFile(char *Path, char **Dest, u32 bytesToRead);
     u64 windows_ReadFileByOffset(char *Path, char **Dest, u32 offset, u32 bytesToRead);
 	u64 windows_WriteFile(char *Path, char *source, u32 bytesToWrite, b32 append);
+    b32 windows_fileExists(char *AbsPath);
     u32 windows_countFilesInDir(char *Dir, u32 dirLen);
     u32 windows_countFilesInDirByExt(char *Dir, u32 dirLen, char *ext, u32 extLen);
     u32 windows_countFilesInDirRecursive(char *Dir, u32 dirLen);
@@ -136,6 +160,7 @@ extern "C"
 	windowsDate windows_GetDate(b32 localTime); /*If param is false UTC time is retrieved*/
 	void windows_setupWindow(WindowInfo *Input);
     
+    void windows_initRegionTimer();
     void windows_sleep(u64 milliseconds);
 };
 
@@ -405,6 +430,12 @@ void *windows_memAlloc(size_t size)
         //TODO: Add Merging
         //if(curr->curSlices == curr->maxSlices) {};
         //TODO: Add Merging
+        
+        //NOTE:TODO: 24/08/2020 Gotten into a bug, I think that maxSlices
+        // Shouldn't be ignored, as it is right now???
+        // So gonna skip any block that has reached curSlices == maxSlices
+        if(curr->curSlices == curr->maxSlices) { continue; }
+        
         
         MemoryList *free = curr->free;
         Assert(free != 0x0);
@@ -720,12 +751,12 @@ u64 windows_WriteFile(char *Path, char *source, u32 bytesToWrite, b32 append)
             if ((FileHandle = CreateFileA(Path, fileAccessRights, FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
             {
                 DWORD Error = GetLastError();
-                ls_printf("Gotten Error %ld when creating file handle to file: %s\n", Error, Path);
+                ls_printf("Gotten Error %ld when creating file handle to file: %cs\n", Error, Path);
             }
         }
         else
         {
-            ls_printf("Gotten Error %ld when creating file handle to file: %s\n", Error, Path);
+            ls_printf("Gotten Error %ld when creating file handle to file: %cs\n", Error, Path);
         }
     }
     
@@ -733,12 +764,24 @@ u64 windows_WriteFile(char *Path, char *source, u32 bytesToWrite, b32 append)
     if (WriteFile(FileHandle, source, (DWORD)bytesToWrite, &BytesWritten, NULL) == FALSE)
     {
         DWORD Error = GetLastError();
-        ls_printf("Gotten Error %ld when writing to file %s\n", Error, Path);
+        ls_printf("Gotten Error %ld when writing to file %cs\n", Error, Path);
     }
     
     CloseHandle(FileHandle);
     
     return 0;
+}
+
+b32 windows_fileExists(char *AbsPath)
+{
+    WIN32_FIND_DATAA FindFileData;
+    HANDLE handle = FindFirstFileA(AbsPath, &FindFileData);
+    
+    b32 found = FALSE;
+    if(handle != INVALID_HANDLE_VALUE) { found = TRUE; }
+    
+    if(found) { FindClose(handle); }
+    return found;
 }
 
 u32 windows_countFilesInDir(char *Dir, u32 dirLen)
@@ -1180,13 +1223,40 @@ windowsDate windows_GetDate(b32 localTime)
     return result;
 }
 
+// --------------------- //
+// --- TIMER  SYSTEM --- //
+// --------------------- //
+
+//NOTE:TODO: Make Precision modifiable?
+void windows_initRegionTimer()
+{
+    BOOL Result = QueryPerformanceFrequency(&__global_QueryPerfFreq);
+    if(Result == 0) 
+    { 
+        Assert(FALSE);
+    }
+    //NOTE: We count with a precision of 0.1 milliseconds
+    __global_QueryPerfFreq.QuadPart /= 1000*10;
+}
+
 void windows_sleep(u64 milliseconds)
 {
     Sleep(milliseconds);
     return;
 }
 
+
+
+
+//
+// BULLSHIT
+// 
+
+
+
 #ifdef I_WANT_GRAPHICS
+
+#include "lsGraphics.h"
 
 void windows_setupWindow(WindowInfo *In)
 {
@@ -1236,6 +1306,9 @@ void windows_setupWindow(WindowInfo *In)
 }
 
 #ifdef OPENGL_GRAPHICS
+
+#include "OpenGL\glHelperFunctions.h"
+#include "OpenGL\ls_OpenGL.h"
 
 void windows_setupOpenGLContext(WindowInfo *In)
 {

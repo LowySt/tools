@@ -62,24 +62,29 @@ extern "C" //STRINGS
     
     
     //Merge
-    string  ls_concat(string s1, string s2);
-    string  ls_catChar(string s1, char c);
-    string  ls_catCStr(string s1, char *c);
-    string  ls_prepend(string s1, string s2);
-    string  ls_prependChar(string s, char c);
-    string  ls_prependCStr(string s, char *c);
-    void    ls_append(string *s1, string s2);
-    void    ls_appendChar(string *s1, char c);
-    void    ls_appendCStr(string *s1, char *c);
+    string  ls_strConcat(string s1, string s2);
+    void    ls_strConcatOn(string s1, string s2, string *out);
+    string  ls_strCatChar(string s1, char c);
+    string  ls_strCatCStr(string s1, char *c);
+    void    ls_strPrepend(string *s1, string s2);
+    void    ls_strPrependChar(string *s, char c);
+    void    ls_strPrependCStr(string *s, char *c);
+    void    ls_strAppend(string *s1, string s2);
+    void    ls_strAppendView(string *s1, view v);
+    void    ls_strAppendChar(string *s1, char c);
+    void    ls_strAppendCStr(string *s1, char *c);
+    void    ls_strAppendNCStr(string *s1, char *c, u32 len);
     
     
     //To/From Data
     b32     ls_strIsANumber(string s);
     string  ls_itos(s64 x);
+    void    ls_itosOn(s64 x, string *out);
     string  ls_itoh(u64 x);
     s64     ls_stoi(string s);
     f32	 ls_stof(string s);
     string  ls_ftos(f32 x);
+    
     
     //Operator
     b32     operator==(string s1, string s2);
@@ -323,7 +328,7 @@ void ls_strRmAllNonTextChar(string *s)
             }
         }
         
-        ls_appendChar(Result, c);
+        ls_strAppendChar(Result, c);
     }
     
     ls_free(s->data);
@@ -619,7 +624,7 @@ u32 ls_strRightFind(string s, char c)
 //------------------//
 //      Merge       //
 
-string ls_concat(string s1, string s2)
+string ls_strConcat(string s1, string s2)
 {
     string Result = ls_strAlloc(s1.len + s2.len);
     if(s1.len) { ls_memcpy(s1.data, Result.data, s1.len); }
@@ -629,7 +634,18 @@ string ls_concat(string s1, string s2)
     return Result;
 }
 
-string ls_catChar(string s, char c)
+void ls_strConcatOn(string s1, string s2, string *out)
+{
+    if(out == 0x0) return;
+    if(out->data == 0x0) return;
+    if(out->size < (s1.len + s2.len)) { return; }
+    
+    if(s1.len) { ls_memcpy(s1.data, out->data, s1.len); }
+    if(s2.len) { ls_memcpy(s2.data, out->data + s1.len, s2.len); }
+    out->len = s1.len + s2.len;
+}
+
+string ls_strCatChar(string s, char c)
 {
     string Result = ls_strAlloc(s.len + 1);
     if(s.len) { ls_memcpy(s.data, Result.data, s.len); }
@@ -639,7 +655,7 @@ string ls_catChar(string s, char c)
     return Result;
 }
 
-string ls_catCStr(string s1, char *s2)
+string ls_strCatCStr(string s1, char *s2)
 {
     u32 s2Len = ls_len(s2);
     
@@ -651,43 +667,85 @@ string ls_catCStr(string s1, char *s2)
     return Result;
 }
 
-string ls_prepend(string s1, string s2)
+void ls_strPrepend(string *s1, string s2)
 {
-    string Result = ls_strAlloc(s1.len + s2.len);
-    ls_memcpy(s2.data, Result.data, s2.len);
-    ls_memcpy(s1.data, Result.data + s2.len, s1.len);
-    Result.len = s1.len + s2.len;
+    Assert(s1);
+    Assert(s1->data);
+    Assert(s2.data);
     
-    return Result;
+    if(s1->len + s2.len > s1->size)
+    {
+        u32 growSize = ((s1->len + s2.len) - s1->size) + 32;
+        ls_strGrow(s1, growSize);
+    }
+    
+    //NOTE: TODO: Backwards memcpy
+    u32 cpySize = s1->len;
+    char *At = s1->data + s1->len - 1;
+    char *To = s1->data + s1->len + s2.len - 1;
+    while(cpySize--)
+    {
+        *To = *At;
+        At--;
+        To--;
+    }
+    ls_memcpy(s2.data, s1->data, s2.len);
+    s1->len = s1->len + s2.len;
 }
 
-string ls_prependChar(string s, char c)
+void ls_strPrependChar(string *s1, char c)
 {
-    string Result = ls_strAlloc(s.len + 1);
-    Result.data[0] = c;
-    ls_memcpy(s.data, Result.data + 1, s.len);
-    Result.len = s.len + 1;
+    Assert(s1);
+    Assert(s1->data);
     
-    return Result;
+    if(s1->len + 1 > s1->size)
+    { ls_strGrow(s1, 32); }
+    
+    //NOTE: TODO: Backwards memcpy
+    u32 cpySize = s1->len;
+    char *At = s1->data + s1->len - 1;
+    char *To = s1->data + s1->len;
+    while(cpySize--)
+    {
+        *To = *At;
+        At--;
+        To--;
+    }
+    ls_memcpy(s1->data, s1->data + 1, s1->len);
+    
+    s1->data[0] = c;
+    s1->len += 1;
 }
 
-string ls_prependCStr(string s1, char *s2)
+void ls_strPrependCStr(string *s1, char *s2)
 {
+    Assert(s1);
+    Assert(s2);
+    Assert(s1->data);
+    
     u32 s2Len = ls_len(s2);
     
-    string Result = ls_strAlloc(s1.len + s2Len);
-    ls_memcpy(s2, Result.data, s2Len);
-    ls_memcpy(s1.data, Result.data + s2Len, s1.len);
-    Result.len = s1.len + s2Len;
+    if(s1->len + s2Len > s1->size)
+    {
+        u32 growSize = ((s1->len + s2Len) - s1->size) + 32;
+        ls_strGrow(s1, growSize);
+    }
     
-    return Result;
+    ls_memcpy(s1->data, s1->data + s2Len, s1->len);
+    ls_memcpy(s2, s1->data, s2Len);
+    s1->len = s1->len + s2Len;
 }
 
 //@NOTE:TODO: Something strange appening in strings appending and getting longer
 //Looks like memory stomping. Not quite sure how it would happen, since the grow
 //seems to be good. - 29/04/2019
-void ls_append(string *s1, string s2)
+void ls_strAppend(string *s1, string s2)
 {
+    //NOTE: Do I want these asserts?
+    Assert(s1);
+    Assert(s1->data);
+    Assert(s2.data);
+    
     if(s1->len + s2.len > s1->size)
     {
         u32 growSize = ((s1->len + s2.len) - s1->size) + 32;
@@ -698,8 +756,28 @@ void ls_append(string *s1, string s2)
     s1->len += s2.len;
 }
 
-void ls_appendChar(string *s1, char c)
+void ls_strAppendView(string *s, view v)
 {
+    //NOTE: Do I want these asserts?
+    Assert(s);
+    Assert(s->data);
+    
+    if(s->len + v.s.len > s->size)
+    {
+        u32 growSize = ((s->len + v.s.len) - s->size) + 32;
+        ls_strGrow(s, growSize);
+    }
+    
+    ls_memcpy(v.s.data, s->data + s->len, v.s.len);
+    s->len += v.s.len;
+}
+
+void ls_strAppendChar(string *s1, char c)
+{
+    //NOTE: Do I want these asserts?
+    Assert(s1);
+    Assert(s1->data);
+    
     if(s1->len + 1 > s1->size)
     { ls_strGrow(s1, 32); }
     
@@ -707,9 +785,19 @@ void ls_appendChar(string *s1, char c)
     s1->len += 1;
 }
 
-void ls_appendCStr(string *s1, char *c)
+void ls_strAppendCStr(string *s1, char *c)
 {
-    u32 s2Len = ls_len(c);
+    u32 len = ls_len(c);
+    ls_strAppendNCStr(s1, c, len);
+}
+
+void ls_strAppendNCStr(string *s1, char *c, u32 s2Len)
+{
+    //NOTE: Do I want these asserts?
+    Assert(s1);
+    Assert(c);
+    Assert(s1->data);
+    
     if(s1->len + s2Len > s1->size)
     {
         u32 growSize = ((s1->len + s2Len) - s1->size) + 32;
@@ -740,16 +828,27 @@ b32 ls_strIsANumber(string s)
 
 string ls_itos(s64 x)
 {
-    char *Result = 0;
+    string result = ls_strAlloc(32);
+    ls_itosOn(x, &result);
+    return result;
+}
+
+void ls_itosOn(s64 x, string *out)
+{
+    Assert(out != 0x0);
+    Assert(out->data != 0x0);
+    Assert(out->size > 20);
+    
     bool isNegative = x < 0;
     s64 value = isNegative ? -x : x;
     
     if (value == 0)
     {
-        Result = (char *)ls_alloc(2);
-        Result[0] = '0'; Result[1] = '\0';
-        string R = {Result, 1, 2};
-        return R;
+        out->data[0] = '0';
+        out->data[1] = '\0';
+        out->len = 1;
+        
+        return;
     }
     
     //My Log10 Function is not super precise at the boundaries between values i.e. 999999 - 1000000. So just to be sure, I give it an extra byte, which is super fine.
@@ -762,17 +861,17 @@ string ls_itos(s64 x)
     //Update few days later: Fuck it I'm changing this shitty Log10 functions that sucks freakin balls.
     
     //@TODO @CLEANUP @FIXME: Make a Log2 / Log10 / LOGN Function Tables so that I quit having this stupid shitty problem. (Or maybe see if theres cool ASM for them)
-    Result = (char *)ls_alloc(128);
+    
     s32 i = 0;
     
     while (value != 0)
     {
-        Result[i++] = value % 10 + '0';
+        out->data[i++] = value % 10 + '0';
         value = value / 10;
     }
     
-    if (isNegative) { Result[i++] = '-'; }
-    Result[i] = '\0';
+    if (isNegative) { out->data[i++] = '-'; }
+    out->data[i] = '\0';
     
     //@TODO@Speed Never build the string flipped!
     //(Still would need an approx of size.)
@@ -780,14 +879,11 @@ string ls_itos(s64 x)
     //Flip string, it's in reverse.
     for (int t = 0; t < i / 2; t++)
     {
-        Result[t] ^= Result[i - t - 1];
-        Result[i - t - 1] ^= Result[t];
-        Result[t] ^= Result[i - t - 1];
+        out->data[t] ^= out->data[i - t - 1];
+        out->data[i - t - 1] ^= out->data[t];
+        out->data[t] ^= out->data[i - t - 1];
     }
-    
-    string R = {Result, (u32)i, 128};
-    
-    return R;
+    out->len = (u32)i;
 }
 
 string ls_itoh(u64 x)
@@ -803,42 +899,42 @@ string ls_itoh(u64 x)
         
         switch(lowNybble)
         {
-            case 0:  ls_appendChar(&buffer, '0'); break;
-            case 1:  ls_appendChar(&buffer, '1'); break;
-            case 2:  ls_appendChar(&buffer, '2'); break;
-            case 3:  ls_appendChar(&buffer, '3'); break;
-            case 4:  ls_appendChar(&buffer, '4'); break;
-            case 5:  ls_appendChar(&buffer, '5'); break;
-            case 6:  ls_appendChar(&buffer, '6'); break;
-            case 7:  ls_appendChar(&buffer, '7'); break;
-            case 8:  ls_appendChar(&buffer, '8'); break;
-            case 9:  ls_appendChar(&buffer, '9'); break;
-            case 10: ls_appendChar(&buffer, 'A'); break;
-            case 11: ls_appendChar(&buffer, 'B'); break;
-            case 12: ls_appendChar(&buffer, 'C'); break;
-            case 13: ls_appendChar(&buffer, 'D'); break;
-            case 14: ls_appendChar(&buffer, 'E'); break;
-            case 15: ls_appendChar(&buffer, 'F'); break;
+            case 0:  ls_strAppendChar(&buffer, '0'); break;
+            case 1:  ls_strAppendChar(&buffer, '1'); break;
+            case 2:  ls_strAppendChar(&buffer, '2'); break;
+            case 3:  ls_strAppendChar(&buffer, '3'); break;
+            case 4:  ls_strAppendChar(&buffer, '4'); break;
+            case 5:  ls_strAppendChar(&buffer, '5'); break;
+            case 6:  ls_strAppendChar(&buffer, '6'); break;
+            case 7:  ls_strAppendChar(&buffer, '7'); break;
+            case 8:  ls_strAppendChar(&buffer, '8'); break;
+            case 9:  ls_strAppendChar(&buffer, '9'); break;
+            case 10: ls_strAppendChar(&buffer, 'A'); break;
+            case 11: ls_strAppendChar(&buffer, 'B'); break;
+            case 12: ls_strAppendChar(&buffer, 'C'); break;
+            case 13: ls_strAppendChar(&buffer, 'D'); break;
+            case 14: ls_strAppendChar(&buffer, 'E'); break;
+            case 15: ls_strAppendChar(&buffer, 'F'); break;
         }
         
         switch(highNybble)
         {
-            case 0:  ls_appendChar(&buffer, '0'); break;
-            case 1:  ls_appendChar(&buffer, '1'); break;
-            case 2:  ls_appendChar(&buffer, '2'); break;
-            case 3:  ls_appendChar(&buffer, '3'); break;
-            case 4:  ls_appendChar(&buffer, '4'); break;
-            case 5:  ls_appendChar(&buffer, '5'); break;
-            case 6:  ls_appendChar(&buffer, '6'); break;
-            case 7:  ls_appendChar(&buffer, '7'); break;
-            case 8:  ls_appendChar(&buffer, '8'); break;
-            case 9:  ls_appendChar(&buffer, '9'); break;
-            case 10: ls_appendChar(&buffer, 'A'); break;
-            case 11: ls_appendChar(&buffer, 'B'); break;
-            case 12: ls_appendChar(&buffer, 'C'); break;
-            case 13: ls_appendChar(&buffer, 'D'); break;
-            case 14: ls_appendChar(&buffer, 'E'); break;
-            case 15: ls_appendChar(&buffer, 'F'); break;
+            case 0:  ls_strAppendChar(&buffer, '0'); break;
+            case 1:  ls_strAppendChar(&buffer, '1'); break;
+            case 2:  ls_strAppendChar(&buffer, '2'); break;
+            case 3:  ls_strAppendChar(&buffer, '3'); break;
+            case 4:  ls_strAppendChar(&buffer, '4'); break;
+            case 5:  ls_strAppendChar(&buffer, '5'); break;
+            case 6:  ls_strAppendChar(&buffer, '6'); break;
+            case 7:  ls_strAppendChar(&buffer, '7'); break;
+            case 8:  ls_strAppendChar(&buffer, '8'); break;
+            case 9:  ls_strAppendChar(&buffer, '9'); break;
+            case 10: ls_strAppendChar(&buffer, 'A'); break;
+            case 11: ls_strAppendChar(&buffer, 'B'); break;
+            case 12: ls_strAppendChar(&buffer, 'C'); break;
+            case 13: ls_strAppendChar(&buffer, 'D'); break;
+            case 14: ls_strAppendChar(&buffer, 'E'); break;
+            case 15: ls_strAppendChar(&buffer, 'F'); break;
         }
         At++;
     }
@@ -846,7 +942,7 @@ string ls_itoh(u64 x)
     buffer.data[buffer.len] = 0;
     ls_strReverse(&buffer);
     
-    ls_appendCStr(&Result, "0x");
+    ls_strAppendCStr(&Result, (char*)"0x");
     
     while(true)
     {
@@ -857,7 +953,7 @@ string ls_itoh(u64 x)
         { ls_strRmSubstr(&buffer, 0, 1); }
     }
     
-    string P = ls_concat(Result, buffer);
+    string P = ls_strConcat(Result, buffer);
     ls_strNullTerminate(&P);
     
     ls_strFree(&buffer);
@@ -910,6 +1006,16 @@ b32 operator==(string s1, char *v)
     u32 len = ls_len(v);
     if(s1.len != len) { return FALSE; }
     return ls_memcmp(s1.data, v, s1.len);
+}
+
+b32 operator==(string s1, const char *v)
+{
+    //NOTE: Maybe shouldn't do this, but it's fine
+    char *unConsted = (char *)v;
+    
+    u32 len = ls_len(unConsted);
+    if(s1.len != len) { return FALSE; }
+    return ls_memcmp(s1.data, unConsted, s1.len);
 }
 
 b32 operator==(string s, char v)
