@@ -4,6 +4,9 @@
 #include "win32.h"
 #include "lsCRT.h"
 
+//TODO: Make size = -1 meaning undefined, and size = 0, meaning a constant string,
+//      to allow the string functions to know if they're dealing with constant strings or not.
+
 //NOTE: The minus 1 is to ignore the NULL terminator at the end of string literals.
 #define ls_strConst(s) {s, sizeof(s)/sizeof(s[0])-1, sizeof(s)/sizeof(s[0])-1}
 

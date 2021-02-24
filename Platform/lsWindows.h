@@ -4,7 +4,9 @@
 #define LS_PLAT_WINDOWS
 #include "win32.h"
 
+#ifndef LS_CRT_H
 #include "lsCRT.h"
+#endif
 
 //Really don't have time to fukin fight with includes...
 #pragma region GL TYPES
