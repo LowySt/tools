@@ -17,8 +17,9 @@ extern "C"
     buffer ls_bufferInit(u64 bufferSize);
     buffer ls_bufferViewIntoPtr(void *arr, u64 arrSize);
     buffer ls_bufferFromPtrArray(void *arr, u64 arrSize);
-    void   ls_clearBuffer(buffer *buff);
-    void   ls_destroyBuffer(buffer *buff);
+    buffer ls_bufferInitFromFile(string path);
+    void   ls_bufferClear(buffer *buff);
+    void   ls_bufferDestroy(buffer *buff);
     
     void   ls_bufferSetCursorBegin(buffer *buff);
     void   ls_bufferSetCursorEnd(buffer *buff);
@@ -98,14 +99,25 @@ buffer ls_bufferFromPtrArray(void *arr, u64 arrSize)
     return Result;
 }
 
-void ls_clearBuffer(buffer *buff)
+buffer ls_bufferInitFromFile(string path)
+{
+    buffer Result = {};
+    
+    //TODO: Error checking
+    u64 readSize = ls_readFile(path.data, (char **)&Result.data, 0);
+    Result.size = readSize;
+    
+    return Result;
+}
+
+void ls_bufferClear(buffer *buff)
 {
     buff->data   = 0;
     buff->size   = 0;
     buff->cursor = 0;
 }
 
-void ls_destroyBuffer(buffer *buff)
+void ls_bufferDestroy(buffer *buff)
 {
     ls_free(buff->data);
     buff->size   = 0;
