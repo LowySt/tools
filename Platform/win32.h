@@ -586,27 +586,27 @@ SYNCHRONIZE)
     typedef BOOL				*LPBOOL;
     typedef BYTE				*PBYTE;
     typedef BYTE				*LPBYTE;
-    typedef int					*PINT;
-    typedef int					*LPINT;
+    typedef int				 *PINT;
+    typedef int				 *LPINT;
     typedef WORD				*PWORD;
     typedef WORD				*LPWORD;
     typedef long				*LPLONG;
-    typedef DWORD				*PDWORD;
-    typedef DWORD				*LPDWORD;
+    typedef DWORD			   *PDWORD;
+    typedef DWORD			   *LPDWORD;
     typedef void				*LPVOID;
-    typedef CONST void			*LPCVOID;
+    typedef CONST void		  *LPCVOID;
     
     typedef UINT_PTR            WPARAM;
     typedef LONG_PTR            LPARAM;
     typedef LONG_PTR            LRESULT;
-    typedef ULONG_PTR			DWORD_PTR, *PDWORD_PTR;
+    typedef ULONG_PTR		   DWORD_PTR, *PDWORD_PTR;
     
     typedef int                 INT;
     typedef unsigned int        UINT;
     typedef unsigned int        *PUINT;
     
-    typedef long                          __time32_t;
-    typedef __int64                       __time64_t;
+    typedef long                __time32_t;
+    typedef __int64             __time64_t;
     
     typedef wchar_t WCHAR;    // wc,   16-bit UNICODE character
     
@@ -798,7 +798,7 @@ SYNCHRONIZE)
         DECLARE_HANDLE(HDC);
         DECLARE_HANDLE(HGLRC);
         DECLARE_HANDLE(HMODULE);
-        
+        DECLARE_HANDLE(HKL);
         //
         // Function Pointers
         //
@@ -2712,8 +2712,8 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         typedef LRESULT (*HOOKPROC)(int, WPARAM, LPARAM);
         typedef HANDLE HHOOK;
         
-        HHOOK SetWindowsHookExA(int idHook, HOOKPROC lpfn, HINSTANCE hmod, DWORD dwThreadId);
-        LRESULT CallNextHookEx(HHOOK hhk, int nCode, WPARAM wParam, LPARAM lParam);
+        HHOOK    SetWindowsHookExA(int idHook, HOOKPROC lpfn, HINSTANCE hmod, DWORD dwThreadId);
+        LRESULT  CallNextHookEx(HHOOK hhk, int nCode, WPARAM wParam, LPARAM lParam);
         /* ---------------------------- */
         /* High Level Window Management */
         /* ---------------------------- */
@@ -2724,64 +2724,66 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         typedef BOOL (*WINSTAENUMPROCA)(LPSTR, LPARAM);
         typedef BOOL (*WNDENUMPROC)(HWND, LPARAM);
         
-        HWINSTA       GetProcessWindowStation();
-        HWINSTA       OpenWindowStationA(LPCSTR lpszWinSta, BOOL fInherit, ACCESS_MASK dwDesiredAccess);
+        HWINSTA  GetProcessWindowStation();
+        HWINSTA  OpenWindowStationA(LPCSTR lpszWinSta, BOOL fInherit, ACCESS_MASK dwDesiredAccess);
         
-        BOOL          EnumWindowStationsA(WINSTAENUMPROCA lpEnumFunc, LPARAM lParam);
+        BOOL     EnumWindowStationsA(WINSTAENUMPROCA lpEnumFunc, LPARAM lParam);
         
-        BOOL          EnumDesktopsA(HWINSTA hwinsta, DESKTOPENUMPROCA lpEnumFunc, LPARAM lParam);
-        HDESK         OpenDesktopA(LPCSTR lpszDesktop, DWORD dwFlags, BOOL fInherit, ACCESS_MASK dwDesiredAccess);
+        BOOL     EnumDesktopsA(HWINSTA hwinsta, DESKTOPENUMPROCA lpEnumFunc, LPARAM lParam);
+        HDESK    OpenDesktopA(LPCSTR lpszDesktop, DWORD dwFlags, BOOL fInherit, ACCESS_MASK dwDesiredAccess);
         
-        BOOL          EnumDesktopWindows(HDESK hDesktop, WNDENUMPROC lpfn, LPARAM lParam);
+        BOOL     EnumDesktopWindows(HDESK hDesktop, WNDENUMPROC lpfn, LPARAM lParam);
         
-        HDESK         CreateDesktopExA(LPCSTR lpszDesktop, LPCSTR lpszDevice, DEVMODEA *pDevmode, DWORD dwFlags, ACCESS_MASK dwDesiredAccess, LPSECURITY_ATTRIBUTES lpsa, ULONG ulHeapSize, PVOID pvoid);
-        BOOL          SwitchDesktop(HDESK hDesktop);
+        HDESK    CreateDesktopExA(LPCSTR lpszDesktop, LPCSTR lpszDevice, DEVMODEA *pDevmode, DWORD dwFlags, ACCESS_MASK dwDesiredAccess, LPSECURITY_ATTRIBUTES lpsa, ULONG ulHeapSize, PVOID pvoid);
+        BOOL     SwitchDesktop(HDESK hDesktop);
         
         
         /* --------------------------- */
         /* Low Level Window Management */
         /* --------------------------- */
         
-        WINUSERAPI    BOOL        WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
-        WINUSERAPI    BOOL		WINAPI PeekMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
-        WINUSERAPI	BOOL		WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
-        WINUSERAPI	BOOL		WINAPI GetMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
-        WINUSERAPI    LRESULT     WINAPI SendMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-        WINUSERAPI    LRESULT     WINAPI SendMessageW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-        WINUSERAPI    BOOL		WINAPI TranslateMessage(CONST MSG *lpMsg);
-        WINUSERAPI	LRESULT	 WINAPI DispatchMessageA(CONST MSG *lpMsg);
-        WINUSERAPI	LRESULT	 WINAPI DispatchMessageW(CONST MSG *lpMsg);
-        WINUSERAPI    LRESULT	 WINAPI DefWindowProcA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-        WINUSERAPI    LRESULT     WINAPI CallWindowProcA(WNDPROC lpPrevWndFunc, HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-        WINUSERAPI    LRESULT     WINAPI CallWindowProcW(WNDPROC lpPrevWndFunc, HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-        WINUSERAPI    LONG        WINAPI GetWindowLongA(HWND hWnd, int  nIndex);
-        WINUSERAPI    LONG_PTR    WINAPI SetWindowLongPtrA(HWND hWnd, int nIndex, LONG_PTR dwNewLong);
-        WINUSERAPI    LONG_PTR    WINAPI SetWindowLongPtrW(HWND hWnd, int nIndex, LONG_PTR dwNewLong);
+        BOOL     PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
+        BOOL     PeekMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
+        BOOL     GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
+        BOOL     GetMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
+        LRESULT  SendMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+        LRESULT  SendMessageW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+        BOOL     TranslateMessage(CONST MSG *lpMsg);
+        LRESULT  DispatchMessageA(CONST MSG *lpMsg);
+        LRESULT  DispatchMessageW(CONST MSG *lpMsg);
+        LRESULT  DefWindowProcA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+        LRESULT  CallWindowProcA(WNDPROC lpPrevWndFunc, HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+        LRESULT  CallWindowProcW(WNDPROC lpPrevWndFunc, HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+        LONG     GetWindowLongA(HWND hWnd, int  nIndex);
+        LONG_PTR SetWindowLongPtrA(HWND hWnd, int nIndex, LONG_PTR dwNewLong);
+        LONG_PTR SetWindowLongPtrW(HWND hWnd, int nIndex, LONG_PTR dwNewLong);
         
-        WINUSERAPI	BOOL		WINAPI PostMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-        WINUSERAPI	VOID		WINAPI PostQuitMessage(int nExitCode);
-        WINUSERAPI	BOOL		WINAPI DestroyWindow(HWND hWnd);
-        WINUSERAPI	HWND		WINAPI GetActiveWindow(void);
-        WINUSERAPI    HWND        WINAPI GetForegroundWindow(void);
-        WINUSERAPI    HWND        WINAPI GetDesktopWindow();
-        WINUSERAPI    BOOL        WINAPI GetWindowInfo(HWND hwnd, PWINDOWINFO pwi);
-        WINUSERAPI    BOOL        WINAPI GetWindowRect(HWND hWnd, LPRECT lpRect);
-        WINUSERAPI	BOOL		WINAPI GetClientRect(HWND hWnd, LPRECT lpRect);
-        WINUSERAPI    BOOL        WINAPI UpdateWindow(HWND hWnd);
-        WINUSERAPI    BOOL        WINAPI RedrawWindow(HWND hWnd, const RECT *lprcUpdate, HRGN hrgnUpdate, UINT flags);
-        WINUSERAPI    BOOL        WINAPI InvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase);
-        WINUSERAPI    VOID        WINAPI ExitProcess(UINT uExitCode);
+        BOOL     PostMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+        VOID     PostQuitMessage(int nExitCode);
+        BOOL     DestroyWindow(HWND hWnd);
+        HWND     GetActiveWindow(void);
+        HWND     GetForegroundWindow(void);
+        HWND     GetDesktopWindow();
+        BOOL     GetWindowInfo(HWND hwnd, PWINDOWINFO pwi);
+        BOOL     GetWindowRect(HWND hWnd, LPRECT lpRect);
+        BOOL     GetClientRect(HWND hWnd, LPRECT lpRect);
+        BOOL     UpdateWindow(HWND hWnd);
+        BOOL     RedrawWindow(HWND hWnd, const RECT *lprcUpdate, HRGN hrgnUpdate, UINT flags);
+        BOOL     InvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase);
+        VOID     ExitProcess(UINT uExitCode);
         
-        WINUSERAPI    HCURSOR     WINAPI LoadCursorA(HINSTANCE hInstance, LPCSTR lpCursorName);
-        WINUSERAPI    HCURSOR     WINAPI LoadCursorW(HINSTANCE hInstance, LPCWSTR lpCursorName);
-        WINUSERAPI	HWND		WINAPI SetCapture(HWND hWnd);
-        WINUSERAPI	BOOL		WINAPI ReleaseCapture(void);
-        WINUSERAPI	BOOL		WINAPI GetCursorPos(LPPOINT lpPoint);
-        WINUSERAPI	BOOL		WINAPI SetCursorPos(int X, int Y);
-        WINUSERAPI    int         WINAPI ShowCursor(BOOL bShow);
-        WINUSERAPI	BOOL		WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint);
-        WINUSERAPI    BOOL        WINAPI DragDetect(HWND hwnd, POINT pt);
-        WINUSERAPI    BOOL        WINAPI MoveWindow(HWND hWnd, int X, int Y, int nWidth, int nHeight, BOOL bRepaint);
+        HCURSOR  LoadCursorA(HINSTANCE hInstance, LPCSTR lpCursorName);
+        HCURSOR  LoadCursorW(HINSTANCE hInstance, LPCWSTR lpCursorName);
+        HWND     SetCapture(HWND hWnd);
+        BOOL     ReleaseCapture(void);
+        BOOL     GetCursorPos(LPPOINT lpPoint);
+        BOOL     SetCursorPos(int X, int Y);
+        int      ShowCursor(BOOL bShow);
+        BOOL     ScreenToClient(HWND hWnd, LPPOINT lpPoint);
+        BOOL     DragDetect(HWND hwnd, POINT pt);
+        
+        int      ToAscii(UINT VirtKey, UINT uScanCode, const BYTE *lpKeyState, LPWORD lpChar, UINT uFlags);
+        int      ToAsciiEx(UINT VirtKey, UINT ScanCode, const BYTE *KeyState, LPWORD Char, UINT Flags, HKL dwhkl);
         
         //
         //PeekMessage() Options

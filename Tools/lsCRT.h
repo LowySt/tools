@@ -125,6 +125,7 @@ extern "C"
     
     u32     ls_len(char *s);
     char    ls_lowerCase(char c);
+    b32     ls_isWritable(char c);
     b32	 ls_isANumber(char c);
     b32     ls_isWhitespace(char c);
     char	ls_itoc(s64 x);
@@ -374,14 +375,6 @@ ls_dangerousNotToBeCalledInitFunctionHere();
 //	STRING FUNCTIONS
 ////////////////////////////////////////////////////
 
-b32 ls_isANumber(char c)
-{
-    if((c >= 48 && c <= 57) || (c == '-') || (c == '+') )
-    { return TRUE; }
-    
-    return FALSE;
-}
-
 u32 ls_len(char *s)
 {
     u32 len = 0;
@@ -395,6 +388,21 @@ char ls_lowerCase(char c)
 {
     if ((c > 64) && (c < 91)) { return c + 32; }
     else { return c; }
+}
+
+b32 ls_isWritable(char c)
+{
+    if((c >= 32) && (c <= 126)) { return TRUE; }
+    
+    return FALSE;
+}
+
+b32 ls_isANumber(char c)
+{
+    if((c >= 48 && c <= 57) || (c == '-') || (c == '+') )
+    { return TRUE; }
+    
+    return FALSE;
 }
 
 b32 ls_isWhitespace(char c)
