@@ -1475,6 +1475,7 @@ SYNCHRONIZE)
             FindExSearchLimitToDevices
         } FINDEX_SEARCH_OPS;
         
+        
         typedef struct _iobuf
         {
             void* _Placeholder;
@@ -2171,6 +2172,11 @@ WS_SYSMENU)
         LSIMPORT	  FILE*	   LSCDECL		_fdopen(int FileHandle, char const* Mode);
         LSIMPORT	  int		 LSCDECL		setvbuf(FILE* Stream, char* Buffer, int Mode, size_t Size);
         LSIMPORT	  FILE*	   LSCDECL		__acrt_iob_func(unsigned);
+        
+        //TODO: Probably Remove
+        size_t fread(void *buffer, size_t size, size_t count, FILE *stream);
+        FILE *fopen(const char *filename, const char *mode);
+        int putchar(int c);
         
         WINBASEAPI	BOOL		WINAPI		AllocConsole(VOID);
         WINBASEAPI	BOOL		WINAPI		FreeConsole(VOID);

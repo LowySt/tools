@@ -198,6 +198,7 @@ extern "C"
     ////////////////////////////////////////////////////
     
     void  ls_memcpy(void *src, void *dest, size_t size);
+    void  ls_memset(void *src, u8 v, size_t numBytes);
     b32   ls_memcmp(void *a, void *b, size_t size);
     void  ls_zeroMem(void *mem, size_t size);
     void  ls_zeroMemASM(void *mem, size_t size);
@@ -1408,6 +1409,13 @@ void ls_memcpy(void *src, void *dest, size_t size)
         }
         return;
     }
+}
+
+void ls_memset(void *src, u8 v, size_t numBytes)
+{
+    u8 *At = (u8 *)src;
+    u32 i = 0;
+    while(numBytes--, i) { At[i] = v; i += 1; }
 }
 
 b32 ls_memcmp(void *a, void *b, size_t size)

@@ -15,14 +15,15 @@
 
 extern "C"
 {
-    s32 ls_floor(s32 v);
-    s32 ls_ceil(s32 v);
+    s32 ls_floor(f64 v);
+    s32 ls_ceil(f64 v);
     s32 ls_abs(s32 x);
     f64 ls_fabs(f64 x);
     s64 ls_e10(s32 x);
     u64 ls_powui(u64 v, u32 exp);
     s64 ls_powi(s64 v, u32 exp);
     f64 ls_powf(f64 v, s32 exp);
+    f64 ls_fmod(f64 v, f64 w);
     s64 ls_truncate(f64 x);
     f64 ls_truncEpsilon(f64 x);
     f32 ls_rad(f32 x);
@@ -250,6 +251,13 @@ f64 ls_powf(f64 v, s32 exp)
     }
     
     return Result;
+}
+
+f64 ls_fmod(f64 v, f64 w)
+{
+    if(w == 0) { return 0; }
+    
+    return v - ls_floor(v/w)*w;
 }
 
 s64 ls_truncate(f64 x)
