@@ -103,8 +103,14 @@ extern "C" //VIEWS
     
     //OperateOn
     view ls_viewEatWhitespace(view v);
+    view ls_viewNextNChars(view v, u32 n);
+    view ls_viewNextDelimiter(view v, char c);
+    
     view ls_viewNextWord(view v);
+    
     view ls_viewNextLine(view v);
+    view ls_viewNextLineSkipWS(view v);
+    b32 ls_viewIsLineEmpty(view v);
 };
 
 
@@ -412,7 +418,7 @@ string *ls_breakByLine(string s, u32 *numOfLines)
     //memory is leaked, only slightly overused for most cases.
     while(l--)
     {
-        if(*bAt == '\r') { numLines++; bAt += 2; continue; }
+        if(*bAt == '\r') { numLines++; bAt += 2; l -= 1; continue; }
         if(*bAt == '\n') { numLines++; bAt += 1; continue; }
         bAt += 1;
     }
@@ -1079,6 +1085,43 @@ view ls_viewEatWhitespace(view v)
     return Result;
 }
 
+view ls_viewNextNChars(view v, u32 n)
+{
+    view Result = {};
+    
+    Result.s = {v.next, n, n};
+    Result.next = v.next + n;
+    Result.len  = v.len - n;
+    
+    return Result;
+}
+
+view ls_viewNextDelimiter(view v, char c)
+{
+    view Result = {};
+    
+    v = ls_viewEatWhitespace(v);
+    
+    u32 wordLen = 0;
+    char *At = v.next;
+    while(wordLen < v.len)
+    {
+        if(*At == c)
+        { break; }
+        
+        wordLen++;
+        At++;
+    }
+    
+    //NOTE: We don't keep the delimiter in the word
+    //      But we skip it in the .next
+    Result.s = {v.next, wordLen, wordLen};
+    Result.next = v.next + wordLen + 1; 
+    Result.len  = v.len - (wordLen + 1);
+    
+    return Result;
+}
+
 view ls_viewNextWord(view v)
 {
     view Result = {};
@@ -1103,7 +1146,7 @@ view ls_viewNextWord(view v)
     return Result;
 }
 
-view ls_viewNextLine(view v)
+view ls_viewNextLineSkipWS(view v)
 {
     view Result = {};
     
@@ -1129,6 +1172,44 @@ view ls_viewNextLine(view v)
     Result.len  = v.len - (lineLen + skipWhite);
     
     return Result;
+}
+
+view ls_viewNextLine(view v)
+{
+    view Result = {};
+    
+    u32 lineLen = 0;
+    char *At = v.next;
+    while(lineLen < v.len)
+    {
+        if((*At == '\r') && (*(At+1) == '\n'))
+        { lineLen += 2; break; }
+        if(*At == '\n') { lineLen += 1; break; }
+        
+        lineLen += 1;
+        At++;
+    }
+    
+    Result.s = {v.next, lineLen, lineLen};
+    Result.next = v.next + lineLen;
+    Result.len  = v.len - lineLen;
+    
+    return Result;
+}
+
+b32 ls_viewIsLineEmpty(view v)
+{
+    string s = v.s;
+    if(s.len == 1)
+    {
+        if(s.data[0] == '\n') { return TRUE; }
+    }
+    else if(s.len == 2)
+    {
+        if((s.data[0] == '\r') && (s.data[1] == '\n')) { return TRUE; }
+    }
+    
+    return FALSE;
 }
 
 //     OperateOn    //
