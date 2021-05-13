@@ -15,10 +15,11 @@ struct stack
 
 extern "C"
 {
-    stack *ls_stackAlloc(u32 elementSize); //NOTE: initialCapacity of 1 element.
+    stack  ls_stackAlloc(u32 elementSize); //NOTE: initialCapacity of 1 element.
+    stack *ls_stackAllocPtr(u32 elementSize);
     void   ls_stackFree(stack *s);
     
-    stack *ls_stackInit(u32 elementSize, u32 initialCapacity);
+    stack  ls_stackInit(u32 elementSize, u32 initialCapacity);
     
     void   ls_stackPush(stack *s, void *data);
     void  *ls_stackPop(stack *s);
@@ -48,9 +49,21 @@ static void ls_stackResize(stack *s)
 /*^^^ INTERNAL ^^^*/
 
 
-stack *ls_stackAlloc(u32 elementSize)
+stack *ls_stackAllocPtr(u32 elementSize)
 {
     stack *Result = (stack *)ls_alloc(sizeof(stack));
+    Result->data = ls_alloc(elementSize * 1);
+    Result->top = Result->data;
+    Result->elementSize = elementSize;
+    Result->capacity = 1;
+    Result->used = 0;
+    
+    return Result;
+}
+
+stack ls_stackAlloc(u32 elementSize)
+{
+    stack Result = {};
     Result->data = ls_alloc(elementSize * 1);
     Result->top = Result->data;
     Result->elementSize = elementSize;
@@ -66,9 +79,9 @@ void ls_stackFree(stack *s)
     ls_free(s);
 }
 
-stack *ls_stackInit(u32 elementSize, u32 initialCapacity)
+stack ls_stackInit(u32 elementSize, u32 initialCapacity)
 {
-    stack *Result = (stack *)ls_alloc(sizeof(stack));
+    stack Result = {};
     Result->data = ls_alloc(elementSize * initialCapacity);
     Result->top = Result->data;
     Result->elementSize = elementSize;
