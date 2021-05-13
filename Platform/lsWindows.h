@@ -47,8 +47,16 @@ struct windowsDate
 	u32 Milliseconds;
 };
 
+enum RegionTimerPrecision
+{
+    RT_MILLISECOND,
+    RT_HUNDMICRO,
+    RT_TENSMICRO,
+    RT_MICRO
+};
 
 LARGE_INTEGER __global_QueryPerfFreq;
+u64           __global_TimerPrecMulti;
 struct RegionTimer
 {
     LARGE_INTEGER BeginRegion;
@@ -56,15 +64,15 @@ struct RegionTimer
 };
 
 #define RegionTimerBegin(T) QueryPerformanceCounter(&T.BeginRegion)
-#define RegionTimerEnd(T)   QueryPerformanceCounter(&T.EndRegion);
+#define RegionTimerEnd(T)   QueryPerformanceCounter(&T.EndRegion)
 #define RegionTimerGet(T)   \
-((T.EndRegion.QuadPart - T.BeginRegion.QuadPart) / __global_QueryPerfFreq.QuadPart)
+(((T.EndRegion.QuadPart - T.BeginRegion.QuadPart)*__global_TimerPrecMulti) / __global_QueryPerfFreq.QuadPart)
 
 #ifdef _DEBUG
 #define DebugTimerBegin(T) QueryPerformanceCounter(&T.BeginRegion)
-#define DebugTimerEnd(T)   QueryPerformanceCounter(&T.EndRegion);
+#define DebugTimerEnd(T)   QueryPerformanceCounter(&T.EndRegion)
 #define DebugTimerGet(T)   \
-((T.EndRegion.QuadPart - T.BeginRegion.QuadPart) / __global_QueryPerfFreq.QuadPart)
+(((T.EndRegion.QuadPart - T.BeginRegion.QuadPart)*__global_TimerPrecMulti) / __global_QueryPerfFreq.QuadPart)
 #else
 #define DebugTimerBegin(T)
 #define DebugTimerEnd(T)
@@ -162,7 +170,7 @@ extern "C"
 	windowsDate windows_GetDate(b32 localTime); /*If param is false UTC time is retrieved*/
 	void windows_setupWindow(WindowInfo *Input);
     
-    void windows_initRegionTimer();
+    void windows_initRegionTimer(RegionTimerPrecision p = RT_MILLISECOND);
     void windows_sleep(u64 milliseconds);
 };
 
@@ -406,6 +414,8 @@ void *windows_sliceBlockIfNeeded(MemoryBlock *b, MemoryList *slice, size_t size)
 
 void *windows_memAlloc(size_t size)
 {
+    if(size == 0) { return 0x0; }
+    
     /*Arenas*/
     if(Memory.isUsingArena == TRUE)
     {
@@ -1213,13 +1223,13 @@ windowsDate windows_GetDate(b32 localTime)
     
     windowsDate result = {};
     
-    result.Year			= (u32)time.wYear;;
-    result.Month		= (u32)time.wMonth;;
-    result.DayOfWeek	= (u32)time.wDayOfWeek;;
-    result.Day			= (u32)time.wDay;;
-    result.Hour			= (u32)time.wHour;;
-    result.Minute		= (u32)time.wMinute;;
-    result.Second		= (u32)time.wSecond;;
+    result.Year         = (u32)time.wYear;;
+    result.Month        = (u32)time.wMonth;;
+    result.DayOfWeek    = (u32)time.wDayOfWeek;;
+    result.Day          = (u32)time.wDay;;
+    result.Hour         = (u32)time.wHour;;
+    result.Minute       = (u32)time.wMinute;;
+    result.Second       = (u32)time.wSecond;;
     result.Milliseconds = (u32)time.wMilliseconds;;
     
     return result;
@@ -1230,15 +1240,23 @@ windowsDate windows_GetDate(b32 localTime)
 // --------------------- //
 
 //NOTE:TODO: Make Precision modifiable?
-void windows_initRegionTimer()
+void windows_initRegionTimer(RegionTimerPrecision p)
 {
     BOOL Result = QueryPerformanceFrequency(&__global_QueryPerfFreq);
     if(Result == 0) 
-    { 
-        Assert(FALSE);
+    {
+        Assert(FALSE); 
     }
+    
     //NOTE: We count with a precision of 0.1 milliseconds
-    __global_QueryPerfFreq.QuadPart /= 1000*10;
+    
+    if(p == RT_MILLISECOND)    { __global_TimerPrecMulti = 1000; }
+    else if(p == RT_HUNDMICRO) { __global_TimerPrecMulti = 10000; }
+    else if(p == RT_TENSMICRO) { __global_TimerPrecMulti = 100000; }
+    else if(p == RT_MICRO)     { __global_TimerPrecMulti = 1000000; }
+    //TODO: What if a wrong value is passed?
+    
+    //__global_QueryPerfFreq.QuadPart /= 1000*10;
 }
 
 void windows_sleep(u64 milliseconds)
