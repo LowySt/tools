@@ -18,13 +18,9 @@ extern "C"
     buffer ls_bufferViewIntoPtr(void *arr, u64 arrSize);
     buffer ls_bufferFromPtrArray(void *arr, u64 arrSize);
     buffer ls_bufferInitFromFile(string path);
-    void   ls_bufferClear(buffer *buff);
-    void   ls_bufferDestroy(buffer *buff);
     
-    void   ls_bufferSetCursorBegin(buffer *buff);
-    void   ls_bufferSetCursorEnd(buffer *buff);
-    void   ls_bufferSetCursorIdx(buffer *buff, u64 idx);
-    void   ls_bufferAdvanceCursor(buffer *buff, u64 amount);
+    void ls_bufferClear(buffer *buff);
+    void ls_bufferDestroy(buffer *buff);
     
     void   ls_bufferChangeByte(buffer *buff, u8 v);
     void   ls_bufferChangeWord(buffer *buff, u16 v);
@@ -48,7 +44,7 @@ extern "C"
     u32    ls_bufferReadDWord(buffer *buff);
     u64    ls_bufferReadQWord(buffer *buff);
     string ls_bufferReadString(buffer *buff);
-    void   ls_bufferReadData(buffer *buff, void *out, u32 toRead);
+    u32    ls_bufferReadData(buffer *buff, void *out);
     
     u8     ls_bufferPullByte(buffer *buff);
     u16    ls_bufferPullWord(buffer *buff);
@@ -225,7 +221,6 @@ void ls_bufferAddQWord(buffer *buff, u64 v)
     buff->cursor += 8;
 }
 
-
 void ls_bufferAddString(buffer *buff, string v)
 {
     Assert(buff->data);
@@ -243,6 +238,8 @@ void ls_bufferAddString(buffer *buff, string v)
 void ls_bufferAddData(buffer *buff, void *data, u32 len)
 {
     Assert(buff->data);
+    
+    ls_bufferAddDWord(buff, len);
     
     if(buff->cursor + len > buff->size)
     { ls_bufferGrow(buff, len + 4096); }
@@ -335,16 +332,18 @@ string ls_bufferReadString(buffer *buff)
     return s;
 }
 
-void ls_bufferReadData(buffer *buff, void *out, u32 toRead)
+u32 ls_bufferReadData(buffer *buff, void *out)
 {
     Assert(buff->data);
     Assert(out);
     
-    u8 *At = (u8 *)buff->data + buff->cursor;
-    ls_memcpy(At, out, toRead);
-    buff->cursor += toRead;
+    u32 numBytes = ls_bufferReadDWord(buff);
     
-    return;
+    u8 *At = (u8 *)buff->data + buff->cursor;
+    ls_memcpy(At, out, numBytes);
+    buff->cursor += numBytes;
+    
+    return numBytes;
 }
 
 u8 ls_bufferPullByte(buffer *buff)
