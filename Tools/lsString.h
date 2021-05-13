@@ -92,6 +92,8 @@ extern "C" //STRINGS
     //Operator
     b32     operator==(string s1, string s2);
     b32     operator!=(string s1, string s2);
+    
+    b32     ls_strIsEqualNCStr(string s1, char *s2, u32 len);
 };
 
 
@@ -105,11 +107,10 @@ extern "C" //VIEWS
     view ls_viewEatWhitespace(view v);
     view ls_viewNextNChars(view v, u32 n);
     view ls_viewNextDelimiter(view v, char c);
-    
     view ls_viewNextWord(view v);
-    
     view ls_viewNextLine(view v);
     view ls_viewNextLineSkipWS(view v);
+    
     b32 ls_viewIsLineEmpty(view v);
 };
 
@@ -1039,6 +1040,12 @@ b32 operator!=(string s1, string s2)
 b32 operator!=(string s1, char *v)
 { return (!(s1 == v)); }
 
+b32 ls_strIsEqualNCStr(string s1, char *s2, u32 len)
+{
+    if(s1.len < len) { return FALSE; }
+    return ls_memcmp(s1.data, s2, len);
+}
+
 //     Operator     //
 //------------------//
 
@@ -1113,11 +1120,17 @@ view ls_viewNextDelimiter(view v, char c)
         At++;
     }
     
+    Assert(wordLen <= v.len);
+    
     //NOTE: We don't keep the delimiter in the word
     //      But we skip it in the .next
+    u32 nextLen = wordLen + 1;
+    if(wordLen == v.len)
+    { nextLen = wordLen; }
+    
     Result.s = {v.next, wordLen, wordLen};
-    Result.next = v.next + wordLen + 1; 
-    Result.len  = v.len - (wordLen + 1);
+    Result.next = v.next + nextLen;
+    Result.len  = v.len - nextLen;
     
     return Result;
 }
