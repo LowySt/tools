@@ -475,6 +475,15 @@ void *windows_memAlloc(size_t size)
     }
     
     void *beginOfSliceData = windows_sliceBlockIfNeeded(curr, best, size);
+    
+    //TODONOTE: ZeroMem the slice??
+    // 14 May 2021. I found a single case in which I got returned a pointer with old data inside.
+    // That happened because a string had to grow before.
+    // reallocations will cause Memory blocks to have previous data written in them.
+    // First Allocations will be zero by default, but what about others?
+    // I Should probably clean on free, not on alloc. But I dont know...
+    // What should I do?
+    ls_zeroMem(beginOfSliceData, size);
     return beginOfSliceData;
 }
 
@@ -551,6 +560,7 @@ void windows_memFree(void *ptr)
     //      Or for some reason a busy pointer wasn't put in the busy list?
     Assert(found == TRUE);
     
+    //TODO: ZeroMem the slice??
     windows_freeSlice(curr, slice);
     return;
 }
