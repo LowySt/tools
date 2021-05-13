@@ -658,34 +658,39 @@ f32 ls_atof(char *s, u32 len)
     
     if(len == 0) { return 0.0f; }
     
-    char buffer[32] = {};
+    char buff[32] = {};
     
     char *At = s;
     u32 count = 0;
     u32 done = 0;
-    while (len-- > 0)
+    while (len > 0)
     {
         if (*At == '.') { break; }
         At++; count++;
+        len -= 1;
     }
     
-    ls_memcpy(s, buffer, count);
+    ls_memcpy(s, buff, count);
     done += count + 1;
     
-    base = (f32)ls_atoi(buffer, count);
+    base = (f32)ls_atoi(buff, count);
+    
+    //NOTE: Means there's no decimal part. It's an integer.
+    if(len == 0) { return base; }
     
     //string clear
-    for(u32 i = 0; i < 32; i++) { buffer[i] = 0; }
+    for(u32 i = 0; i < 32; i++) { buff[i] = 0; }
     
     count = 0;
-    while (len-- > 0)
+    while (len > 0)
     {
         At++; count++;
+        len -= 1;
     }
     
-    ls_memcpy(s + done, buffer, count);
+    ls_memcpy(s + done, buff, count);
     
-    decimal = (f32)ls_atoi(buffer, count);
+    decimal = (f32)ls_atoi(buff, count);
     
     f32 Result = 0.0f;
     
@@ -993,6 +998,7 @@ s32 ls_vprintf(const char *format, va_list argList)
     return charactersWritten;
 }
 
+//TODO: Check if format actually has the right number of arguments!
 s32 ls_printf(const char *format, ...)
 {
     va_list argList;
