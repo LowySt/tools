@@ -2,6 +2,7 @@
 #define LS_BITMAP_H
 
 #include "lsCRT.h"
+#include "lsMath.h"
 
 struct Bitmap
 {
