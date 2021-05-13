@@ -882,6 +882,12 @@ SYNCHRONIZE)
             LONG    bottom;
         } RECT, *PRECT, *NPRECT, *LPRECT;
         
+        typedef struct tagSIZE {
+            LONG cx;
+            LONG cy;
+        } SIZE, *PSIZE, *LPSIZE;
+        
+        
         /* Pixel format descriptor */
         typedef struct tagPIXELFORMATDESCRIPTOR
         {
@@ -947,7 +953,31 @@ SYNCHRONIZE)
 #define PFD_DOUBLEBUFFER_DONTCARE   0x40000000
 #define PFD_STEREO_DONTCARE         0x80000000
         
+        
+        /* constants for CreateDIBitmap */
+#define CBM_INIT        0x04L   /* initialize bitmap */
+        
 #pragma endregion
+        
+        typedef long *LPFXPT16DOT16;
+        typedef long *LPFXPT2DOT30;
+        typedef long FXPT16DOT16;
+        typedef long FXPT2DOT30;
+        
+        
+        typedef struct tagCIEXYZ
+        {
+            FXPT2DOT30 ciexyzX;
+            FXPT2DOT30 ciexyzY;
+            FXPT2DOT30 ciexyzZ;
+        } CIEXYZ;
+        
+        typedef struct tagICEXYZTRIPLE
+        {
+            CIEXYZ  ciexyzRed;
+            CIEXYZ  ciexyzGreen;
+            CIEXYZ  ciexyzBlue;
+        } CIEXYZTRIPLE;
         
         typedef struct tagRGBQUAD {
             BYTE    rgbBlue;
@@ -969,6 +999,33 @@ SYNCHRONIZE)
             DWORD      biClrUsed;
             DWORD      biClrImportant;
         } BITMAPINFOHEADER, *LPBITMAPINFOHEADER, *PBITMAPINFOHEADER;
+        
+        typedef struct {
+            DWORD        bV5Size;
+            LONG         bV5Width;
+            LONG         bV5Height;
+            WORD         bV5Planes;
+            WORD         bV5BitCount;
+            DWORD        bV5Compression;
+            DWORD        bV5SizeImage;
+            LONG         bV5XPelsPerMeter;
+            LONG         bV5YPelsPerMeter;
+            DWORD        bV5ClrUsed;
+            DWORD        bV5ClrImportant;
+            DWORD        bV5RedMask;
+            DWORD        bV5GreenMask;
+            DWORD        bV5BlueMask;
+            DWORD        bV5AlphaMask;
+            DWORD        bV5CSType;
+            CIEXYZTRIPLE bV5Endpoints;
+            DWORD        bV5GammaRed;
+            DWORD        bV5GammaGreen;
+            DWORD        bV5GammaBlue;
+            DWORD        bV5Intent;
+            DWORD        bV5ProfileData;
+            DWORD        bV5ProfileSize;
+            DWORD        bV5Reserved;
+        } BITMAPV5HEADER, *LPBITMAPV5HEADER, *PBITMAPV5HEADER;
         
         typedef struct tagBITMAPINFO {
             BITMAPINFOHEADER    bmiHeader;
@@ -2739,6 +2796,7 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         HDESK    OpenDesktopA(LPCSTR lpszDesktop, DWORD dwFlags, BOOL fInherit, ACCESS_MASK dwDesiredAccess);
         
         BOOL     EnumDesktopWindows(HDESK hDesktop, WNDENUMPROC lpfn, LPARAM lParam);
+        BOOL     EnumWindows(WNDENUMPROC lpEnumFunc, LPARAM lParam);
         
         HDESK    CreateDesktopExA(LPCSTR lpszDesktop, LPCSTR lpszDevice, DEVMODEA *pDevmode, DWORD dwFlags, ACCESS_MASK dwDesiredAccess, LPSECURITY_ATTRIBUTES lpsa, ULONG ulHeapSize, PVOID pvoid);
         BOOL     SwitchDesktop(HDESK hDesktop);
@@ -2773,6 +2831,8 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         BOOL     GetWindowInfo(HWND hwnd, PWINDOWINFO pwi);
         BOOL     GetWindowRect(HWND hWnd, LPRECT lpRect);
         BOOL     GetClientRect(HWND hWnd, LPRECT lpRect);
+        int      GetWindowRgn(HWND hWnd, HRGN rgn);
+        int      GetWindowRgnBox(HWND hWnd, LPRECT lprc);
         BOOL     UpdateWindow(HWND hWnd);
         BOOL     RedrawWindow(HWND hWnd, const RECT *lprcUpdate, HRGN hrgnUpdate, UINT flags);
         BOOL     InvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase);
@@ -2785,7 +2845,10 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         BOOL     GetCursorPos(LPPOINT lpPoint);
         BOOL     SetCursorPos(int X, int Y);
         int      ShowCursor(BOOL bShow);
+        SHORT    GetAsyncKeyState(int vKey);
+        
         BOOL     ScreenToClient(HWND hWnd, LPPOINT lpPoint);
+        BOOL     ClientToScreen(HWND hWnd, LPPOINT lpPoint);
         BOOL     DragDetect(HWND hwnd, POINT pt);
         
         int      ToAscii(UINT VirtKey, UINT uScanCode, const BYTE *lpKeyState, LPWORD lpChar, UINT uFlags);
@@ -3352,6 +3415,8 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         // Windows Menu Interface
         //
         
+        
+        
 #define MNGOF_TOPGAP         0x00000001
 #define MNGOF_BOTTOMGAP      0x00000002
 #define MNGO_NOINTERFACE     0x00000000
@@ -3855,43 +3920,104 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
 #define MIM_STYLE                   0x00000010
 #define MIM_APPLYTOSUBMENUS         0x80000000
         
+        /* flags for DrawCaption */
+#define DC_ACTIVE           0x0001
+#define DC_SMALLCAP         0x0002
+#define DC_ICON             0x0004
+#define DC_TEXT             0x0008
+#define DC_INBUTTON         0x0010
+#define DC_GRADIENT         0x0020
+#define DC_BUTTONS          0x1000
+        
+        
+        /* flags for DrawFrameControl */
+        
+#define DFC_CAPTION             1
+#define DFC_MENU                2
+#define DFC_SCROLL              3
+#define DFC_BUTTON              4
+#define DFC_POPUPMENU           5
+        
+#define DFCS_CAPTIONCLOSE       0x0000
+#define DFCS_CAPTIONMIN         0x0001
+#define DFCS_CAPTIONMAX         0x0002
+#define DFCS_CAPTIONRESTORE     0x0003
+#define DFCS_CAPTIONHELP        0x0004
+        
+#define DFCS_MENUARROW          0x0000
+#define DFCS_MENUCHECK          0x0001
+#define DFCS_MENUBULLET         0x0002
+#define DFCS_MENUARROWRIGHT     0x0004
+#define DFCS_SCROLLUP           0x0000
+#define DFCS_SCROLLDOWN         0x0001
+#define DFCS_SCROLLLEFT         0x0002
+#define DFCS_SCROLLRIGHT        0x0003
+#define DFCS_SCROLLCOMBOBOX     0x0005
+#define DFCS_SCROLLSIZEGRIP     0x0008
+#define DFCS_SCROLLSIZEGRIPRIGHT 0x0010
+        
+#define DFCS_BUTTONCHECK        0x0000
+#define DFCS_BUTTONRADIOIMAGE   0x0001
+#define DFCS_BUTTONRADIOMASK    0x0002
+#define DFCS_BUTTONRADIO        0x0004
+#define DFCS_BUTTON3STATE       0x0008
+#define DFCS_BUTTONPUSH         0x0010
+        
+#define DFCS_INACTIVE           0x0100
+#define DFCS_PUSHED             0x0200
+#define DFCS_CHECKED            0x0400
+        
+#define DFCS_TRANSPARENT        0x0800
+#define DFCS_HOT                0x1000
+        
+#define DFCS_ADJUSTRECT         0x2000
+#define DFCS_FLAT               0x4000
+#define DFCS_MONO               0x8000
+        
         /*
          * WM_MENUDRAG return values.
          */
 #define MND_CONTINUE       0
 #define MND_ENDMENU        1
         
-        WINUSERAPI    HMENU       WINAPI        CreateMenu(VOID);
-        WINUSERAPI    BOOL        WINAPI        DestroyMenu(HMENU hMenu);
-        WINUSERAPI    UINT        WINAPI        GetMenuState(HMENU hMenu, UINT uId, UINT uFlags);
-        WINUSERAPI    BOOL        WINAPI        DrawMenuBar(HWND hWnd);
-        WINUSERAPI    HMENU       WINAPI        GetMenu(HWND hWnd);
-        WINUSERAPI    BOOL        WINAPI        SetMenu(HWND hWnd, HMENU hMenu);
-        WINUSERAPI    BOOL        WINAPI        AppendMenuA(HMENU hMenu, UINT uFlags, UINT_PTR uIDNewItem, LPCSTR lpNewItem);
-        WINUSERAPI    BOOL        WINAPI        AppendMenuW(HMENU hMenu, UINT uFlags, UINT_PTR uIDNewItem, LPCWSTR lpNewItem);
-        WINUSERAPI    BOOL        WINAPI        InsertMenuItemA(HMENU hmenu, UINT item, BOOL fByPosition, LPCMENUITEMINFOA lpmi);
-        WINUSERAPI    BOOL        WINAPI        InsertMenuItemW(HMENU hmenu, UINT item, BOOL fByPosition, LPCMENUITEMINFOW lpmi);
-        WINUSERAPI    BOOL        WINAPI        SetWindowTextA(HWND hWnd, LPCSTR lpString);
-        WINUSERAPI    BOOL        WINAPI        SetWindowTextW(HWND hWnd, LPCWSTR lpString);
-        WINUSERAPI    int         WINAPI        GetWindowTextA(HWND hWnd, LPSTR lpString, int nMaxCount);
-        WINUSERAPI    int         WINAPI        GetWindowTextW(HWND hWnd, LPWSTR lpString, int nMaxCount);
-        WINUSERAPI    int         WINAPI        GetWindowTextLengthA(HWND hWnd);
-        WINUSERAPI    int         WINAPI        GetWindowTextLengthW(HWND hWnd);
-        WINUSERAPI    BOOL        WINAPI        GetMenuInfo(HMENU, LPMENUINFO);
-        WINUSERAPI    BOOL        WINAPI        SetMenuInfo(HMENU, LPCMENUINFO);
-        WINUSERAPI    BOOL        WINAPI        EndMenu(VOID);
+        HMENU    CreateMenu(VOID);
+        BOOL     DestroyMenu(HMENU hMenu);
+        UINT     GetMenuState(HMENU hMenu, UINT uId, UINT uFlags);
+        BOOL     GetMenuItemRect(HWND hWnd, HMENU hMenu, UINT uId, LPRECT);
+        BOOL     DrawMenuBar(HWND hWnd);
+        HMENU    GetMenu(HWND hWnd);
+        BOOL     SetMenu(HWND hWnd, HMENU hMenu);
+        BOOL     AppendMenuA(HMENU hMenu, UINT uFlags, UINT_PTR uIDNewItem, LPCSTR lpNewItem);
+        BOOL     AppendMenuW(HMENU hMenu, UINT uFlags, UINT_PTR uIDNewItem, LPCWSTR lpNewItem);
+        BOOL     InsertMenuItemA(HMENU hmenu, UINT item, BOOL fByPosition, LPCMENUITEMINFOA lpmi);
+        BOOL     InsertMenuItemW(HMENU hmenu, UINT item, BOOL fByPosition, LPCMENUITEMINFOW lpmi);
+        BOOL     SetWindowTextA(HWND hWnd, LPCSTR lpString);
+        BOOL     SetWindowTextW(HWND hWnd, LPCWSTR lpString);
+        int      GetWindowTextA(HWND hWnd, LPSTR lpString, int nMaxCount);
+        int      GetWindowTextW(HWND hWnd, LPWSTR lpString, int nMaxCount);
+        int      GetWindowTextLengthA(HWND hWnd);
+        int      GetWindowTextLengthW(HWND hWnd);
+        BOOL     GetMenuInfo(HMENU, LPMENUINFO);
+        BOOL     SetMenuInfo(HMENU, LPCMENUINFO);
+        BOOL     EndMenu(VOID);
         
+        BOOL     IsWindowVisible(HWND hWnd);
         
-        WINUSERAPI    HDC         WINAPI        BeginPaint(HWND hwnd, PAINTSTRUCT *ps);
-        WINUSERAPI    BOOL        WINAPI        GdiFlush();
-        WINUSERAPI    VOID        WINAPI        EndPaint(HWND hwnd, PAINTSTRUCT *ps);
-        WINUSERAPI    int         WINAPI        FillRect(HDC hDC, const RECT *lprc, HBRUSH hbr);
-        WINUSERAPI    int         WINAPI        DrawTextExA(HDC hdc, LPSTR lpchText, int cchText, LPRECT lprc, UINT format, LPDRAWTEXTPARAMS lpdtp);
-        WINUSERAPI    BOOL        WINAPI        TextOutA(HDC hdc, int x, int y, LPCSTR lpString, int c);
-        WINUSERAPI    COLORREF    WINAPI        SetTextColor(HDC hdc, COLORREF color);
-        WINUSERAPI    COLORREF    WINAPI        SetBkColor(HDC hdc, COLORREF color);
-        WINUSERAPI    HBRUSH      WINAPI        CreateSolidBrush(COLORREF color);
-        WINUSERAPI    BOOL        WINAPI        DeleteObject(HGDIOBJ ho);
+        BOOL     DrawCaption(HWND hwnd, HDC hdc, CONST RECT * lprect, UINT flags);
+        BOOL     DrawFrameControl(HDC hdc, LPRECT lprect, UINT frameType, UINT frameState);
+        
+        HDC      BeginPaint(HWND hwnd, PAINTSTRUCT *ps);
+        BOOL     GdiFlush();
+        VOID     EndPaint(HWND hwnd, PAINTSTRUCT *ps);
+        int      FillRect(HDC hDC, const RECT *lprc, HBRUSH hbr);
+        int      DrawTextExA(HDC hdc, LPSTR lpchText, int cchText, LPRECT lprc, UINT format, LPDRAWTEXTPARAMS lpdtp);
+        BOOL     TextOutA(HDC hdc, int x, int y, LPCSTR lpString, int c);
+        COLORREF SetTextColor(HDC hdc, COLORREF color);
+        COLORREF SetBkColor(HDC hdc, COLORREF color);
+        HBRUSH   CreateSolidBrush(COLORREF color);
+        BOOL     DeleteObject(HGDIOBJ ho);
+        
+        BOOL     GetTextExtentPoint32A(HDC hdc, LPCSTR lpString, int c, LPSIZE psizl);
         
         
         // Now... why the fuck would the ComboBox interface be done with messages
@@ -4054,12 +4180,15 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         
         WINUSERAPI   HDC		  WINAPI		GetDC(HWND hWnd);
         WINUSERAPI   HDC          WINAPI        GetDCEx(HWND  hWnd, HRGN hrgnClip, DWORD flags);
+        WINUSERAPI   HDC          WINAPI        GetWindowDC(HWND hWnd);
         WINUSERAPI   int          WINAPI        ReleaseDC(HWND hWnd, HDC hDC);
         WINUSERAPI   HWND         WINAPI        GetDlgItem(HWND hDlg, int nIDDlgItem);
         WINUSERAPI   int          WINAPI        GetDlgCtrlID(HWND hDlg);
+        WINUSERAPI   HBITMAP      WINAPI        CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCount, const VOID *lpBits);
         WINGDIAPI    HDC          WINAPI        CreateCompatibleDC(HDC hdc);
         WINGDIAPI    HBITMAP      WINAPI        CreateCompatibleBitmap(HDC hdc, int cx, int cy);
         WINGDIAPI    HBITMAP      WINAPI        CreateDIBSection(HDC hdc, CONST BITMAPINFO *pbmi, UINT usage, VOID **ppvBits, HANDLE hSection, DWORD offset);
+        WINGDIAPI    HBITMAP      WINAPI        CreateDIBitmap(HDC hdc, CONST BITMAPINFOHEADER *pbmih, DWORD flInit, CONST VOID *pjBits, CONST BITMAPINFO *pbmi, UINT iUsage);
         WINGDIAPI    HGDIOBJ      WINAPI        SelectObject(HDC hdc, HGDIOBJ h);
         WINGDIAPI    int          WINAPI        GetRgnBox(HRGN hrgn, LPRECT lprc);
         WINGDIAPI    BOOL         WINAPI        BeginPath(HDC hdc);
