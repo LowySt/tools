@@ -280,6 +280,12 @@ f32 ls_rad(f32 x)
     return ((x*PI_32) / 180.0f);
 }
 
+#ifdef __GNUG__
+f64 ls_sqrt(f64 x)
+{
+    return 0.0f;
+}
+#else
 f64 ls_sqrt(f64 x)
 {
 #ifdef LS_PLAT_WINDOWS
@@ -296,7 +302,14 @@ f64 ls_sqrt(f64 x)
     return Result;
 #endif
 }
+#endif
 
+#ifdef __GNUG__
+f32 ls_reciprocal(f32 x)
+{
+    return 0.0f;
+}
+#else
 //NOTE: This only has 12 digits of precision!
 f32 ls_reciprocal(f32 x)
 {
@@ -312,6 +325,7 @@ f32 ls_reciprocal(f32 x)
     return Result;
 #endif
 }
+#endif
 
 u32 ls_gcd(u32 a, u32 b) //NOTE: Stein's Algorithm
 {
