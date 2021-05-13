@@ -17,7 +17,8 @@ extern "C"
 {
     stack  ls_stackAlloc(u32 elementSize); //NOTE: initialCapacity of 1 element.
     stack *ls_stackAllocPtr(u32 elementSize);
-    void   ls_stackFree(stack *s);
+    void   ls_stackFreePtr(stack *s);
+    void   ls_stackFree(stack s);
     
     stack  ls_stackInit(u32 elementSize, u32 initialCapacity);
     
@@ -73,11 +74,14 @@ stack ls_stackAlloc(u32 elementSize)
     return Result;
 }
 
-void ls_stackFree(stack *s)
+void ls_stackFreePtr(stack *s)
 {
     ls_free(s->data);
     ls_free(s);
 }
+
+void ls_stackFree(stack s)
+{ ls_free(s->data); }
 
 stack ls_stackInit(u32 elementSize, u32 initialCapacity)
 {
