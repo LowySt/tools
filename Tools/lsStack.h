@@ -64,11 +64,11 @@ stack *ls_stackAllocPtr(u32 elementSize)
 stack ls_stackAlloc(u32 elementSize)
 {
     stack Result = {};
-    Result->data = ls_alloc(elementSize * 1);
-    Result->top = Result->data;
-    Result->elementSize = elementSize;
-    Result->capacity = 1;
-    Result->used = 0;
+    Result.data = ls_alloc(elementSize * 1);
+    Result.top = Result.data;
+    Result.elementSize = elementSize;
+    Result.capacity = 1;
+    Result.used = 0;
     
     return Result;
 }
@@ -82,11 +82,11 @@ void ls_stackFree(stack *s)
 stack ls_stackInit(u32 elementSize, u32 initialCapacity)
 {
     stack Result = {};
-    Result->data = ls_alloc(elementSize * initialCapacity);
-    Result->top = Result->data;
-    Result->elementSize = elementSize;
-    Result->capacity = initialCapacity;
-    Result->used = 0;
+    Result.data = ls_alloc(elementSize * initialCapacity);
+    Result.top = Result.data;
+    Result.elementSize = elementSize;
+    Result.capacity = initialCapacity;
+    Result.used = 0;
     
     return Result;
 }
