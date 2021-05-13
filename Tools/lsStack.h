@@ -54,7 +54,7 @@ static void ls_stackResize(stack *s)
     s->data = ls_realloc(s->data, oldSize, newSize);
     s->capacity = s->capacity + 64;
     s->top = (void *)(((u8 *)s->data) + (s->used - 1));
-    s->bot = (u8 *)s->bot + distFromData;
+    s->bot = (u8 *)s->data + distFromData;
 }
 
 /*^^^ INTERNAL ^^^*/
