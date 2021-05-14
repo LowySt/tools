@@ -1398,7 +1398,7 @@ u16 ls_openTypeGetGlyphID(OpenType_CMAP *cmap, u16 codepoint)
 u32 ls_openTypeGetGlyphCharstring(OpenType_Font *font, u16 glyphID, char *charstringBuff, u32 buffMaxSize)
 {
     //NOTE: -1 because offsets are 1-index arrays
-    u32 size = font->cff.Charstrings.offsets[glyphID] - font->cff.Charstrings.offsets[glyphID-1] - 1;
+    u32 size = font->cff.Charstrings.offsets[glyphID+1] - font->cff.Charstrings.offsets[glyphID];
     u32 offFromData = font->cff.Charstrings.offsets[glyphID] - 1;
     
     u8 *GlyphCharstring = font->cff.Charstrings.data + offFromData;
@@ -1406,6 +1406,19 @@ u32 ls_openTypeGetGlyphCharstring(OpenType_Font *font, u16 glyphID, char *charst
     if(size > buffMaxSize) { ls_printf("Couldn't return glyph charstring. Buffer too small.\n"); return 0; }
     
     ls_memcpy(GlyphCharstring, charstringBuff, size);
+    return size;
+}
+
+u32 ls_openTypeGetSubroutine(OpenType_Font *font, u16 subrNumber, char *subrBuff, u32 srBuffMax)
+{
+    u32 size = font->cff.LocalSubr.offsets[subrNumber+1] - font->cff.LocalSubr.offsets[subrNumber];
+    u32 offFromData = font->cff.LocalSubr.offsets[subrNumber] - 1;
+    
+    u8 *Subroutine = font->cff.LocalSubr.data + offFromData;
+    
+    if(size > srBuffMax) { ls_printf("Couldn't return Subroutine charstring. Buffer too small.\n"); return 0; }
+    
+    ls_memcpy(Subroutine, subrBuff, size);
     return size;
 }
 
@@ -1418,6 +1431,8 @@ b32 OpenType_CharstringIsOperator(u8 v)
     return FALSE;
 }
 
+static u32 __debug_indentation = 0;
+
 //TODO: This bullshit is debug code. Should not need to memcpy this stuff...
 //      Actually, this stuff should be useless to a user.
 void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 charLen, char *outBuf, u32 bufMaxSize)
@@ -1425,11 +1440,18 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
     enum ValueType { VT_S16, VT_DEC_139, VT_POS_108, VT_NEG_108, VT_FIXED_POINT };
     struct Operand { s32 value; ValueType type; };
     
+    auto __printIndent = [](u32 depth) {
+        char buff[32] = {};
+        for(u32 i = 0; i < depth*2; i++)
+        { buff[i] = ' ';  }
+        
+        ls_printf("%cs", buff); 
+    };
+    
     u8 *At = (u8 *)charstring;
     stack args = ls_stackInit(sizeof(Operand), 8); 
     
     u32 width = 0;
-    b32 hasWidth = FALSE;
     u32 numHints = 0;
     
     v2i currentPoint = {0, 0};
@@ -1505,45 +1527,100 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             
         }
         
-        if(!hasWidth) 
-        {
-            //TODO: This is wrong if the width is implied. How do I know that?
-            // Maybe the width is the last thing I get, after having processed all commands?
-            // Only one value should be left at that point.
-            
-            /*NOTETODONOTETODO
-             The first stack-clearing operator, which must be one of: 
-             hstem, hstemhm, vstem, vstemhm, cntrmask, hintmask, hmoveto, vmoveto, rmoveto, or endchar, 
-             takes an additional argument — the width (as described earlier), 
-             which may be expressed as zero or one numeric argument
-            */
-            
-            width = font->cff.PrivateDict.nominalWidthX + ((Operand *)ls_stackPull(&args))->value;
-            ls_printf("w: %d\n", width);
-            
-            hasWidth = TRUE;
-        }
-        
         u8 oneByte = *At; At += 1;
         
         switch(oneByte)
         {
+            case 12: break;
+            
+            
             case 1: //hstem
             {
+                if((args.used % 2) != 0)
+                {
+                    width = font->cff.PrivateDict.nominalWidthX + ((Operand *)ls_stackPull(&args))->value;
+                    
+                    __printIndent(__debug_indentation);
+                    ls_printf("width %d\n", width);
+                }
+                
                 s32 yA = 0;
                 s32 yB = 0;
                 
-                while(args.bot != args.top)
+                __printIndent(__debug_indentation);
+                while(args.bot <= args.top)
                 {
                     yA = ((Operand *)ls_stackPull(&args))->value;
                     yB = ((Operand *)ls_stackPull(&args))->value;
                     numHints += 1;
                     
-                    ls_printf("%d %d ", yA, yB);
+                    ls_printf("[%d %d] ", yA, yB);
                 }
                 
                 ls_printf("hstem\n");
                 
+            } break;
+            
+            case 3: //vstem
+            {
+                if((args.used % 2) != 0)
+                {
+                    width = font->cff.PrivateDict.nominalWidthX + ((Operand *)ls_stackPull(&args))->value;
+                    
+                    __printIndent(__debug_indentation);
+                    ls_printf("width %d\n", width);
+                }
+                
+                s32 yA = 0;
+                s32 yB = 0;
+                
+                __printIndent(__debug_indentation);
+                while(args.bot <= args.top)
+                {
+                    yA = ((Operand *)ls_stackPull(&args))->value;
+                    yB = ((Operand *)ls_stackPull(&args))->value;
+                    numHints += 1;
+                    
+                    ls_printf("[%d %d] ", yA, yB);
+                }
+                
+                ls_printf("vstem\n");
+            } break;
+            
+            case 4: //vmoveto
+            {
+                if(args.used == 2)
+                {
+                    width = font->cff.PrivateDict.nominalWidthX + ((Operand *)ls_stackPull(&args))->value;
+                    
+                    __printIndent(__debug_indentation);
+                    ls_printf("width %d\n", width);
+                }
+                
+                s32 dy = ((Operand *)ls_stackPull(&args))->value;
+                
+                currentPoint.y += dy;
+                
+                __printIndent(__debug_indentation);
+                ls_printf("(0, %d) vmoveto\n", dy);
+                
+            } break;
+            
+            case 5: //rlineto
+            {
+                s32 dx = 0;
+                s32 dy = 0;
+                
+                __printIndent(__debug_indentation);
+                while(args.bot <= args.top)
+                {
+                    dx= ((Operand *)ls_stackPull(&args))->value;
+                    dy= ((Operand *)ls_stackPull(&args))->value;
+                    
+                    ls_printf("[%d %d] ", dx, dy);
+                }
+                
+                ls_printf("rlineto\n");
             } break;
             
             case 10: //callsubr
@@ -1558,26 +1635,53 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 
                 const u32 srBuffMax = 1024;
                 char subrBuff[srBuffMax] = {};
-                u32 subrSize = ls_openTypeGetGlyphCharstring(font, subrNumber, subrBuff, srBuffMax);
+                u32 subrSize = ls_openTypeGetSubroutine(font, subrNumber, subrBuff, srBuffMax);
                 
-                ls_printf("\nEnter Subr: %d\n\n", subrNumber);
+                __printIndent(__debug_indentation);
+                ls_printf("callsubr %d\n\n", subrNumber);
+                __debug_indentation += 1;
                 ls_openTypeCharstringToImage(font, subrBuff, subrSize, 0, 0);
-                ls_printf("\n\n");
+                __debug_indentation -= 1;
+                ls_printf("\n");
                 
+            } break;
+            
+            case 11: //return
+            {
+                //NOTE: Can I just go back?
+                __printIndent(__debug_indentation);
+                ls_printf("return\n");
+                return;
+            } break;
+            
+            case 14: //endchar
+            {
+                __printIndent(__debug_indentation);
+                ls_printf("endchar\n");
             } break;
             
             case 18: //hstemhm
             {
+                if((args.used % 2) != 0)
+                {
+                    width = font->cff.PrivateDict.nominalWidthX + ((Operand *)ls_stackPull(&args))->value;
+                    
+                    __printIndent(__debug_indentation);
+                    ls_printf("width %d\n", width);
+                }
+                
+                
                 s32 yA = 0;
                 s32 yB = 0;
                 
+                __printIndent(__debug_indentation);
                 while(args.bot <= args.top)
                 {
                     yA = ((Operand *)ls_stackPull(&args))->value;
                     yB = ((Operand *)ls_stackPull(&args))->value;
                     numHints += 1;
                     
-                    ls_printf("%d %d ", yA, yB);
+                    ls_printf("[%d %d] ", yA, yB);
                 }
                 
                 ls_printf("hstemhm\n");
@@ -1592,19 +1696,20 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     s32 yA = 0;
                     s32 yB = 0;
                     
+                    __printIndent(__debug_indentation);
                     while(args.bot <= args.top)
                     {
                         yA = ((Operand *)ls_stackPull(&args))->value;
                         yB = ((Operand *)ls_stackPull(&args))->value;
                         numHints += 1;
                         
-                        ls_printf("%d %d ", yA, yB);
+                        ls_printf("[%d %d] ", yA, yB);
                     }
                     
-                    ls_printf("vstem\n");
+                    ls_printf("vstem_impl\n");
                 }
                 
-                u32 numBytes = (numHints / 8) + 1;
+                u32 numBytes = (numHints + 7) / 8;
                 
                 //TODONOTE DO I NEED TO BYTESWAP HERE!?!?!?
                 u64 mask = 0;
@@ -1618,23 +1723,76 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     break;
                 }
                 
-                //NOTE:TODO The documentation has some nonsense about (19+mask) as byte.
-                //          It's not clear whether I have to add/sub 19 or just take the byte
-                //          as it is. For now it seems that taking it as it is is better.
+                //numHints = 0;
+                __printIndent(__debug_indentation);
                 ls_printf("hintmask %bd\n", mask);
                 
             } break;
             
             case 21: //rmoveto
             {
+                if(args.used == 3)
+                {
+                    width = font->cff.PrivateDict.nominalWidthX + ((Operand *)ls_stackPull(&args))->value;
+                    
+                    __printIndent(__debug_indentation);
+                    ls_printf("width %d\n", width);
+                }
+                
                 s32 dx = ((Operand *)ls_stackPull(&args))->value;
                 s32 dy = ((Operand *)ls_stackPull(&args))->value;
                 
                 currentPoint.x += dx;
                 currentPoint.y += dy;
                 
-                ls_printf("%d %d rmoveto\n", dx, dy);
+                __printIndent(__debug_indentation);
+                ls_printf("(%d, %d) rmoveto\n", dx, dy);
                 
+            } break;
+            
+            case 22: //hmoveto
+            {
+                if(args.used == 2)
+                {
+                    width = font->cff.PrivateDict.nominalWidthX + ((Operand *)ls_stackPull(&args))->value;
+                    
+                    __printIndent(__debug_indentation);
+                    ls_printf("width %d\n", width);
+                }
+                
+                s32 dy = ((Operand *)ls_stackPull(&args))->value;
+                
+                currentPoint.y += dy;
+                
+                __printIndent(__debug_indentation);
+                ls_printf("(%d, 0) hmoveto\n", dy);
+                
+            } break;
+            
+            case 23: //vstemhm
+            {
+                if((args.used % 2) != 0)
+                {
+                    width = font->cff.PrivateDict.nominalWidthX + ((Operand *)ls_stackPull(&args))->value;
+                    
+                    __printIndent(__debug_indentation);
+                    ls_printf("width %d\n", width);
+                }
+                
+                s32 yA = 0;
+                s32 yB = 0;
+                
+                __printIndent(__debug_indentation);
+                while(args.bot <= args.top)
+                {
+                    yA = ((Operand *)ls_stackPull(&args))->value;
+                    yB = ((Operand *)ls_stackPull(&args))->value;
+                    numHints += 1;
+                    
+                    ls_printf("[%d %d] ", yA, yB);
+                }
+                
+                ls_printf("vstemhm\n");
             } break;
             
             default:
