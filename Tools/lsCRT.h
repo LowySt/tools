@@ -881,6 +881,11 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
                 
                 if(isBinary) {
                     u32 bitIdx = HighestBitIdx64(nInt);
+                    
+                    buff[i] = '0';
+                    buff[i+1] = 'b';
+                    i += 2;
+                    
                     while(bitIdx != 0)
                     {
                         buff[i] = (nInt & 0x1) == 0 ? '0' : '1';
