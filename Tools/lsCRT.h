@@ -880,18 +880,21 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
                 else { nInt = (u64)va_arg(argList, s32); }
                 
                 if(isBinary) {
-                    u32 bitIdx = HighestBitIdx64(nInt);
+                    s32 bitCount = HighestBitIdx64(nInt) + 1;
                     
                     buff[i] = '0';
                     buff[i+1] = 'b';
                     i += 2;
                     
-                    while(bitIdx != 0)
+                    s32 tmpCount = bitCount;
+                    while(tmpCount != 0)
                     {
-                        buff[i] = (nInt & 0x1) == 0 ? '0' : '1';
-                        i += 1;
-                        bitIdx -= 1;
+                        buff[i + (tmpCount-1)] = (nInt & 0x1) == 0 ? '0' : '1';
+                        nInt >>= 1;
+                        tmpCount -= 1;
                     }
+                    
+                    i += bitCount;
                     
                     break;
                 }
