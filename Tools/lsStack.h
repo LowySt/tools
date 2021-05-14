@@ -155,6 +155,10 @@ void *ls_stackBottom(stack *s)
 { return s->bot; }
 
 void ls_stackClear(stack *s)
-{ s->used = 0; }
+{ 
+    s->bot = s->data;
+    s->top = s->data;
+    s->used = 0; 
+}
 
 #endif // IMPLEMENTATION
