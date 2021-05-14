@@ -881,6 +881,8 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
                 
                 if(isBinary) {
                     s32 bitCount = HighestBitIdx64(nInt) + 1;
+                    bitCount = (bitCount / 8) * 8; //NOTE: Get the closes byte.
+                    if(bitCount == 0) { bitCount = 8; }
                     
                     buff[i] = '0';
                     buff[i+1] = 'b';
