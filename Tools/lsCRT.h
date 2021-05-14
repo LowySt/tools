@@ -834,6 +834,7 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
     {
         //Reset Modifiers after every copied parameter
         b32 isLong = FALSE;
+        b32 isBinary = FALSE;
         maxLen = -1;
         
         if(i >= destLen)
@@ -861,6 +862,12 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
             p += 1;
         }
         
+        if(*p == 'b') 
+        { 
+            p += 1; 
+            isBinary = TRUE; 
+        }
+        
         switch (*p)
         {
             case 'l':
@@ -871,6 +878,19 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
             {
                 if (isLong) { nInt = va_arg(argList, s64); }
                 else { nInt = (u64)va_arg(argList, s32); }
+                
+                if(isBinary) {
+                    u32 bitIdx = HighestBitIdx64(nInt);
+                    while(bitIdx != 0)
+                    {
+                        buff[i] = (nInt & 0x1) == 0 ? '0' : '1';
+                        i += 1;
+                        bitIdx -= 1;
+                    }
+                    
+                    break;
+                }
+                
                 char *s = ls_itoa(nInt);
                 u32 sLen = ls_len(s);
                 ls_memcpy(s, buff + i, sLen);
