@@ -3,7 +3,9 @@
 
 #include "lsCRT.h"
 #include "lsStack.h"
-#include "lsMath.h" //TODO: REMOVE THIS.
+#include "lsMath.h"   //TODO: REMOVE THIS.
+#include "lsBitmap.h" //TODO: REMOVE THIS.
+
 
 //NOTE: Utility Byte Manipulation
 #define GetByte(at) *at; at+=1
@@ -1434,6 +1436,7 @@ b32 OpenType_CharstringIsOperator(u8 v)
 static
 void ls_openTypeDrawLine(v2i start, v2i diff, u8 *buff, u32 width, u32 height)
 {
+#if 0
     s32 sumY = (start.y + diff.y);
     s32 incY = 0;
     if(sumY < start.y)      incY = -1;
@@ -1443,6 +1446,16 @@ void ls_openTypeDrawLine(v2i start, v2i diff, u8 *buff, u32 width, u32 height)
     s32 incX = 0;
     if(sumX < start.x)      incX = -1;
     else if(sumX > start.x) incX =  1;
+#endif
+    
+    s32 incY = 0;
+    if(diff.y > 0) incY =  1;
+    if(diff.y < 0) incY = -1;
+    
+    s32 incX = 0;
+    if(diff.x > 0) incX =  1;
+    if(diff.x < 0) incX = -1;
+    
     
     const u32 bytesPerPixel = 4;
     
@@ -1463,31 +1476,16 @@ void ls_openTypeDrawLine(v2i start, v2i diff, u8 *buff, u32 width, u32 height)
         
         curr = {curr.x + unit.x, curr.y + unit.y};
     }
-#if 0
-    //TODO: Will this work as a stop condition????
-    for(s32 y = start.y; y != start.y + diff.y; y += incY)
-    {
-        for(s32 x = start.x; x != start.x + diff.x; x += incX)
-        {
-            if((x >= width) || (y >= height) || (x < 0) || (y < 0)) { break; }
-            
-            u32 idx = (y*width + x)*bytesPerPixel;
-            buff[idx]   = 0x00; //B
-            buff[idx+1] = 0x00; //G
-            buff[idx+2] = 0x00; //R
-            buff[idx+3] = 0x00; //A
-        }
-    }
-#endif
     
     return;
 }
 
 static u32 __debug_indentation = 0;
+static u32 __debug_counter = 0;
 
 //TODO: This bullshit is debug code. Should not need to memcpy this stuff...
 //      Actually, this stuff should be useless to a user.
-void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 charLen, char *outBuf, u32 w, u32 h)
+void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 charLen, v2i *pos, char *outBuf, u32 w, u32 h)
 {
     enum ValueType { VT_S16, VT_DEC_139, VT_POS_108, VT_NEG_108, VT_FIXED_POINT };
     struct Operand { s32 value; ValueType type; };
@@ -1505,8 +1503,6 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
     
     u32 width = 0;
     u32 numHints = 0;
-    
-    v2i currentPoint = {0, 0};
     
     while(((u64)At - (u64)charstring) < charLen)
     {
@@ -1651,7 +1647,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 
                 s32 dy = ((Operand *)ls_stackPull(&args))->value;
                 
-                currentPoint.y += dy;
+                pos->y += dy;
                 
                 __printIndent(__debug_indentation);
                 ls_printf("(0, %d) vmoveto\n", dy);
@@ -1673,13 +1669,238 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     
                     v2i diff = {dx, dy};
                     
-                    ls_openTypeDrawLine(currentPoint, diff, (u8 *)outBuf, w, h);
+                    ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
                     
-                    currentPoint.x += dx;
-                    currentPoint.y += dy;
+                    pos->x += dx;
+                    pos->y += dy;
+                    
+                    //DEBUG
+                    char fileName[64] = {};
+                    ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                    __debug_counter += 1;
+                    
+                    string pathTest = ls_strConst(fileName);
+                    
+                    ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                    //DEBUG
+                    
                 }
                 
                 ls_printf("rlineto\n");
+            } break;
+            
+            case 6: //hlineto
+            {
+                if((args.used % 2) == 0)
+                {
+                    s32 dx = 0;
+                    s32 dy = 0;
+                    
+                    __printIndent(__debug_indentation);
+                    while(args.bot <= args.top)
+                    {
+                        dx = ((Operand *)ls_stackPull(&args))->value;
+                        dy = ((Operand *)ls_stackPull(&args))->value;
+                        
+                        ls_printf("[%d %d] ", dx, dy);
+                        
+                        v2i diff = {dx, 0};
+                        ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
+                        pos->x += dx;
+                        
+                        //DEBUG
+                        char fileName[64] = {};
+                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                        __debug_counter += 1;
+                        
+                        string pathTest = ls_strConst(fileName);
+                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                        //DEBUG
+                        
+                        
+                        
+                        diff = {0, dy};
+                        ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
+                        pos->y += dy;
+                        
+                        //DEBUG
+                        ls_zeroMem(fileName, 64);
+                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                        __debug_counter += 1;
+                        
+                        pathTest = ls_strConst(fileName);
+                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                        //DEBUG
+                    }
+                    
+                }
+                else
+                {
+                    s32 dx = 0;
+                    s32 dy = 0;
+                    
+                    __printIndent(__debug_indentation);
+                    
+                    dx = ((Operand *)ls_stackPull(&args))->value;
+                    ls_printf("[%d] ", dx);
+                    
+                    v2i diff = {dx, 0};
+                    ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
+                    pos->x += dx;
+                    
+                    //DEBUG
+                    char fileName[64] = {};
+                    ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                    __debug_counter += 1;
+                    
+                    string pathTest = ls_strConst(fileName);
+                    ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                    //DEBUG
+                    
+                    while(args.bot <= args.top)
+                    {
+                        dy = ((Operand *)ls_stackPull(&args))->value;
+                        dx = ((Operand *)ls_stackPull(&args))->value;
+                        
+                        ls_printf("[%d %d] ", dy, dx);
+                        
+                        v2i diff = {0, dy};
+                        ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
+                        pos->y += dy;
+                        
+                        //DEBUG
+                        ls_zeroMem(fileName, 64);
+                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                        __debug_counter += 1;
+                        
+                        pathTest = ls_strConst(fileName);
+                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                        //DEBUG
+                        
+                        
+                        diff = {dx, 0};
+                        ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
+                        pos->x += dx;
+                        
+                        //DEBUG
+                        ls_zeroMem(fileName, 64);
+                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                        __debug_counter += 1;
+                        
+                        pathTest = ls_strConst(fileName);
+                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                        //DEBUG
+                    }
+                }
+                
+                ls_printf("hlineto\n");
+            } break;
+            
+            case 7: //vlineto
+            {
+                if((args.used % 2) == 0)
+                {
+                    s32 dx = 0;
+                    s32 dy = 0;
+                    
+                    __printIndent(__debug_indentation);
+                    while(args.bot <= args.top)
+                    {
+                        dy = ((Operand *)ls_stackPull(&args))->value;
+                        dx = ((Operand *)ls_stackPull(&args))->value;
+                        
+                        ls_printf("[%d %d] ", dy, dx);
+                        
+                        v2i diff = {0, dy};
+                        ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
+                        pos->y += dy;
+                        
+                        //DEBUG
+                        char fileName[64] = {};
+                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                        __debug_counter += 1;
+                        
+                        string pathTest = ls_strConst(fileName);
+                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                        //DEBUG
+                        
+                        
+                        
+                        diff = {dx, 0};
+                        ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
+                        pos->x += dx;
+                        
+                        //DEBUG
+                        ls_zeroMem(fileName, 64);
+                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                        __debug_counter += 1;
+                        
+                        pathTest = ls_strConst(fileName);
+                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                        //DEBUG
+                    }
+                    
+                }
+                else
+                {
+                    s32 dx = 0;
+                    s32 dy = 0;
+                    
+                    __printIndent(__debug_indentation);
+                    
+                    dy = ((Operand *)ls_stackPull(&args))->value;
+                    ls_printf("[%d] ", dy);
+                    
+                    v2i diff = {0, dy};
+                    ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
+                    pos->y += dy;
+                    
+                    //DEBUG
+                    char fileName[64] = {};
+                    ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                    __debug_counter += 1;
+                    
+                    string pathTest = ls_strConst(fileName);
+                    ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                    //DEBUG
+                    
+                    while(args.bot <= args.top)
+                    {
+                        dx = ((Operand *)ls_stackPull(&args))->value;
+                        dy = ((Operand *)ls_stackPull(&args))->value;
+                        
+                        ls_printf("[%d %d] ", dx, dy);
+                        
+                        v2i diff = {dx, 0};
+                        ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
+                        pos->x += dx;
+                        
+                        //DEBUG
+                        ls_zeroMem(fileName, 64);
+                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                        __debug_counter += 1;
+                        
+                        pathTest = ls_strConst(fileName);
+                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                        //DEBUG
+                        
+                        
+                        diff = {0, dy};
+                        ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
+                        pos->y += dy;
+                        
+                        //DEBUG
+                        ls_zeroMem(fileName, 64);
+                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                        __debug_counter += 1;
+                        
+                        pathTest = ls_strConst(fileName);
+                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                        //DEBUG
+                    }
+                }
+                
+                ls_printf("vlineto\n");
             } break;
             
             case 10: //callsubr
@@ -1699,7 +1920,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 __printIndent(__debug_indentation);
                 ls_printf("callsubr %d\n\n", subrNumber);
                 __debug_indentation += 1;
-                ls_openTypeCharstringToImage(font, subrBuff, subrSize, outBuf, w, h);
+                ls_openTypeCharstringToImage(font, subrBuff, subrSize, pos, outBuf, w, h);
                 __debug_indentation -= 1;
                 ls_printf("\n");
                 
@@ -1801,8 +2022,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 dx = ((Operand *)ls_stackPull(&args))->value;
                 s32 dy = ((Operand *)ls_stackPull(&args))->value;
                 
-                currentPoint.x += dx;
-                currentPoint.y += dy;
+                pos->x += dx;
+                pos->y += dy;
                 
                 __printIndent(__debug_indentation);
                 ls_printf("(%d, %d) rmoveto\n", dx, dy);
@@ -1821,7 +2042,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 
                 s32 dy = ((Operand *)ls_stackPull(&args))->value;
                 
-                currentPoint.y += dy;
+                pos->y += dy;
                 
                 __printIndent(__debug_indentation);
                 ls_printf("(%d, 0) hmoveto\n", dy);
@@ -1852,6 +2073,11 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 }
                 
                 ls_printf("vstemhm\n");
+            } break;
+            
+            case 31: //hvcurveto
+            {
+                //TODO: Draw Bezier.
             } break;
             
             default:
