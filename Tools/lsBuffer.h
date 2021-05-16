@@ -19,8 +19,8 @@ extern "C"
     buffer ls_bufferFromPtrArray(void *arr, u64 arrSize);
     buffer ls_bufferInitFromFile(string path);
     
-    void ls_bufferClear(buffer *buff);
-    void ls_bufferDestroy(buffer *buff);
+    void   ls_bufferClear(buffer *buff);
+    void   ls_bufferDestroy(buffer *buff);
     
     void   ls_bufferChangeByte(buffer *buff, u8 v);
     void   ls_bufferChangeWord(buffer *buff, u16 v);
@@ -33,6 +33,7 @@ extern "C"
     void   ls_bufferAddQWord(buffer *buff, u64 v);
     void   ls_bufferAddString(buffer *buff, string v);
     void   ls_bufferAddData(buffer *buff, void *data, u32 len);
+    void   ls_bufferAddDataClean(buffer *buff, void *data, u32 len);
     
     u8     ls_bufferPeekByte(buffer *buff);
     u16    ls_bufferPeekWord(buffer *buff);
@@ -240,6 +241,18 @@ void ls_bufferAddData(buffer *buff, void *data, u32 len)
     Assert(buff->data);
     
     ls_bufferAddDWord(buff, len);
+    
+    if(buff->cursor + len > buff->size)
+    { ls_bufferGrow(buff, len + 4096); }
+    
+    u8 *At = (u8 *)buff->data + buff->cursor;
+    ls_memcpy(data, At, len);
+    buff->cursor += len;
+}
+
+void ls_bufferAddDataClean(buffer *buff, void *data, u32 len)
+{
+    Assert(buff->data);
     
     if(buff->cursor + len > buff->size)
     { ls_bufferGrow(buff, len + 4096); }
