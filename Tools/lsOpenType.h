@@ -1436,18 +1436,6 @@ b32 OpenType_CharstringIsOperator(u8 v)
 static
 void ls_openTypeDrawLine(v2i start, v2i diff, u8 *buff, u32 width, u32 height)
 {
-#if 0
-    s32 sumY = (start.y + diff.y);
-    s32 incY = 0;
-    if(sumY < start.y)      incY = -1;
-    else if(sumY > start.y) incY =  1;
-    
-    s32 sumX = (start.x + diff.x);
-    s32 incX = 0;
-    if(sumX < start.x)      incX = -1;
-    else if(sumX > start.x) incX =  1;
-#endif
-    
     s32 incY = 0;
     if(diff.y > 0) incY =  1;
     if(diff.y < 0) incY = -1;
@@ -1480,6 +1468,33 @@ void ls_openTypeDrawLine(v2i start, v2i diff, u8 *buff, u32 width, u32 height)
     return;
 }
 
+static
+void ls_openTypeDrawBezier(v2i P0, v2i P1, v2i P2, u8 *buff, u32 width, u32 height)
+{
+    const u32 bytesPerPixel = 4;
+    
+    f32 t = 0.001f;
+    
+    for(u32 i = 0; i < 1000; i++)
+    {
+        f32 lineOneX = (1.0f - t)*P0.x + t*P1.x;
+        f32 lineTwoX = (1.0f - t)*P1.x + t*P2.x;
+        u32 X = (u32)((1.0f - t)*lineOneX + t*lineTwoX);
+        
+        f32 lineOneY = (1.0f - t)*P0.y + t*P1.y;
+        f32 lineTwoY = (1.0f - t)*P1.y + t*P2.y;
+        u32 Y = (u32)((1.0f - t)*lineOneY + t*lineTwoY);
+        
+        u32 idx = (Y*width + X)*bytesPerPixel;
+        buff[idx]   = 0x00; //B
+        buff[idx+1] = 0x00; //G
+        buff[idx+2] = 0x00; //R
+        buff[idx+3] = 0x00; //A
+        
+        t += 0.001f;
+    }
+}
+
 static u32 __debug_indentation = 0;
 static u32 __debug_counter = 0;
 
@@ -1491,6 +1506,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
     enum ValueType { VT_S16, VT_DEC_139, VT_POS_108, VT_NEG_108, VT_FIXED_POINT };
     struct Operand { s32 value; ValueType type; };
 #endif
+    
+#define PullVal() *((s32 *)ls_stackPull(&args))
     
     auto __printIndent = [](u32 depth) {
         char buff[32] = {};
@@ -1578,7 +1595,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             {
                 if((args.used % 2) != 0)
                 {
-                    width = font->cff.PrivateDict.nominalWidthX + *((s32 *)ls_stackPull(&args));
+                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
                     
                     __printIndent(__debug_indentation);
                     ls_printf("width %d\n", width);
@@ -1590,8 +1607,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 __printIndent(__debug_indentation);
                 while(args.bot <= args.top)
                 {
-                    yA = *((s32 *)ls_stackPull(&args));
-                    yB = *((s32 *)ls_stackPull(&args));
+                    yA = PullVal();
+                    yB = PullVal();
                     numHints += 1;
                     
                     ls_printf("[%d %d] ", yA, yB);
@@ -1605,7 +1622,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             {
                 if((args.used % 2) != 0)
                 {
-                    width = font->cff.PrivateDict.nominalWidthX + *((s32 *)ls_stackPull(&args));
+                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
                     
                     __printIndent(__debug_indentation);
                     ls_printf("width %d\n", width);
@@ -1617,8 +1634,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 __printIndent(__debug_indentation);
                 while(args.bot <= args.top)
                 {
-                    yA = *((s32 *)ls_stackPull(&args));
-                    yB = *((s32 *)ls_stackPull(&args));
+                    yA = PullVal();
+                    yB = PullVal();
                     numHints += 1;
                     
                     ls_printf("[%d %d] ", yA, yB);
@@ -1631,13 +1648,13 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             {
                 if(args.used == 2)
                 {
-                    width = font->cff.PrivateDict.nominalWidthX + *((s32 *)ls_stackPull(&args));
+                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
                     
                     __printIndent(__debug_indentation);
                     ls_printf("width %d\n", width);
                 }
                 
-                s32 dy = *((s32 *)ls_stackPull(&args));
+                s32 dy = PullVal();
                 
                 pos->y += dy;
                 
@@ -1654,8 +1671,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 __printIndent(__debug_indentation);
                 while(args.bot <= args.top)
                 {
-                    dx = *((s32 *)ls_stackPull(&args));
-                    dy = *((s32 *)ls_stackPull(&args));
+                    dx = PullVal();
+                    dy = PullVal();
                     
                     ls_printf("[%d %d] ", dx, dy);
                     
@@ -1691,8 +1708,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     __printIndent(__debug_indentation);
                     while(args.bot <= args.top)
                     {
-                        dx = *((s32 *)ls_stackPull(&args));
-                        dy = *((s32 *)ls_stackPull(&args));
+                        dx = PullVal();
+                        dy = PullVal();
                         
                         ls_printf("[%d %d] ", dx, dy);
                         
@@ -1733,7 +1750,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     
                     __printIndent(__debug_indentation);
                     
-                    dx = *((s32 *)ls_stackPull(&args));
+                    dx = PullVal();
                     ls_printf("[%d] ", dx);
                     
                     v2i diff = {dx, 0};
@@ -1751,8 +1768,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     
                     while(args.bot <= args.top)
                     {
-                        dy = *((s32 *)ls_stackPull(&args));
-                        dx = *((s32 *)ls_stackPull(&args));
+                        dy = PullVal();
+                        dx = PullVal();
                         
                         ls_printf("[%d %d] ", dy, dx);
                         
@@ -1798,8 +1815,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     __printIndent(__debug_indentation);
                     while(args.bot <= args.top)
                     {
-                        dy = *((s32 *)ls_stackPull(&args));
-                        dx = *((s32 *)ls_stackPull(&args));
+                        dy = PullVal();
+                        dx = PullVal();
                         
                         ls_printf("[%d %d] ", dy, dx);
                         
@@ -1840,7 +1857,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     
                     __printIndent(__debug_indentation);
                     
-                    dy = *((s32 *)ls_stackPull(&args));
+                    dy = PullVal();
                     ls_printf("[%d] ", dy);
                     
                     v2i diff = {0, dy};
@@ -1858,8 +1875,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     
                     while(args.bot <= args.top)
                     {
-                        dx = *((s32 *)ls_stackPull(&args));
-                        dy = *((s32 *)ls_stackPull(&args));
+                        dx = PullVal();
+                        dy = PullVal();
                         
                         ls_printf("[%d %d] ", dx, dy);
                         
@@ -1904,12 +1921,12 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 __printIndent(__debug_indentation);
                 while(args.bot <= args.top)
                 {
-                    p1.x = *((s32 *)ls_stackPull(&args));
-                    p1.y = *((s32 *)ls_stackPull(&args));
-                    p2.x = *((s32 *)ls_stackPull(&args));
-                    p2.y = *((s32 *)ls_stackPull(&args));
-                    p3.x = *((s32 *)ls_stackPull(&args));
-                    p3.y = *((s32 *)ls_stackPull(&args));
+                    p1.x = PullVal();
+                    p1.y = PullVal();
+                    p2.x = PullVal();
+                    p2.y = PullVal();
+                    p3.x = PullVal();
+                    p3.y = PullVal();
                     
                     ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                 }
@@ -1959,7 +1976,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             {
                 if((args.used % 2) != 0)
                 {
-                    width = font->cff.PrivateDict.nominalWidthX + *((s32 *)ls_stackPull(&args));
+                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
                     
                     __printIndent(__debug_indentation);
                     ls_printf("width %d\n", width);
@@ -1972,8 +1989,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 __printIndent(__debug_indentation);
                 while(args.bot <= args.top)
                 {
-                    yA = *((s32 *)ls_stackPull(&args));
-                    yB = *((s32 *)ls_stackPull(&args));
+                    yA = PullVal();
+                    yB = PullVal();
                     numHints += 1;
                     
                     ls_printf("[%d %d] ", yA, yB);
@@ -1994,8 +2011,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     __printIndent(__debug_indentation);
                     while(args.bot <= args.top)
                     {
-                        yA = *((s32 *)ls_stackPull(&args));
-                        yB = *((s32 *)ls_stackPull(&args));
+                        yA = PullVal();
+                        yB = PullVal();
                         numHints += 1;
                         
                         ls_printf("[%d %d] ", yA, yB);
@@ -2028,14 +2045,14 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             {
                 if(args.used == 3)
                 {
-                    width = font->cff.PrivateDict.nominalWidthX + *((s32 *)ls_stackPull(&args));
+                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
                     
                     __printIndent(__debug_indentation);
                     ls_printf("width %d\n", width);
                 }
                 
-                s32 dx = *((s32 *)ls_stackPull(&args));
-                s32 dy = *((s32 *)ls_stackPull(&args));
+                s32 dx = PullVal();
+                s32 dy = PullVal();
                 
                 pos->x += dx;
                 pos->y += dy;
@@ -2049,13 +2066,13 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             {
                 if(args.used == 2)
                 {
-                    width = font->cff.PrivateDict.nominalWidthX + *((s32 *)ls_stackPull(&args));
+                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
                     
                     __printIndent(__debug_indentation);
                     ls_printf("width %d\n", width);
                 }
                 
-                s32 dy = *((s32 *)ls_stackPull(&args));
+                s32 dy = PullVal();
                 
                 pos->y += dy;
                 
@@ -2068,7 +2085,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             {
                 if((args.used % 2) != 0)
                 {
-                    width = font->cff.PrivateDict.nominalWidthX + *((s32 *)ls_stackPull(&args));
+                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
                     
                     __printIndent(__debug_indentation);
                     ls_printf("width %d\n", width);
@@ -2080,8 +2097,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 __printIndent(__debug_indentation);
                 while(args.bot <= args.top)
                 {
-                    yA = *((s32 *)ls_stackPull(&args));
-                    yB = *((s32 *)ls_stackPull(&args));
+                    yA = PullVal();
+                    yB = PullVal();
                     numHints += 1;
                     
                     ls_printf("[%d %d] ", yA, yB);
@@ -2101,28 +2118,28 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     if((args.used % 8) == 0)
                     {
                         //Then we are in case: {....} vhcurveto
-                        y[0] = *((s32 *)ls_stackPull(&args));
-                        x[0] = *((s32 *)ls_stackPull(&args));
+                        y[0] = PullVal();
+                        x[0] = PullVal();
                         
-                        y[1] = *((s32 *)ls_stackPull(&args));
-                        x[1] = *((s32 *)ls_stackPull(&args));
+                        y[1] = PullVal();
+                        x[1] = PullVal();
                         
-                        x[2] = *((s32 *)ls_stackPull(&args));
-                        x[3] = *((s32 *)ls_stackPull(&args));
+                        x[2] = PullVal();
+                        x[3] = PullVal();
                         
-                        y[2] = *((s32 *)ls_stackPull(&args));
-                        y[3] = *((s32 *)ls_stackPull(&args));
+                        y[2] = PullVal();
+                        y[3] = PullVal();
                         
                         ls_printf("[%d %d %d %d %d %d %d %d] ", y[0], x[0], y[1], x[1], x[2], x[3], y[3], y[3]);
                     }
                     else
                     {
                         //Then we are in case: x y z w {....} vhcurveto
-                        y[0] = *((s32 *)ls_stackPull(&args));
-                        x[0] = *((s32 *)ls_stackPull(&args));
+                        y[0] = PullVal();
+                        x[0] = PullVal();
                         
-                        y[1] = *((s32 *)ls_stackPull(&args));
-                        x[1] = *((s32 *)ls_stackPull(&args));
+                        y[1] = PullVal();
+                        x[1] = PullVal();
                         
                         ls_printf("[%d %d %d %d] ", y[0], x[0], y[1], x[1]);
                         
@@ -2131,17 +2148,17 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                         
                         while(args.bot <= args.top)
                         {
-                            x[xI] = *((s32 *)ls_stackPull(&args));
-                            x[xI+1] = *((s32 *)ls_stackPull(&args));
+                            x[xI] = PullVal();
+                            x[xI+1] = PullVal();
                             
-                            y[yI] = *((s32 *)ls_stackPull(&args));
-                            y[yI+1] = *((s32 *)ls_stackPull(&args));
+                            y[yI] = PullVal();
+                            y[yI+1] = PullVal();
                             
-                            y[yI+2] = *((s32 *)ls_stackPull(&args));
-                            x[xI+2] = *((s32 *)ls_stackPull(&args));
+                            y[yI+2] = PullVal();
+                            x[xI+2] = PullVal();
                             
-                            y[yI+3] = *((s32 *)ls_stackPull(&args));
-                            x[xI+3] = *((s32 *)ls_stackPull(&args));
+                            y[yI+3] = PullVal();
+                            x[xI+3] = PullVal();
                             
                             
                             ls_printf("[%d %d %d %d %d %d %d %d] ", 
@@ -2157,19 +2174,19 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     if(((args.used-1) % 8) == 0)
                     {
                         //Then we are in case: {....} x vhcurveto
-                        y[0] = *((s32 *)ls_stackPull(&args));
-                        x[0] = *((s32 *)ls_stackPull(&args));
+                        y[0] = PullVal();
+                        x[0] = PullVal();
                         
-                        y[1] = *((s32 *)ls_stackPull(&args));
-                        x[1] = *((s32 *)ls_stackPull(&args));
+                        y[1] = PullVal();
+                        x[1] = PullVal();
                         
-                        x[2] = *((s32 *)ls_stackPull(&args));
-                        x[3] = *((s32 *)ls_stackPull(&args));
+                        x[2] = PullVal();
+                        x[3] = PullVal();
                         
-                        y[2] = *((s32 *)ls_stackPull(&args));
-                        y[3] = *((s32 *)ls_stackPull(&args));
+                        y[2] = PullVal();
+                        y[3] = PullVal();
                         
-                        x[4] = *((s32 *)ls_stackPull(&args));
+                        x[4] = PullVal();
                         
                         ls_printf("[%d %d %d %d %d %d %d %d] %d ", 
                                   y[0], x[0], y[1], x[1], x[2], x[3], y[3], y[3], x[4]);
@@ -2177,11 +2194,11 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     else
                     {
                         //Then we are in case: x y z w {....} y vhcurveto
-                        y[0] = *((s32 *)ls_stackPull(&args));
-                        x[0] = *((s32 *)ls_stackPull(&args));
+                        y[0] = PullVal();
+                        x[0] = PullVal();
                         
-                        y[1] = *((s32 *)ls_stackPull(&args));
-                        x[1] = *((s32 *)ls_stackPull(&args));
+                        y[1] = PullVal();
+                        x[1] = PullVal();
                         
                         ls_printf("[%d %d %d %d] ", y[0], x[0], y[1], x[1]);
                         
@@ -2190,17 +2207,17 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                         
                         while(args.bot <= args.top)
                         {
-                            x[xI] = *((s32 *)ls_stackPull(&args));
-                            x[xI+1] = *((s32 *)ls_stackPull(&args));
+                            x[xI] = PullVal();
+                            x[xI+1] = PullVal();
                             
-                            y[yI] = *((s32 *)ls_stackPull(&args));
-                            y[yI+1] = *((s32 *)ls_stackPull(&args));
+                            y[yI] = PullVal();
+                            y[yI+1] = PullVal();
                             
-                            y[yI+2] = *((s32 *)ls_stackPull(&args));
-                            x[xI+2] = *((s32 *)ls_stackPull(&args));
+                            y[yI+2] = PullVal();
+                            x[xI+2] = PullVal();
                             
-                            y[yI+3] = *((s32 *)ls_stackPull(&args));
-                            x[xI+3] = *((s32 *)ls_stackPull(&args));
+                            y[yI+3] = PullVal();
+                            x[xI+3] = PullVal();
                             
                             
                             ls_printf("[%d %d %d %d %d %d %d %d] ", 
@@ -2210,7 +2227,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                             yI += 4;
                         }
                         
-                        y[yI] = *((s32 *)ls_stackPull(&args));
+                        y[yI] = PullVal();
                         ls_printf("%d ", y[yI]);
                         yI += 1;
                     }
@@ -2222,20 +2239,9 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             
             case 31: //hvcurveto
             {
-#if 0
-                s32 dx1 = 0, dx2 = 0;
-                s32 dy2 = 0, dy3 = 0;
-                
-                s32 dya = 0;
-                
-                s32 dxb = 0, dyb = 0;
-                
-                s32 dxc = 0, dxd = 0;
-                s32 dxe = 0, dye = 0;
-                s32 dxf = 0, dyf = 0;
-#endif
-                s32 x[8] = {};
-                s32 y[8] = {};
+                v2i p1 = {};
+                v2i p2 = {};
+                v2i p3 = {};
                 
                 __printIndent(__debug_indentation);
                 if((args.used % 2) == 0)
@@ -2243,52 +2249,79 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     if((args.used % 8) == 0)
                     {
                         //Then we are in case: {....} hvcurveto
-                        x[0] = *((s32 *)ls_stackPull(&args));
-                        x[1] = *((s32 *)ls_stackPull(&args));
+                        p1.x = pos->x + PullVal();
+                        p1.y = pos->y;
+                        p2.x = p1.x + PullVal();
+                        p2.y = p1.y + PullVal();
+                        p3.y = p2.y + PullVal();
+                        p3.x = p2.x;
                         
-                        y[0] = *((s32 *)ls_stackPull(&args));
-                        y[1] = *((s32 *)ls_stackPull(&args));
-                        y[2] = *((s32 *)ls_stackPull(&args));
+                        pos->x = p3.x;
+                        pos->y = p3.y;
                         
-                        x[2] = *((s32 *)ls_stackPull(&args));
-                        y[3] = *((s32 *)ls_stackPull(&args));
+                        //NOTE: Curve 1
+                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                         
-                        x[3] = *((s32 *)ls_stackPull(&args));
+                        ls_openTypeDrawBezier(p1, p2, p3, (u8 *)outBuf, w, h);
                         
-                        ls_printf("[%d %d %d %d %d %d %d %d] ", x[0], x[1], y[0], y[1], y[2], x[2], y[3], x[3]);
+                        p1.x = pos->x;
+                        p1.y = pos->y + PullVal();
+                        p2.x = p1.x + PullVal();
+                        p2.y = p1.y + PullVal();
+                        p3.x = p2.x + PullVal();
+                        p3.y = p2.y;
+                        
+                        pos->x = p3.x;
+                        pos->y = p3.y;
+                        
+                        //NOTE: Curve 2
+                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                        
+                        ls_openTypeDrawBezier(p1, p2, p3, (u8 *)outBuf, w, h);
                     }
                     else
                     {
                         //Then we are in case: x y z w {....} hvcurveto
-                        x[0] = *((s32 *)ls_stackPull(&args));
-                        x[1] = *((s32 *)ls_stackPull(&args));
+                        p1.x = pos->x + PullVal();
+                        p1.y = pos->y;
+                        p2.x = p1.x + PullVal();
+                        p2.y = p1.y + PullVal();
+                        p3.y = p2.y + PullVal();
+                        p3.x = p2.x;
                         
-                        y[0] = *((s32 *)ls_stackPull(&args));
-                        y[1] = *((s32 *)ls_stackPull(&args));
+                        pos->x = p3.x;
+                        pos->y = p3.y;
                         
-                        ls_printf("[%d %d %d %d] ", x[0], x[1], y[0], y[1]);
-                        
-                        u32 xI = 2;
-                        u32 yI = 2;
+                        //NOTE: Curve 1
+                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                         
                         while(args.bot <= args.top)
                         {
-                            y[yI] = *((s32 *)ls_stackPull(&args));
-                            x[xI] = *((s32 *)ls_stackPull(&args));
+                            p1.x = pos->x;
+                            p1.y = pos->y + PullVal();
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.x = p2.x + PullVal();
+                            p3.y = p2.y;
                             
-                            y[yI+1] = *((s32 *)ls_stackPull(&args));
-                            x[xI+1] = *((s32 *)ls_stackPull(&args));
+                            pos->x = p3.x;
+                            pos->y = p3.y;
                             
-                            x[xI+2] = *((s32 *)ls_stackPull(&args));
-                            x[xI+3] = *((s32 *)ls_stackPull(&args));
+                            //NOTE: Curve 2
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                             
-                            y[yI+2] = *((s32 *)ls_stackPull(&args));
-                            y[yI+3] = *((s32 *)ls_stackPull(&args));
+                            p1.x = pos->x + PullVal();
+                            p1.y = pos->y;
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.y = p2.y + PullVal();
+                            p3.x = p2.x;
                             
-                            ls_printf("[%d %d %d %d %d %d %d %d] ", y[yI], x[xI], y[yI+1], x[xI+1], x[xI+2], x[xI+3], y[yI+2], y[yI+3]);
+                            pos->x = p3.x;
+                            pos->y = p3.y;
                             
-                            xI += 4;
-                            yI += 4;
+                            //NOTE: Curve 3
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                         }
                         
                     }
@@ -2298,62 +2331,80 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     if(((args.used-1) % 8) == 0)
                     {
                         //Then we are in case: {....} y hvcurveto
-                        x[0] = *((s32 *)ls_stackPull(&args));
-                        x[1] = *((s32 *)ls_stackPull(&args));
+                        p1.x = pos->x + PullVal();
+                        p1.y = pos->y;
+                        p2.x = p1.x + PullVal();
+                        p2.y = p1.y + PullVal();
+                        p3.y = p2.y + PullVal();
+                        p3.x = p2.x;
                         
-                        y[0] = *((s32 *)ls_stackPull(&args));
-                        y[1] = *((s32 *)ls_stackPull(&args));
-                        y[2] = *((s32 *)ls_stackPull(&args));
+                        pos->x = p3.x;
+                        pos->y = p3.y;
                         
-                        x[2] = *((s32 *)ls_stackPull(&args));
-                        y[3] = *((s32 *)ls_stackPull(&args));
+                        //NOTE: Curve 1
+                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                         
-                        x[3] = *((s32 *)ls_stackPull(&args));
+                        p1.x = pos->x;
+                        p1.y = pos->y + PullVal();
+                        p2.x = p1.x + PullVal();
+                        p2.y = p1.y + PullVal();
+                        p3.x = p2.x + PullVal();
+                        p3.y = p2.y + PullVal();
                         
-                        y[4] = *((s32 *)ls_stackPull(&args));
+                        pos->x = p3.x;
+                        pos->y = p3.y;
                         
-                        ls_printf("[%d %d %d %d %d %d %d %d] %d ", 
-                                  x[0], x[1], y[0], y[1], y[2], x[2], y[3], x[3], y[4]);
+                        //NOTE: Curve 2
+                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                     }
                     else
                     {
                         //Then we are in case: x y z w {....} x hvcurveto
-                        x[0] = *((s32 *)ls_stackPull(&args));
-                        x[1] = *((s32 *)ls_stackPull(&args));
+                        p1.x = pos->x + PullVal();
+                        p1.y = pos->y;
+                        p2.x = p1.x + PullVal();
+                        p2.y = p1.y + PullVal();
+                        p3.y = p2.y + PullVal();
+                        p3.x = p2.x;
                         
-                        y[0] = *((s32 *)ls_stackPull(&args));
-                        y[1] = *((s32 *)ls_stackPull(&args));
+                        pos->x = p3.x;
+                        pos->y = p3.y;
                         
-                        ls_printf("[%d %d %d %d] ", x[0], x[1], y[0], y[1]);
-                        
-                        u32 xI = 2;
-                        u32 yI = 2;
+                        //NOTE: Curve 1
+                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                         
                         while(args.bot <= args.top)
                         {
-                            y[yI] = *((s32 *)ls_stackPull(&args));
-                            x[xI] = *((s32 *)ls_stackPull(&args));
+                            p1.x = pos->x;
+                            p1.y = pos->y + PullVal();
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.x = p2.x + PullVal();
+                            p3.y = p2.y;
                             
-                            y[yI+1] = *((s32 *)ls_stackPull(&args));
-                            x[xI+1] = *((s32 *)ls_stackPull(&args));
+                            pos->x = p3.x;
+                            pos->y = p3.y;
                             
-                            x[xI+2] = *((s32 *)ls_stackPull(&args));
-                            x[xI+3] = *((s32 *)ls_stackPull(&args));
+                            //NOTE: Curve 2
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                             
-                            y[yI+2] = *((s32 *)ls_stackPull(&args));
-                            y[yI+3] = *((s32 *)ls_stackPull(&args));
+                            p1.x = pos->x + PullVal();
+                            p1.y = pos->y;
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.y = p2.y + PullVal();
                             
-                            ls_printf("[%d %d %d %d %d %d %d %d] ", y[yI], x[xI], y[yI+1], x[xI+1], x[xI+2], x[xI+3], y[yI+2], y[yI+3]);
+                            //TODO:TODO:LAST ONE GOTTA PULL THE SHIT
+                            if((u8 *)args.bot == ((u8 *)args.top - sizeof(s32)))  { p3.x = p2.x + PullVal(); }
+                            else                                                  { p3.x = p2.x; }
                             
-                            xI += 4;
-                            yI += 4;
+                            pos->x = p3.x;
+                            pos->y = p3.y;
+                            
+                            //NOTE: Curve 3
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                         }
                         
-                        x[xI] = *((s32 *)ls_stackPull(&args));
-                        
-                        ls_printf("%d ", x[xI]);
-                        
-                        xI += 1;
                     }
                 }
                 
@@ -2385,6 +2436,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
         
         ls_stackClear(&args);
     }
+    
+#undef PullVal
 }
 
 
