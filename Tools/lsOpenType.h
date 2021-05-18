@@ -1741,6 +1741,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
     //            https://docs.rs/cff/0.5.0/src/cff/glyphs/charstring/mod.rs.html#15-955
     //            https://fontdrop.info/#/?darkmode=true
     //            https://github.com/caryll/otfcc/tree/235d1bd6fb81c8daeaa5232aa840c1e37f07fa86/lib/libcff
+    //            https://www.freetype.org/freetype2/docs/glyphs/glyphs-3.html
     //
     
 #define PullVal() *((s32 *)ls_stackPull(&args))
@@ -1751,10 +1752,11 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
     u32 width = 0;
     u32 numHints = 0;
     
-    auto __maybePullWidth = [font, &width, &args]() {
-        if((args.used % 2) != 0)
+    auto __maybePullWidth = [font, &width, &args, pos, w]() {
+        if((args.count % 2) != 0)
         {
             width = font->cff.PrivateDict.nominalWidthX + PullVal();
+            pos->x = (w - width) / 2;
             
             __printIndent(__debug_indentation);
             ls_printf("width %d\n", width);
@@ -1838,7 +1840,6 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 yB = 0;
                 
                 __printIndent(__debug_indentation);
-                //while(args.bot <= args.top)
                 while(args.count > 0)
                 {
                     yA = PullVal();
@@ -1860,7 +1861,6 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 yB = 0;
                 
                 __printIndent(__debug_indentation);
-                //while(args.bot <= args.top)
                 while(args.count > 0)
                 {
                     yA = PullVal();
@@ -1885,7 +1885,6 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 dy = 0;
                 
                 __printIndent(__debug_indentation);
-                //while(args.bot <= args.top)
                 while(args.count > 0)
                 {
                     dx = PullVal();
@@ -1929,7 +1928,6 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 v2i p3 = {};
                 
                 __printIndent(__debug_indentation);
-                //while(args.bot <= args.top)
                 while(args.count > 0)
                 {
                     p0 = *pos;
@@ -2010,7 +2008,6 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 yB = 0;
                 
                 __printIndent(__debug_indentation);
-                //while(args.bot <= args.top)
                 while(args.count > 0)
                 {
                     yA = PullVal();
@@ -2027,13 +2024,12 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             case 19: //hintmask
             {
                 //Process any implict vstem hints
-                if(args.used != 0)
+                if(args.count != 0)
                 {
                     s32 yA = 0;
                     s32 yB = 0;
                     
                     __printIndent(__debug_indentation);
-                    //while(args.bot <= args.top)
                     while(args.count > 0)
                     {
                         yA = PullVal();
@@ -2069,9 +2065,10 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             case 21: //rmoveto
             {
                 //TODO: How to lamda?
-                if(args.used == 3)
+                if(args.count== 3)
                 {
                     width = font->cff.PrivateDict.nominalWidthX + PullVal();
+                    pos->x = (w - width) / 2;
                     
                     __printIndent(__debug_indentation);
                     ls_printf("width %d\n", width);
@@ -2085,9 +2082,10 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             
             case 22: //hmoveto
             {
-                if(args.used == 2)
+                if(args.count == 2)
                 {
                     width = font->cff.PrivateDict.nominalWidthX + PullVal();
+                    pos->x = (w - width) / 2;
                     
                     __printIndent(__debug_indentation);
                     ls_printf("width %d\n", width);
@@ -2104,7 +2102,6 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 yB = 0;
                 
                 __printIndent(__debug_indentation);
-                //while(args.bot <= args.top)
                 while(args.count > 0)
                 {
                     yA = PullVal();
