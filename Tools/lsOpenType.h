@@ -1639,7 +1639,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 yB = 0;
                 
                 __printIndent(__debug_indentation);
-                while(args.bot <= args.top)
+                //while(args.bot <= args.top)
+                while(args.count > 0)
                 {
                     yA = PullVal();
                     yB = PullVal();
@@ -1666,7 +1667,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 yB = 0;
                 
                 __printIndent(__debug_indentation);
-                while(args.bot <= args.top)
+                //while(args.bot <= args.top)
+                while(args.count > 0)
                 {
                     yA = PullVal();
                     yB = PullVal();
@@ -1703,7 +1705,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 dy = 0;
                 
                 __printIndent(__debug_indentation);
-                while(args.bot <= args.top)
+                //while(args.bot <= args.top)
+                while(args.count > 0)
                 {
                     dx = PullVal();
                     dy = PullVal();
@@ -1740,7 +1743,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     s32 dy = 0;
                     
                     __printIndent(__debug_indentation);
-                    while(args.bot <= args.top)
+                    //while(args.bot <= args.top)
+                    while(args.count > 0)
                     {
                         dx = PullVal();
                         dy = PullVal();
@@ -1800,7 +1804,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
                     //DEBUG
                     
-                    while(args.bot <= args.top)
+                    //while(args.bot <= args.top)
+                    while(args.count > 0)
                     {
                         dy = PullVal();
                         dx = PullVal();
@@ -1847,7 +1852,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     s32 dy = 0;
                     
                     __printIndent(__debug_indentation);
-                    while(args.bot <= args.top)
+                    //while(args.bot <= args.top)
+                    while(args.count > 0)
                     {
                         dy = PullVal();
                         dx = PullVal();
@@ -1907,7 +1913,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
                     //DEBUG
                     
-                    while(args.bot <= args.top)
+                    //while(args.bot <= args.top)
+                    while(args.count > 0)
                     {
                         dx = PullVal();
                         dy = PullVal();
@@ -1954,7 +1961,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 v2i p3 = {};
                 
                 __printIndent(__debug_indentation);
-                while(args.bot <= args.top)
+                //while(args.bot <= args.top)
+                while(args.count > 0)
                 {
                     p0 = *pos;
                     p1.x = pos->x + PullVal();
@@ -2038,7 +2046,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 yB = 0;
                 
                 __printIndent(__debug_indentation);
-                while(args.bot <= args.top)
+                //while(args.bot <= args.top)
+                while(args.count > 0)
                 {
                     yA = PullVal();
                     yB = PullVal();
@@ -2060,7 +2069,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     s32 yB = 0;
                     
                     __printIndent(__debug_indentation);
-                    while(args.bot <= args.top)
+                    //while(args.bot <= args.top)
+                    while(args.count > 0)
                     {
                         yA = PullVal();
                         yB = PullVal();
@@ -2146,7 +2156,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 yB = 0;
                 
                 __printIndent(__debug_indentation);
-                while(args.bot <= args.top)
+                //while(args.bot <= args.top)
+                while(args.count > 0)
                 {
                     yA = PullVal();
                     yB = PullVal();
@@ -2170,56 +2181,59 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 {
                     if((args.used % 8) == 0)
                     {
-                        //Then we are in case: {....} vhcurveto
-                        p0 = *pos;
-                        p1.x = pos->x;
-                        p1.y = pos->y + PullVal();
-                        p2.x = p1.x + PullVal();
-                        p2.y = p1.y + PullVal();
-                        p3.x = p2.x + PullVal();
-                        p3.y = p2.y;
-                        
-                        pos->x = p3.x;
-                        pos->y = p3.y;
-                        
-                        //NOTE: Curve 1
-                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
-                        
-                        ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
-                        
-                        //DEBUG
-                        char fileName[64] = {};
-                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
-                        __debug_counter += 1;
-                        
-                        string pathTest = ls_strConst(fileName);
-                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
-                        //DEBUG
-                        
-                        p0 = *pos;
-                        p1.x = pos->x + PullVal();
-                        p1.y = pos->y;
-                        p2.x = p1.x + PullVal();
-                        p2.y = p1.y + PullVal();
-                        p3.y = p2.y + PullVal();
-                        p3.x = p2.x;
-                        
-                        pos->x = p3.x;
-                        pos->y = p3.y;
-                        
-                        //NOTE: Curve 2
-                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
-                        
-                        ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
-                        
-                        //DEBUG
-                        ls_zeroMem(fileName, 64);
-                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
-                        __debug_counter += 1;
-                        
-                        pathTest = ls_strConst(fileName);
-                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
-                        //DEBUG
+                        while(args.count > 0)
+                        {
+                            //Then we are in case: {....} vhcurveto
+                            p0 = *pos;
+                            p1.x = pos->x;
+                            p1.y = pos->y + PullVal();
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.x = p2.x + PullVal();
+                            p3.y = p2.y;
+                            
+                            pos->x = p3.x;
+                            pos->y = p3.y;
+                            
+                            //NOTE: Curve 1
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                            
+                            ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
+                            
+                            //DEBUG
+                            char fileName[64] = {};
+                            ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                            __debug_counter += 1;
+                            
+                            string pathTest = ls_strConst(fileName);
+                            ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                            //DEBUG
+                            
+                            p0 = *pos;
+                            p1.x = pos->x + PullVal();
+                            p1.y = pos->y;
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.y = p2.y + PullVal();
+                            p3.x = p2.x;
+                            
+                            pos->x = p3.x;
+                            pos->y = p3.y;
+                            
+                            //NOTE: Curve 2
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                            
+                            ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
+                            
+                            //DEBUG
+                            ls_zeroMem(fileName, 64);
+                            ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                            __debug_counter += 1;
+                            
+                            pathTest = ls_strConst(fileName);
+                            ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                            //DEBUG
+                        }
                     }
                     else
                     {
@@ -2250,7 +2264,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                         //DEBUG
                         
                         
-                        while(args.bot <= args.top)
+                        //while(args.bot <= args.top)
+                        while(args.count > 0)
                         {
                             p0 = *pos;
                             p1.x = pos->x + PullVal();
@@ -2309,56 +2324,61 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 {
                     if(((args.used-1) % 8) == 0)
                     {
-                        //Then we are in case: {....} y vhcurveto
-                        p0 = *pos;
-                        p1.x = pos->x;
-                        p1.y = pos->y + PullVal();
-                        p2.x = p1.x + PullVal();
-                        p2.y = p1.y + PullVal();
-                        p3.x = p2.x + PullVal();
-                        p3.y = p2.y;
-                        
-                        pos->x = p3.x;
-                        pos->y = p3.y;
-                        
-                        //NOTE: Curve 1
-                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
-                        
-                        ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
-                        
-                        //DEBUG
-                        char fileName[64] = {};
-                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
-                        __debug_counter += 1;
-                        
-                        string pathTest = ls_strConst(fileName);
-                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
-                        //DEBUG
-                        
-                        
-                        p1.x = pos->x + PullVal();
-                        p1.y = pos->y;
-                        p2.x = p1.x + PullVal();
-                        p2.y = p1.y + PullVal();
-                        p3.y = p2.y + PullVal();
-                        p3.x = p2.x + PullVal();
-                        
-                        pos->x = p3.x;
-                        pos->y = p3.y;
-                        
-                        //NOTE: Curve 2
-                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
-                        
-                        ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
-                        
-                        //DEBUG
-                        ls_zeroMem(fileName, 64);
-                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
-                        __debug_counter += 1;
-                        
-                        pathTest = ls_strConst(fileName);
-                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
-                        //DEBUG
+                        while(args.count > 0)
+                        {
+                            //Then we are in case: {....} y vhcurveto
+                            p0 = *pos;
+                            p1.x = pos->x;
+                            p1.y = pos->y + PullVal();
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.x = p2.x + PullVal();
+                            p3.y = p2.y;
+                            
+                            pos->x = p3.x;
+                            pos->y = p3.y;
+                            
+                            //NOTE: Curve 1
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                            
+                            ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
+                            
+                            //DEBUG
+                            char fileName[64] = {};
+                            ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                            __debug_counter += 1;
+                            
+                            string pathTest = ls_strConst(fileName);
+                            ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                            //DEBUG
+                            
+                            
+                            p1.x = pos->x + PullVal();
+                            p1.y = pos->y;
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.y = p2.y + PullVal();
+                            
+                            if(args.count == 1) { p3.x = p2.x + PullVal(); }
+                            else { p3.x = p2.x; }
+                            
+                            pos->x = p3.x;
+                            pos->y = p3.y;
+                            
+                            //NOTE: Curve 2
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                            
+                            ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
+                            
+                            //DEBUG
+                            ls_zeroMem(fileName, 64);
+                            ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                            __debug_counter += 1;
+                            
+                            pathTest = ls_strConst(fileName);
+                            ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                            //DEBUG
+                        }
                     }
                     else
                     {
@@ -2388,7 +2408,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                         ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
                         //DEBUG
                         
-                        while(args.bot <= args.top)
+                        //while(args.bot <= args.top)
+                        while(args.count > 0)
                         {
                             p0 = *pos;
                             p1.x = pos->x + PullVal();
@@ -2423,8 +2444,9 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                             p3.x = p2.x + PullVal();
                             
                             //TODO:TODO:LAST ONE GOTTA PULL THE SHIT
-                            if((u8 *)args.bot == ((u8 *)args.top - sizeof(s32)))  { p3.y = p2.y + PullVal(); }
-                            else                                                  { p3.y = p2.y; }
+                            //if((u8 *)args.bot == ((u8 *)args.top - sizeof(s32)))  { p3.y = p2.y + PullVal(); }
+                            if(args.count == 1) { p3.y = p2.y + PullVal(); }
+                            else                { p3.y = p2.y; }
                             
                             pos->x = p3.x;
                             pos->y = p3.y;
@@ -2462,57 +2484,60 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 {
                     if((args.used % 8) == 0)
                     {
-                        //Then we are in case: {....} hvcurveto
-                        p0 = *pos;
-                        p1.x = pos->x + PullVal();
-                        p1.y = pos->y;
-                        p2.x = p1.x + PullVal();
-                        p2.y = p1.y + PullVal();
-                        p3.y = p2.y + PullVal();
-                        p3.x = p2.x;
-                        
-                        
-                        pos->x = p3.x;
-                        pos->y = p3.y;
-                        
-                        //NOTE: Curve 1
-                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
-                        
-                        ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
-                        
-                        //DEBUG
-                        char fileName[64] = {};
-                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
-                        __debug_counter += 1;
-                        
-                        string pathTest = ls_strConst(fileName);
-                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
-                        //DEBUG
-                        
-                        p0 = *pos;
-                        p1.x = pos->x;
-                        p1.y = pos->y + PullVal();
-                        p2.x = p1.x + PullVal();
-                        p2.y = p1.y + PullVal();
-                        p3.x = p2.x + PullVal();
-                        p3.y = p2.y;
-                        
-                        pos->x = p3.x;
-                        pos->y = p3.y;
-                        
-                        //NOTE: Curve 2
-                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
-                        
-                        ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
-                        
-                        //DEBUG
-                        ls_zeroMem(fileName, 64);
-                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
-                        __debug_counter += 1;
-                        
-                        pathTest = ls_strConst(fileName);
-                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
-                        //DEBUG
+                        while(args.count > 0)
+                        {
+                            //Then we are in case: {....} hvcurveto
+                            p0 = *pos;
+                            p1.x = pos->x + PullVal();
+                            p1.y = pos->y;
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.y = p2.y + PullVal();
+                            p3.x = p2.x;
+                            
+                            
+                            pos->x = p3.x;
+                            pos->y = p3.y;
+                            
+                            //NOTE: Curve 1
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                            
+                            ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
+                            
+                            //DEBUG
+                            char fileName[64] = {};
+                            ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                            __debug_counter += 1;
+                            
+                            string pathTest = ls_strConst(fileName);
+                            ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                            //DEBUG
+                            
+                            p0 = *pos;
+                            p1.x = pos->x;
+                            p1.y = pos->y + PullVal();
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.x = p2.x + PullVal();
+                            p3.y = p2.y;
+                            
+                            pos->x = p3.x;
+                            pos->y = p3.y;
+                            
+                            //NOTE: Curve 2
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                            
+                            ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
+                            
+                            //DEBUG
+                            ls_zeroMem(fileName, 64);
+                            ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                            __debug_counter += 1;
+                            
+                            pathTest = ls_strConst(fileName);
+                            ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                            //DEBUG
+                        }
                     }
                     else
                     {
@@ -2542,7 +2567,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                         ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
                         //DEBUG
                         
-                        while(args.bot <= args.top)
+                        //while(args.bot <= args.top)
+                        while(args.count > 0)
                         {
                             p0 = *pos;
                             p1.x = pos->x;
@@ -2600,56 +2626,61 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 {
                     if(((args.used-1) % 8) == 0)
                     {
-                        //Then we are in case: {....} y hvcurveto
-                        p0 = *pos;
-                        p1.x = pos->x + PullVal();
-                        p1.y = pos->y;
-                        p2.x = p1.x + PullVal();
-                        p2.y = p1.y + PullVal();
-                        p3.y = p2.y + PullVal();
-                        p3.x = p2.x;
-                        
-                        pos->x = p3.x;
-                        pos->y = p3.y;
-                        
-                        //NOTE: Curve 1
-                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
-                        
-                        ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
-                        
-                        //DEBUG
-                        char fileName[64] = {};
-                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
-                        __debug_counter += 1;
-                        
-                        string pathTest = ls_strConst(fileName);
-                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
-                        //DEBUG
-                        
-                        p0 = *pos;
-                        p1.x = pos->x;
-                        p1.y = pos->y + PullVal();
-                        p2.x = p1.x + PullVal();
-                        p2.y = p1.y + PullVal();
-                        p3.x = p2.x + PullVal();
-                        p3.y = p2.y + PullVal();
-                        
-                        pos->x = p3.x;
-                        pos->y = p3.y;
-                        
-                        //NOTE: Curve 2
-                        ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
-                        
-                        ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
-                        
-                        //DEBUG
-                        ls_zeroMem(fileName, 64);
-                        ls_sprintf(fileName, "test%d.bmp", __debug_counter);
-                        __debug_counter += 1;
-                        
-                        pathTest = ls_strConst(fileName);
-                        ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
-                        //DEBUG
+                        while(args.count > 0)
+                        {
+                            //Then we are in case: {....} y hvcurveto
+                            p0 = *pos;
+                            p1.x = pos->x + PullVal();
+                            p1.y = pos->y;
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.y = p2.y + PullVal();
+                            p3.x = p2.x;
+                            
+                            pos->x = p3.x;
+                            pos->y = p3.y;
+                            
+                            //NOTE: Curve 1
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                            
+                            ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
+                            
+                            //DEBUG
+                            char fileName[64] = {};
+                            ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                            __debug_counter += 1;
+                            
+                            string pathTest = ls_strConst(fileName);
+                            ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                            //DEBUG
+                            
+                            p0 = *pos;
+                            p1.x = pos->x;
+                            p1.y = pos->y + PullVal();
+                            p2.x = p1.x + PullVal();
+                            p2.y = p1.y + PullVal();
+                            p3.x = p2.x + PullVal();
+                            
+                            if(args.count == 1) { p3.y = p2.y + PullVal(); }
+                            else                { p3.y = p2.y; }
+                            
+                            pos->x = p3.x;
+                            pos->y = p3.y;
+                            
+                            //NOTE: Curve 2
+                            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                            
+                            ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
+                            
+                            //DEBUG
+                            ls_zeroMem(fileName, 64);
+                            ls_sprintf(fileName, "test%d.bmp", __debug_counter);
+                            __debug_counter += 1;
+                            
+                            pathTest = ls_strConst(fileName);
+                            ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                            //DEBUG
+                        }
                     }
                     else
                     {
@@ -2679,7 +2710,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                         ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
                         //DEBUG
                         
-                        while(args.bot <= args.top)
+                        //while(args.bot <= args.top)
+                        while(args.count > 0)
                         {
                             p0 = *pos;
                             p1.x = pos->x;
@@ -2714,8 +2746,9 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                             p3.y = p2.y + PullVal();
                             
                             //TODO:TODO:LAST ONE GOTTA PULL THE SHIT
-                            if((u8 *)args.bot == ((u8 *)args.top - sizeof(s32)))  { p3.x = p2.x + PullVal(); }
-                            else                                                  { p3.x = p2.x; }
+                            //if((u8 *)args.bot == ((u8 *)args.top - sizeof(s32)))  { p3.x = p2.x + PullVal(); }
+                            if(args.count == 1) { p3.x = p2.x + PullVal(); }
+                            else                { p3.x = p2.x; }
                             
                             pos->x = p3.x;
                             pos->y = p3.y;
@@ -2762,8 +2795,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             }
         }
         
-        
-        ls_stackClear(&args);
+        //Assert(args.count == 0);
+        if(args.count == 0) { ls_stackClear(&args); }
     }
     
 #undef PullVal
