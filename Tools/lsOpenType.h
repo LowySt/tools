@@ -1524,6 +1524,14 @@ void ls_openTypeDrawBezier(v2i P0, v2i P1, v2i P2, u8 *buff, u32 width, u32 heig
     }
 }
 
+static
+void ls_openTypeMoveTo(v2i *pos, s32 dx, s32 dy)
+{
+    pos->x += dx;
+    pos->y += dy;
+}
+
+
 static u32 __debug_indentation = 0;
 static u32 __debug_counter = 0;
 
@@ -1556,6 +1564,17 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
     
     u32 width = 0;
     u32 numHints = 0;
+    
+    auto __maybePullWidth = [font, &width, &args, &__printIndent]() {
+        if((args.used % 2) != 0)
+        {
+            width = font->cff.PrivateDict.nominalWidthX + PullVal();
+            
+            __printIndent(__debug_indentation);
+            ls_printf("width %d\n", width);
+        }
+    };
+    
     
     while(((u64)At - (u64)charstring) < charLen)
     {
@@ -1627,13 +1646,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             
             case 1: //hstem
             {
-                if((args.used % 2) != 0)
-                {
-                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
-                    
-                    __printIndent(__debug_indentation);
-                    ls_printf("width %d\n", width);
-                }
+                __maybePullWidth();
                 
                 s32 yA = 0;
                 s32 yB = 0;
@@ -1655,13 +1668,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             
             case 3: //vstem
             {
-                if((args.used % 2) != 0)
-                {
-                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
-                    
-                    __printIndent(__debug_indentation);
-                    ls_printf("width %d\n", width);
-                }
+                __maybePullWidth();
                 
                 s32 yA = 0;
                 s32 yB = 0;
@@ -1682,13 +1689,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             
             case 4: //vmoveto
             {
-                if(args.used == 2)
-                {
-                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
-                    
-                    __printIndent(__debug_indentation);
-                    ls_printf("width %d\n", width);
-                }
+                __maybePullWidth();
                 
                 s32 dy = PullVal();
                 
@@ -1696,6 +1697,8 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 
                 __printIndent(__debug_indentation);
                 ls_printf("(0, %d) vmoveto\n", dy);
+                
+                ls_openTypeMoveTo(pos, 0, dy);
                 
             } break;
             
@@ -2019,9 +2022,11 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             
             case 11: //return
             {
+                
                 //NOTE: Can I just go back?
                 __printIndent(__debug_indentation);
                 ls_printf("return\n");
+                Assert(args.count == 0);
                 return;
             } break;
             
@@ -2029,18 +2034,12 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             {
                 __printIndent(__debug_indentation);
                 ls_printf("endchar\n");
+                Assert(args.count == 0);
             } break;
             
             case 18: //hstemhm
             {
-                if((args.used % 2) != 0)
-                {
-                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
-                    
-                    __printIndent(__debug_indentation);
-                    ls_printf("width %d\n", width);
-                }
-                
+                __maybePullWidth();
                 
                 s32 yA = 0;
                 s32 yB = 0;
@@ -2104,6 +2103,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             
             case 21: //rmoveto
             {
+                //TODO: How to lamda?
                 if(args.used == 3)
                 {
                     width = font->cff.PrivateDict.nominalWidthX + PullVal();
@@ -2144,13 +2144,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             
             case 23: //vstemhm
             {
-                if((args.used % 2) != 0)
-                {
-                    width = font->cff.PrivateDict.nominalWidthX + PullVal();
-                    
-                    __printIndent(__debug_indentation);
-                    ls_printf("width %d\n", width);
-                }
+                __maybePullWidth();
                 
                 s32 yA = 0;
                 s32 yB = 0;
