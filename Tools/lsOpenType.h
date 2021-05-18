@@ -1395,6 +1395,17 @@ u16 ls_openTypeGetGlyphID(OpenType_CMAP *cmap, u16 codepoint)
     Assert(FALSE);
 }
 
+//TODO: REMOVE THIS. DEBUG ONLY!
+
+void __printIndent(u32 depth) {
+    char buff[32] = {};
+    for(u32 i = 0; i < depth*2; i++)
+    { buff[i] = ' ';  }
+    
+    ls_printf("%cs", buff); 
+}
+
+
 //TODO: This bullshit is debug code. Should not need to memcpy this stuff...
 //      Actually, this stuff should be useless to a user.
 u32 ls_openTypeGetGlyphCharstring(OpenType_Font *font, u16 glyphID, char *charstringBuff, u32 buffMaxSize)
@@ -1524,16 +1535,22 @@ void ls_openTypeDrawBezier(v2i P0, v2i P1, v2i P2, u8 *buff, u32 width, u32 heig
     }
 }
 
+
+static u32 __debug_indentation = 0;
+static u32 __debug_counter = 0;
+
+
 static
 void ls_openTypeMoveTo(v2i *pos, s32 dx, s32 dy)
 {
     pos->x += dx;
     pos->y += dy;
+    
+    __printIndent(__debug_indentation);
+    if(dx == 0)      { ls_printf("(0, %d) vmoveto\n", dy); }
+    else if(dy == 0) { ls_printf("(%d, 0) hmoveto\n", dx); }
+    else             { ls_printf("(%d, %d) rmoveto\n", dx, dy); }
 }
-
-
-static u32 __debug_indentation = 0;
-static u32 __debug_counter = 0;
 
 //TODO: This bullshit is debug code. Should not need to memcpy this stuff...
 //      Actually, this stuff should be useless to a user.
@@ -1551,21 +1568,13 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
     
 #define PullVal() *((s32 *)ls_stackPull(&args))
     
-    auto __printIndent = [](u32 depth) {
-        char buff[32] = {};
-        for(u32 i = 0; i < depth*2; i++)
-        { buff[i] = ' ';  }
-        
-        ls_printf("%cs", buff); 
-    };
-    
     u8 *At = (u8 *)charstring;
     stack args = ls_stackInit(sizeof(s32), 16); 
     
     u32 width = 0;
     u32 numHints = 0;
     
-    auto __maybePullWidth = [font, &width, &args, &__printIndent]() {
+    auto __maybePullWidth = [font, &width, &args]() {
         if((args.used % 2) != 0)
         {
             width = font->cff.PrivateDict.nominalWidthX + PullVal();
@@ -1690,15 +1699,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             case 4: //vmoveto
             {
                 __maybePullWidth();
-                
-                s32 dy = PullVal();
-                
-                pos->y += dy;
-                
-                __printIndent(__debug_indentation);
-                ls_printf("(0, %d) vmoveto\n", dy);
-                
-                ls_openTypeMoveTo(pos, 0, dy);
+                ls_openTypeMoveTo(pos, 0, PullVal());
                 
             } break;
             
@@ -2114,12 +2115,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 
                 s32 dx = PullVal();
                 s32 dy = PullVal();
-                
-                pos->x += dx;
-                pos->y += dy;
-                
-                __printIndent(__debug_indentation);
-                ls_printf("(%d, %d) rmoveto\n", dx, dy);
+                ls_openTypeMoveTo(pos, dx, dy);
                 
             } break;
             
@@ -2133,13 +2129,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     ls_printf("width %d\n", width);
                 }
                 
-                s32 dx = PullVal();
-                
-                pos->x += dx;
-                
-                __printIndent(__debug_indentation);
-                ls_printf("(%d, 0) hmoveto\n", dx);
-                
+                ls_openTypeMoveTo(pos, PullVal(), 0);
             } break;
             
             case 23: //vstemhm
