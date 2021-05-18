@@ -893,11 +893,16 @@ struct OpenType_Font
     OpenType_CFF  cff;
     //OpenType_GPOS gpos;
     
-    struct OpenType_Glyph { u32 glyphSizes; void *data; };
-    
-    Array<OpenType_Glyph> glyphs;
 };
 
+struct OpenType_Glyph
+{
+    u8  *charstring;
+    u32 charLen;
+    
+    s32 width;
+    s32 height;
+};
 
 extern "C"
 {
@@ -906,8 +911,7 @@ extern "C"
     
     //TODO: This bullshit is debug code. Should not need to memcpy this stuff...
     u32  ls_openTypeGetGlyphCharstring(OpenType_Font *font, u16 glyphID, char *buf, u32 bufMaxSize);
-    void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, 
-                                      u32 charLen, char *outBuf, u32 bufMaxSize);
+    void ls_openTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf);
 };
 
 
@@ -1408,7 +1412,7 @@ void __printIndent(u32 depth) {
 
 //TODO: This bullshit is debug code. Should not need to memcpy this stuff...
 //      Actually, this stuff should be useless to a user.
-u32 ls_openTypeGetGlyphCharstring(OpenType_Font *font, u16 glyphID, char *charstringBuff, u32 buffMaxSize)
+u32 ls_openTypeGetGlyphCharstring(OpenType_Font *font, u16 glyphID, u8 *charstringBuff, u32 buffMaxSize)
 {
     //NOTE: -1 because offsets are 1-index arrays
     u32 size = font->cff.Charstrings.offsets[glyphID+1] - font->cff.Charstrings.offsets[glyphID];
@@ -1422,7 +1426,7 @@ u32 ls_openTypeGetGlyphCharstring(OpenType_Font *font, u16 glyphID, char *charst
     return size;
 }
 
-u32 ls_openTypeGetSubroutine(OpenType_Font *font, u16 subrNumber, char *subrBuff, u32 srBuffMax)
+u32 ls_openTypeGetSubroutine(OpenType_Font *font, u16 subrNumber, u8 *subrBuff, u32 srBuffMax)
 {
     u32 size = font->cff.LocalSubr.offsets[subrNumber+1] - font->cff.LocalSubr.offsets[subrNumber];
     u32 offFromData = font->cff.LocalSubr.offsets[subrNumber] - 1;
@@ -1731,7 +1735,7 @@ void ls_openTypeLineTo(stack *args, v2i *pos, u8 *outBuf, s32 w, s32 h, b32 isVL
 
 //TODO: This bullshit is debug code. Should not need to memcpy this stuff...
 //      Actually, this stuff should be useless to a user.
-void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 charLen, v2i *pos, char *outBuf, u32 w, u32 h)
+void ls_openTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf)
 {
     //NOTE:NOTE:NOTE:
     // Documentation can be found here:
@@ -1746,17 +1750,17 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
     
 #define PullVal() *((s32 *)ls_stackPull(&args))
     
-    u8 *At = (u8 *)charstring;
+    u8 *At = glyph->charstring;
     stack args = ls_stackInit(sizeof(s32), 16); 
     
     u32 width = 0;
     u32 numHints = 0;
     
-    auto __maybePullWidth = [font, &width, &args, pos, w]() {
+    auto __maybePullWidth = [font, &width, &args, pos, glyph]() {
         if((args.count % 2) != 0)
         {
             width = font->cff.PrivateDict.nominalWidthX + PullVal();
-            pos->x = (w - width) / 2;
+            pos->x = (glyph->width - width) / 2;
             
             __printIndent(__debug_indentation);
             ls_printf("width %d\n", width);
@@ -1764,9 +1768,9 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
     };
     
     
-    while(((u64)At - (u64)charstring) < charLen)
+    while(((u64)At - (u64)glyph->charstring) < glyph->charLen)
     {
-        if(charLen > 100000)
+        if(glyph->charLen > 100000)
         { 
             ls_printf("Error in charstring processing, charLen wrapped around zero.\n");
             Assert(FALSE);
@@ -1894,7 +1898,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     
                     v2i diff = {dx, dy};
                     
-                    ls_openTypeDrawLine(*pos, diff, (u8 *)outBuf, w, h);
+                    ls_openTypeDrawLine(*pos, diff, outBuf, glyph->width, glyph->height);
                     
                     pos->x += dx;
                     pos->y += dy;
@@ -1906,7 +1910,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     
                     string pathTest = ls_strConst(fileName);
                     
-                    ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                    ls_bitmapWrite(pathTest, outBuf, glyph->width, glyph->height);
                     //DEBUG
                     
                 }
@@ -1915,10 +1919,10 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             } break;
             
             case 6: //hlineto
-            { ls_openTypeLineTo(&args, pos, (u8 *)outBuf, w, h, FALSE); } break;
+            { ls_openTypeLineTo(&args, pos, outBuf, glyph->width, glyph->height, FALSE); } break;
             
             case 7: //vlineto
-            { ls_openTypeLineTo(&args, pos, (u8 *)outBuf, w, h, TRUE);  } break;
+            { ls_openTypeLineTo(&args, pos, outBuf, glyph->width, glyph->height, TRUE);  } break;
             
             case 8: //rrcurveto
             {
@@ -1943,7 +1947,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     pos->x = p3.x;
                     pos->y = p3.y;
                     
-                    ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, w, h);
+                    ls_openTypeDrawBezier4(p0, p1, p2, p3, outBuf, glyph->width, glyph->height);
                     
                     //DEBUG
                     char fileName[64] = {};
@@ -1951,7 +1955,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                     __debug_counter += 1;
                     
                     string pathTest = ls_strConst(fileName);
-                    ls_bitmapWrite(pathTest, (u8 *)outBuf, w, h);
+                    ls_bitmapWrite(pathTest, outBuf, glyph->width, glyph->height);
                     //DEBUG
                     
                 }
@@ -1971,13 +1975,19 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 s32 subrNumber = *((s32 *)ls_stackPull(&args)) + bias;
                 
                 const u32 srBuffMax = 1024;
-                char subrBuff[srBuffMax] = {};
+                u8  subrBuff[srBuffMax] = {};
                 u32 subrSize = ls_openTypeGetSubroutine(font, subrNumber, subrBuff, srBuffMax);
+                
+                OpenType_Glyph Subroutine = {};
+                Subroutine.charstring = subrBuff;
+                Subroutine.charLen    = subrSize;
+                Subroutine.width      = glyph->width;
+                Subroutine.height     = glyph->height;
                 
                 __printIndent(__debug_indentation);
                 ls_printf("callsubr %d\n\n", subrNumber);
                 __debug_indentation += 1;
-                ls_openTypeCharstringToImage(font, subrBuff, subrSize, pos, outBuf, w, h);
+                ls_openTypeCharstringToImage(font, &Subroutine, pos, outBuf);
                 __debug_indentation -= 1;
                 ls_printf("\n");
                 
@@ -2068,7 +2078,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 if(args.count== 3)
                 {
                     width = font->cff.PrivateDict.nominalWidthX + PullVal();
-                    pos->x = (w - width) / 2;
+                    pos->x = (glyph->width - width) / 2;
                     
                     __printIndent(__debug_indentation);
                     ls_printf("width %d\n", width);
@@ -2085,7 +2095,7 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
                 if(args.count == 2)
                 {
                     width = font->cff.PrivateDict.nominalWidthX + PullVal();
-                    pos->x = (w - width) / 2;
+                    pos->x = (glyph->width - width) / 2;
                     
                     __printIndent(__debug_indentation);
                     ls_printf("width %d\n", width);
@@ -2115,10 +2125,10 @@ void ls_openTypeCharstringToImage(OpenType_Font *font, char *charstring, u32 cha
             } break;
             
             case 30: //vhcurveto
-            { ls_openTypeCurveTo(&args, pos, (u8 *)outBuf, w, h, TRUE);  } break;
+            { ls_openTypeCurveTo(&args, pos, outBuf, glyph->width, glyph->height, TRUE);  } break;
             
             case 31: //hvcurveto
-            { ls_openTypeCurveTo(&args, pos, (u8 *)outBuf, w, h, FALSE); } break;
+            { ls_openTypeCurveTo(&args, pos, outBuf, glyph->width, glyph->height, FALSE); } break;
             
             default:
             {
