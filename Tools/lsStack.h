@@ -10,6 +10,7 @@ struct stack
     void *data;
     u32 elementSize;
     
+    s32 count;
     u32 capacity;
     u32 used;
 };
@@ -68,7 +69,8 @@ stack *ls_stackAllocPtr(u32 elementSize)
     Result->top = Result->data;
     Result->elementSize = elementSize;
     Result->capacity = 1;
-    Result->used = 0;
+    Result->used     = 0;
+    Result->count    = 0;
     
     return Result;
 }
@@ -81,7 +83,8 @@ stack ls_stackAlloc(u32 elementSize)
     Result.top = Result.data;
     Result.elementSize = elementSize;
     Result.capacity = 1;
-    Result.used = 0;
+    Result.used     = 0;
+    Result.count    = 0;
     
     return Result;
 }
@@ -103,7 +106,8 @@ stack ls_stackInit(u32 elementSize, u32 initialCapacity)
     Result.top = Result.data;
     Result.elementSize = elementSize;
     Result.capacity = initialCapacity;
-    Result.used = 0;
+    Result.used     = 0;
+    Result.count    = 0;
     
     return Result;
 }
@@ -117,8 +121,9 @@ void ls_stackPush(stack *s, void *data)
     At += s->used*s->elementSize;
     
     ls_memcpy(data, At, s->elementSize);
-    s->top = (void *)At;
-    s->used += 1;
+    s->top    = (void *)At;
+    s->used  += 1;
+    s->count += 1;
 }
 
 void *ls_stackPop(stack *s)
@@ -127,8 +132,9 @@ void *ls_stackPop(stack *s)
     
     void *Result = s->top;
     
-    s->used -= 1;
-    s->top = (u8 *)s->top - s->elementSize;
+    s->used  -= 1;
+    s->count -= 1;
+    s->top    = (u8 *)s->top - s->elementSize;
     
     return Result;
 }
@@ -146,6 +152,7 @@ void *ls_stackPull(stack *s)
     // If I were to move the entire stack downwards once bot moved too far away from data
     // then I could move used as well? Or maybe track the moving bottom differently...
     //s->used -= 1;
+    s->count  -= 1;
     s->bot = (u8 *)s->bot + s->elementSize;
     
     return Result;
@@ -156,9 +163,10 @@ void *ls_stackBottom(stack *s)
 
 void ls_stackClear(stack *s)
 { 
-    s->bot = s->data;
-    s->top = s->data;
-    s->used = 0; 
+    s->bot   = s->data;
+    s->top   = s->data;
+    s->used  = 0;
+    s->count = 0;
 }
 
 #endif // IMPLEMENTATION
