@@ -77,6 +77,8 @@ extern "C"
     
     v4i ls_v4iSubs64(v4i v, s64 s);
     
+    v2i operator*(v2i a, f32 v);
+    
 #if 0
     b32 operator==(v2 v, v2 w); b32 operator==(v3 v, v3 w); b32 operator==(v4 v, v4 w);
     b32 operator!=(v2 v, v2 w); b32 operator!=(v3 v, v3 w); b32 operator!=(v4 v, v4 w);
@@ -705,6 +707,12 @@ v4i ls_v4iSubs64(v4i v, s64 s)
 {
     v4i Result = { v.x - s, v.y - s, v.z - s, v.w - s };
     return Result;
+}
+
+v2i operator*(v2i a, f32 v)
+{
+    v2i result = { (s32)((f32)a.x * v), (s32)((f32)a.y*v) };
+    return result;
 }
 
 #if 0
