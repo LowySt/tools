@@ -5,7 +5,7 @@
 #include "lsStack.h"
 #include "lsMath.h"   //TODO: REMOVE THIS.
 #include "lsBitmap.h" //TODO: REMOVE THIS.
-
+#include "lsSort.h"   //TODO: REMOVE THIS.
 
 //NOTE: Utility Byte Manipulation
 #define GetByte(at) *at; at+=1
@@ -1559,10 +1559,10 @@ void ls_openTypeMoveTo(v2i *pos, s32 dx, s32 dy)
     pos->x += dx;
     pos->y += dy;
     
-    __printIndent(__debug_indentation);
-    if(dx == 0)      { ls_printf("(0, %d) vmoveto\n", dy); }
-    else if(dy == 0) { ls_printf("(%d, 0) hmoveto\n", dx); }
-    else             { ls_printf("(%d, %d) rmoveto\n", dx, dy); }
+    //__printIndent(__debug_indentation);
+    //if(dx == 0)      { ls_printf("(0, %d) vmoveto\n", dy); }
+    //else if(dy == 0) { ls_printf("(%d, 0) hmoveto\n", dx); }
+    //else             { ls_printf("(%d, %d) rmoveto\n", dx, dy); }
 }
 
 static
@@ -1578,7 +1578,7 @@ void ls_openTypeCurveTo(stack *args, v2i *pos, u8 *outBuf, OpenType_Glyph *glyph
     b32 horizontal = (((args->count & 0xFE) % 4) == 0);
     if(isVertical) { horizontal = !horizontal; }
     
-    __printIndent(__debug_indentation);
+    //__printIndent(__debug_indentation);
     while(args->count > 0)
     {
         if(horizontal)
@@ -1598,7 +1598,7 @@ void ls_openTypeCurveTo(stack *args, v2i *pos, u8 *outBuf, OpenType_Glyph *glyph
             pos->y = p3.y;
             
             //NOTE: Curve 1
-            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+            //ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
             
             ls_openTypeDrawBezier4(p0, p1, p2, p3, outBuf, glyph->width, glyph->height);
             
@@ -1611,7 +1611,8 @@ void ls_openTypeCurveTo(stack *args, v2i *pos, u8 *outBuf, OpenType_Glyph *glyph
             glyph->edges[glyph->edgeCount] = e;
             glyph->edgeCount += 1;
             
-            
+            //TODO: REMOVE
+#if 0
             //DEBUG
             char fileName[64] = {};
             ls_sprintf(fileName, "test%d.bmp", __debug_counter);
@@ -1620,7 +1621,7 @@ void ls_openTypeCurveTo(stack *args, v2i *pos, u8 *outBuf, OpenType_Glyph *glyph
             string pathTest = ls_strConst(fileName);
             ls_bitmapWrite(pathTest, outBuf, glyph->width, glyph->height);
             //DEBUG
-            
+#endif
             horizontal = !horizontal;
         }
         else
@@ -1640,7 +1641,7 @@ void ls_openTypeCurveTo(stack *args, v2i *pos, u8 *outBuf, OpenType_Glyph *glyph
             pos->y = p3.y;
             
             //NOTE: Curve 2
-            ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+            //ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
             
             ls_openTypeDrawBezier4(p0, p1, p2, p3, (u8 *)outBuf, glyph->width, glyph->height);
             
@@ -1653,6 +1654,10 @@ void ls_openTypeCurveTo(stack *args, v2i *pos, u8 *outBuf, OpenType_Glyph *glyph
             glyph->edges[glyph->edgeCount] = e;
             glyph->edgeCount += 1;
             
+            horizontal = !horizontal;
+            
+            //TODO: REMOVE
+#if 0
             //DEBUG
             char fileName[64] = {};
             ls_sprintf(fileName, "test%d.bmp", __debug_counter);
@@ -1661,13 +1666,12 @@ void ls_openTypeCurveTo(stack *args, v2i *pos, u8 *outBuf, OpenType_Glyph *glyph
             string pathTest = ls_strConst(fileName);
             ls_bitmapWrite(pathTest, (u8 *)outBuf, glyph->width, glyph->height);
             //DEBUG
-            
-            horizontal = !horizontal;
+#endif
         }
     }
     
-    if(!isVertical) { ls_printf("hvcurveto\n"); }
-    else { ls_printf("vhcurveto\n"); }
+    //if(!isVertical) { ls_printf("hvcurveto\n"); }
+    //else { ls_printf("vhcurveto\n"); }
     
 #undef PullVal
 }
@@ -1703,8 +1707,12 @@ void ls_openTypeLineTo(stack *args, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf,
         pos->x += diff1.x;
         pos->y += diff1.y;
         
-        ls_printf("[%d] ", extraV);
+        isVertical = !isVertical;
         
+        //ls_printf("[%d] ", extraV);
+        
+        //TODO: REMOVE
+#if 0
         //DEBUG
         char fileName[64] = {};
         ls_sprintf(fileName, "test%d.bmp", __debug_counter);
@@ -1713,8 +1721,7 @@ void ls_openTypeLineTo(stack *args, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf,
         string pathTest = ls_strConst(fileName);
         ls_bitmapWrite(pathTest, outBuf, glyph->width, glyph->height);
         //DEBUG
-        
-        isVertical = !isVertical;
+#endif
     }
     
     diff1 = {};
@@ -1733,7 +1740,7 @@ void ls_openTypeLineTo(stack *args, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf,
             diff2.x = PullVal();
         }
         
-        ls_printf("[%d %d] ", diff1.x, diff1.y);
+        //ls_printf("[%d %d] ", diff1.x, diff1.y);
         
         
         OpenType_Glyph::Edge e = {};
@@ -1747,6 +1754,8 @@ void ls_openTypeLineTo(stack *args, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf,
         pos->x += diff1.x;
         pos->y += diff1.y;
         
+        //TODO: REMOVE
+#if 0
         //DEBUG
         char fileName[64] = {};
         ls_sprintf(fileName, "test%d.bmp", __debug_counter);
@@ -1755,7 +1764,7 @@ void ls_openTypeLineTo(stack *args, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf,
         string pathTest = ls_strConst(fileName);
         ls_bitmapWrite(pathTest, outBuf, glyph->width, glyph->height);
         //DEBUG
-        
+#endif
         
         e = {};
         e.isCurve = FALSE;
@@ -1769,6 +1778,8 @@ void ls_openTypeLineTo(stack *args, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf,
         pos->x += diff2.x;
         pos->y += diff2.y;
         
+        //TODO: REMOVE
+#if 0
         //DEBUG
         ls_zeroMem(fileName, 64);
         ls_sprintf(fileName, "test%d.bmp", __debug_counter);
@@ -1777,11 +1788,42 @@ void ls_openTypeLineTo(stack *args, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf,
         pathTest = ls_strConst(fileName);
         ls_bitmapWrite(pathTest, outBuf, glyph->width, glyph->height);
         //DEBUG
+#endif
     }
     
-    if(isVLine) { ls_printf("vlineto\n"); }
-    else        { ls_printf("hlineto\n"); }
+    //if(isVLine) { ls_printf("vlineto\n"); }
+    //else        { ls_printf("hlineto\n"); }
 #undef PullVal
+}
+
+static
+b32 ls_OpenTypeIsPointACusp(OpenType_Glyph *glyph, s32 x, s32 y)
+{
+    v2i testP = {x, y};
+    
+    for(u32 eIdx = 0; eIdx < glyph->edgeCount; eIdx++)
+    {
+        OpenType_Glyph::Edge *e1 = glyph->edges + eIdx;
+        
+        for(u32 eYdx = 0; eYdx < glyph->edgeCount; eYdx++)
+        {
+            if(eIdx == eYdx) { continue; }
+            
+            OpenType_Glyph::Edge *e2 = glyph->edges + eYdx;
+            
+            if(ls_areV2iEqual(testP, e1->p0) && ls_areV2iEqual(testP, e2->p1)) { return TRUE; }
+            if(ls_areV2iEqual(testP, e1->p1) && ls_areV2iEqual(testP, e2->p0)) { return TRUE; }
+        }
+    }
+    
+    return FALSE;
+}
+
+static
+b32 ls_OpenTypeIsEdgeHoriz(OpenType_Glyph::Edge e)
+{
+    if(e.p0.y == e.p1.y) { return TRUE; }
+    return FALSE;
 }
 
 static
@@ -1817,50 +1859,201 @@ b32 ls_OpenTypeIsPointInEdge(OpenType_Glyph *glyph, s32 currEdgeIdx, s32 x, s32 
     return FALSE;
 }
 
+static
+s32 ls_OpenTypeGetBezierX(OpenType_Glyph::Edge *e, s32 y)
+{
+    f32 t = 0.001f;
+    
+    for(u32 i = 0; i < 1000; i++)
+    {
+        f32 compl = (1.0f-t);
+        f32 compl2 = compl*compl;
+        f32 compl3 = compl2*compl;
+        
+        s32 Y = (compl3*e->p0.y) + (3.0f*compl2*t*e->p1.y) + (3.0f*compl*t*t*e->p2.y) + (t*t*t*e->p3.y);
+        s32 X = (compl3*e->p0.x) + (3.0f*compl2*t*e->p1.x) + (3.0f*compl*t*t*e->p2.x) + (t*t*t*e->p3.x);
+        
+        if(Y == UINT32_MAX) { Y = 0; }
+        if(X == UINT32_MAX) { X = 0; }
+        
+        if(Y == y) { return X; }
+        
+        t += 0.001f;
+    }
+    
+    return -999;
+}
+
+static
+b32 ls_OpenTypeScanlineIntersects(s32 y, OpenType_Glyph::Edge *e, s32 *xI)
+{
+    if(e->isCurve == TRUE)
+    {
+        s32 bezierX = ls_OpenTypeGetBezierX(e, y);
+        if(bezierX == -999) { return FALSE; }
+        
+        *xI = bezierX;
+        return TRUE;
+    }
+    
+    
+    if(e->p1.y > e->p0.y) {
+        if((e->p1.y < y) || (e->p0.y > y)) 
+        { return FALSE; }
+    }
+    else if(e->p0.y > e->p1.y) {
+        if((e->p0.y < y) || (e->p1.y > y)) 
+        { return FALSE; }
+    }
+    else if(e->p0.y == e->p1.y) {
+        if(e->p0.y == y) { return TRUE; }
+        
+        //NOTE: It does intersect but we skip horizontal lines!
+        //TODO: FIX HORIZONTAL LINES MISSING INK LIKE IN 'T'
+        
+        return FALSE;
+    }
+    
+    if(e->p0.x == e->p1.x)
+    { *xI = e->p0.x; return TRUE; }
+    
+    f32 m = (f32)(e->p1.y - e->p0.y) / (f32)(e->p1.x - e->p0.x);
+    f32 b = (f32)e->p0.y - (m*(f32)e->p0.x);
+    
+    s32 xIntersect  = (s32)(((f32)y - b) / m);
+    *xI = xIntersect;
+    
+    return TRUE;
+}
+
 void ls_openTypeFillBetweenEdges(OpenType_Glyph *glyph, u8 *outBuf)
 {
+#define SetPixel(R,G,B) outBuf[cIdx] = B; outBuf[cIdx+1] = G; outBuf[cIdx+2] = R; outBuf[cIdx+3] = 0x00;
+    
     const u32 bytesPerPixel = 4;
     
-#if 0
+#if 1
     for(u32 y = 0; y < glyph->height; y += 1)
     {
-        for(u32 x = 0; x < glyph->width; x += 1)
+        s32 intersects[16] = {};
+        u32 numIntersects = 0;
+        
+        s32 xIntersect = 0;
+        for(u32 eIdx = 0; eIdx < glyph->edgeCount; eIdx++)
         {
-            if(ls_OpenTypeIsPointInEdge(glyph, 99, x, y))
+            OpenType_Glyph::Edge *e = glyph->edges + eIdx;
+            
+            if(ls_OpenTypeScanlineIntersects(y, e, &xIntersect))
             {
-                s32 cIdx = (y*glyph->width + x)*bytesPerPixel;
-                outBuf[cIdx]   = 0x00;
-                outBuf[cIdx+1] = 0x00;
-                outBuf[cIdx+2] = 0x00;
-                outBuf[cIdx+3] = 0x00;
-                
-                x += 1;
-                
-                u32 counter = 0;
-                while(!ls_OpenTypeIsPointInEdge(glyph, 99, x, y))
+                if((e->p0.y == e->p1.y) && (e->isCurve == FALSE))
                 {
-                    cIdx = (y*glyph->width + x)*bytesPerPixel;
-                    outBuf[cIdx]   = 0x00;
-                    outBuf[cIdx+1] = 0x00;
-                    outBuf[cIdx+2] = 0x00;
-                    outBuf[cIdx+3] = 0x00;
-                    
-                    counter += 1;
-                    x += 1;
-                    //Assert((x >= 0) && (x < glyph->width));
-                    if(!((x >= 0) && (x < glyph->width)))
-                    { return; }
+                    intersects[numIntersects]     = e->p0.x;
+                    intersects[numIntersects + 1] = e->p1.x;
+                    numIntersects += 2;
                 }
-                
-                cIdx = (y*glyph->width + x)*bytesPerPixel;
-                outBuf[cIdx]   = 0x00;
-                outBuf[cIdx+1] = 0x00;
-                outBuf[cIdx+2] = 0x00;
-                outBuf[cIdx+3] = 0x00;
-                
-                x += 1;
+                else
+                {
+                    intersects[numIntersects] = xIntersect;
+                    numIntersects += 1;
+                }
             }
         }
+        
+        ls_quicksort((u32 *)intersects, numIntersects);
+        
+        if(numIntersects > 1)
+        {
+            //Assert((numIntersects % 2) == 0);
+            if((numIntersects % 2) != 0) {
+                
+                for(u32 i = 0; i < numIntersects; i += 3)
+                {
+                    s32 x1 = intersects[i];
+                    s32 x2 = intersects[i+2];
+                    
+                    for(s32 x = x1; x <= x2; x += 1)
+                    {
+                        s32 cIdx = (y*glyph->width + x)*bytesPerPixel;
+                        SetPixel(0xFF, 0, 0);
+                    }
+                }
+                //return; 
+            }
+            else
+            {
+                for(u32 i = 0; i < numIntersects; i += 2)
+                {
+                    s32 x1 = intersects[i];
+                    s32 x2 = intersects[i+1];
+                    
+                    for(s32 x = x1; x <= x2; x += 1)
+                    {
+                        s32 cIdx = (y*glyph->width + x)*bytesPerPixel;
+                        SetPixel(0xFF, 0, 0);
+                    }
+                }
+            }
+#if 0
+            for(u32 x = 0; x < glyph->width; x += 1)
+            {
+                u32 remainingIntersects = numIntersects;
+                
+                u32 __debugX = 0;
+                
+                if((x == 798) && (y == 872))
+                {
+                    int breakHere = 0;
+                }
+                
+                if(ls_OpenTypeIsPointInEdge(glyph, 99, x, y))
+                {
+                    __debugX = x;
+                    
+                    remainingIntersects -= 1;
+                    
+                    s32 cIdx = (y*glyph->width + x)*bytesPerPixel;
+                    SetPixel(0xFF, 0, 0);
+                    
+                    x += 1;
+                    
+                    u32 counter = 0;
+                    b32 keepGoing = !ls_OpenTypeIsPointInEdge(glyph, 99, x, y);
+                    
+                    while(keepGoing)
+                    {
+                        keepGoing = FALSE;
+                        
+                        cIdx = (y*glyph->width + x)*bytesPerPixel;
+                        SetPixel(0xFF, 0, 0);
+                        
+                        counter += 1;
+                        x += 1;
+                        //Assert((x >= 0) && (x < glyph->width));
+                        
+                        if(!((x >= 0) && (x < glyph->width)))
+                        { ls_printf("\n\n P: (%d, %d)\n\n", __debugX, y); return; }
+                        
+                        keepGoing = !ls_OpenTypeIsPointInEdge(glyph, 99, x, y);
+                        if(keepGoing == FALSE)
+                        {
+                            remainingIntersects -= 1;
+                            if((remainingIntersects == 0) || (remainingIntersects >= 2))
+                            { break; }
+                            
+                            keepGoing = TRUE;
+                        }
+                        //if(ls_OpenTypeIsPointACusp(glyph, x, y)) { keepGoing = TRUE; }
+                    }
+                    
+                    cIdx = (y*glyph->width + x)*bytesPerPixel;
+                    SetPixel(0xFF, 0, 0);
+                    
+                    //x += 1;
+                }
+            }
+#endif
+        }
+        
     }
     
 #else
@@ -1935,8 +2128,8 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
             width = font->cff.PrivateDict.nominalWidthX + PullVal();
             pos->x = (glyph->width - width) / 2;
             
-            __printIndent(__debug_indentation);
-            ls_printf("width %d\n", width);
+            //__printIndent(__debug_indentation);
+            //ls_printf("width %d\n", width);
         }
     };
     
@@ -2015,17 +2208,17 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                 s32 yA = 0;
                 s32 yB = 0;
                 
-                __printIndent(__debug_indentation);
+                //__printIndent(__debug_indentation);
                 while(args.count > 0)
                 {
                     yA = PullVal();
                     yB = PullVal();
                     numHints += 1;
                     
-                    ls_printf("[%d %d] ", yA, yB);
+                    //ls_printf("[%d %d] ", yA, yB);
                 }
                 
-                ls_printf("hstem\n");
+                //ls_printf("hstem\n");
                 
             } break;
             
@@ -2036,17 +2229,17 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                 s32 yA = 0;
                 s32 yB = 0;
                 
-                __printIndent(__debug_indentation);
+                //__printIndent(__debug_indentation);
                 while(args.count > 0)
                 {
                     yA = PullVal();
                     yB = PullVal();
                     numHints += 1;
                     
-                    ls_printf("[%d %d] ", yA, yB);
+                    //ls_printf("[%d %d] ", yA, yB);
                 }
                 
-                ls_printf("vstem\n");
+                //ls_printf("vstem\n");
             } break;
             
             case 4: //vmoveto
@@ -2082,13 +2275,13 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                 
                 if(glyph->hasMoved == TRUE) { glyph->startDrawPos = *pos; glyph->hasMoved = FALSE;}
                 
-                __printIndent(__debug_indentation);
+                //__printIndent(__debug_indentation);
                 while(args.count > 0)
                 {
                     dx = PullVal();
                     dy = PullVal();
                     
-                    ls_printf("[%d %d] ", dx, dy);
+                    //ls_printf("[%d %d] ", dx, dy);
                     
                     v2i diff = {dx, dy};
                     v2i curr = (*pos);
@@ -2105,6 +2298,8 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     glyph->edges[glyph->edgeCount] = e;
                     glyph->edgeCount += 1;
                     
+                    //TODO:REMOVE
+#if 0
                     //DEBUG
                     char fileName[64] = {};
                     ls_sprintf(fileName, "test%d.bmp", __debug_counter);
@@ -2114,11 +2309,11 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     
                     ls_bitmapWrite(pathTest, outBuf, glyph->width, glyph->height);
                     //DEBUG
-                    
+#endif
                 }
                 
                 glyph->hasDrawn = TRUE;
-                ls_printf("rlineto\n");
+                //ls_printf("rlineto\n");
             } break;
             
             case 6: //hlineto
@@ -2142,7 +2337,7 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                 v2i p2 = {};
                 v2i p3 = {};
                 
-                __printIndent(__debug_indentation);
+                //__printIndent(__debug_indentation);
                 while(args.count > 0)
                 {
                     p0 = *pos;
@@ -2153,7 +2348,7 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     p3.x = p2.x   + PullVal();
                     p3.y = p2.y   + PullVal();
                     
-                    ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                    //ls_printf("[(%d, %d) (%d, %d) (%d, %d)] ", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                     
                     pos->x = p3.x;
                     pos->y = p3.y;
@@ -2169,6 +2364,8 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     glyph->edges[glyph->edgeCount] = e;
                     glyph->edgeCount += 1;
                     
+                    //TODO: REMOVE
+#if 0
                     //DEBUG
                     char fileName[64] = {};
                     ls_sprintf(fileName, "test%d.bmp", __debug_counter);
@@ -2177,11 +2374,11 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     string pathTest = ls_strConst(fileName);
                     ls_bitmapWrite(pathTest, outBuf, glyph->width, glyph->height);
                     //DEBUG
-                    
+#endif
                 }
                 
                 glyph->hasDrawn = TRUE;
-                ls_printf("rrcurveto\n");
+                //ls_printf("rrcurveto\n");
                 
             } break;
             
@@ -2199,20 +2396,20 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                 u8  subrBuff[srBuffMax] = {};
                 u32 subrSize = ls_openTypeGetSubroutine(font, subrNumber, subrBuff, srBuffMax);
                 
-                __printIndent(__debug_indentation);
-                ls_printf("callsubr %d\n\n", subrNumber);
-                __debug_indentation += 1;
+                //__printIndent(__debug_indentation);
+                //ls_printf("callsubr %d\n\n", subrNumber);
+                //__debug_indentation += 1;
                 ls_OpenTypeCharstringToImage(font, glyph, pos, subrBuff, subrSize, outBuf);
-                __debug_indentation -= 1;
-                ls_printf("\n");
+                //__debug_indentation -= 1;
+                //ls_printf("\n");
             } break;
             
             case 11: //return
             {
                 
                 //NOTE: Can I just go back?
-                __printIndent(__debug_indentation);
-                ls_printf("return\n");
+                //__printIndent(__debug_indentation);
+                //ls_printf("return\n");
                 Assert(args.count == 0);
                 return;
             } break;
@@ -2235,8 +2432,8 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     }
                 }
                 
-                __printIndent(__debug_indentation);
-                ls_printf("endchar\n");
+                //__printIndent(__debug_indentation);
+                //ls_printf("endchar\n");
                 Assert(args.count == 0);
             } break;
             
@@ -2247,17 +2444,17 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                 s32 yA = 0;
                 s32 yB = 0;
                 
-                __printIndent(__debug_indentation);
+                //__printIndent(__debug_indentation);
                 while(args.count > 0)
                 {
                     yA = PullVal();
                     yB = PullVal();
                     numHints += 1;
                     
-                    ls_printf("[%d %d] ", yA, yB);
+                    //ls_printf("[%d %d] ", yA, yB);
                 }
                 
-                ls_printf("hstemhm\n");
+                //ls_printf("hstemhm\n");
                 
             } break;
             
@@ -2269,17 +2466,17 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     s32 yA = 0;
                     s32 yB = 0;
                     
-                    __printIndent(__debug_indentation);
+                    //__printIndent(__debug_indentation);
                     while(args.count > 0)
                     {
                         yA = PullVal();
                         yB = PullVal();
                         numHints += 1;
                         
-                        ls_printf("[%d %d] ", yA, yB);
+                        //ls_printf("[%d %d] ", yA, yB);
                     }
                     
-                    ls_printf("vstem_impl\n");
+                    //ls_printf("vstem_impl\n");
                 }
                 
                 u32 numBytes = (numHints + 7) / 8;
@@ -2297,8 +2494,8 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                 }
                 
                 //numHints = 0;
-                __printIndent(__debug_indentation);
-                ls_printf("hintmask %bd\n", mask);
+                //__printIndent(__debug_indentation);
+                //ls_printf("hintmask %bd\n", mask);
                 
             } break;
             
@@ -2310,8 +2507,8 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     width = font->cff.PrivateDict.nominalWidthX + PullVal();
                     pos->x = (glyph->width - width) / 2;
                     
-                    __printIndent(__debug_indentation);
-                    ls_printf("width %d\n", width);
+                    //__printIndent(__debug_indentation);
+                    //ls_printf("width %d\n", width);
                 }
                 
                 s32 dx = PullVal();
@@ -2346,8 +2543,8 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     width = font->cff.PrivateDict.nominalWidthX + PullVal();
                     pos->x = (glyph->width - width) / 2;
                     
-                    __printIndent(__debug_indentation);
-                    ls_printf("width %d\n", width);
+                    //__printIndent(__debug_indentation);
+                    //ls_printf("width %d\n", width);
                 }
                 
                 
@@ -2379,17 +2576,17 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                 s32 yA = 0;
                 s32 yB = 0;
                 
-                __printIndent(__debug_indentation);
+                //__printIndent(__debug_indentation);
                 while(args.count > 0)
                 {
                     yA = PullVal();
                     yB = PullVal();
                     numHints += 1;
                     
-                    ls_printf("[%d %d] ", yA, yB);
+                    //ls_printf("[%d %d] ", yA, yB);
                 }
                 
-                ls_printf("vstemhm\n");
+                //ls_printf("vstemhm\n");
             } break;
             
             case 30: //vhcurveto
