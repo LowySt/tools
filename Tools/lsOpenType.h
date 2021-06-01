@@ -1935,8 +1935,12 @@ void ls_openTypeFillBetweenEdges(OpenType_Glyph *glyph, u8 *outBuf)
 #if 1
     for(u32 y = 0; y < glyph->height; y += 1)
     {
-        s32 intersects[16] = {};
-        u32 numIntersects = 0;
+        if(y == 360) { 
+            int breakHere = 0;//return; //
+        }
+        
+        s32 intersectsTemp[16] = {};
+        u32 numTemps = 0;
         
         s32 xIntersect = 0;
         for(u32 eIdx = 0; eIdx < glyph->edgeCount; eIdx++)
@@ -1945,21 +1949,37 @@ void ls_openTypeFillBetweenEdges(OpenType_Glyph *glyph, u8 *outBuf)
             
             if(ls_OpenTypeScanlineIntersects(y, e, &xIntersect))
             {
+                //TODO:NOTE: I'm not sure this is good....
+                if(ls_OpenTypeIsPointACusp(glyph, xIntersect, y)) { continue; }
+                
                 if((e->p0.y == e->p1.y) && (e->isCurve == FALSE))
                 {
-                    intersects[numIntersects]     = e->p0.x;
-                    intersects[numIntersects + 1] = e->p1.x;
-                    numIntersects += 2;
+                    intersectsTemp[numTemps]     = e->p0.x;
+                    intersectsTemp[numTemps + 1] = e->p1.x;
+                    numTemps += 2;
                 }
                 else
                 {
-                    intersects[numIntersects] = xIntersect;
-                    numIntersects += 1;
+                    intersectsTemp[numTemps] = xIntersect;
+                    numTemps += 1;
                 }
             }
         }
         
-        ls_quicksort((u32 *)intersects, numIntersects);
+        ls_quicksort((u32 *)intersectsTemp, numTemps);
+        
+        s32 intersects[16] = {};
+        u32 numIntersects = 1;
+        intersects[0] = intersectsTemp[0];
+        
+        for(u32 i = 1; i < numTemps; i++)
+        {
+            if(intersectsTemp[i-1] == intersectsTemp[i])
+            { continue; }
+            
+            intersects[numIntersects] = intersectsTemp[i];
+            numIntersects += 1;
+        }
         
         if(numIntersects > 1)
         {
@@ -1970,6 +1990,9 @@ void ls_openTypeFillBetweenEdges(OpenType_Glyph *glyph, u8 *outBuf)
                 {
                     s32 x1 = intersects[i];
                     s32 x2 = intersects[i+2];
+                    
+                    //TODO: Shitty stupid thing probably wrong
+                    if(x2 == 0) { x2 = intersects[i+1]; }
                     
                     for(s32 x = x1; x <= x2; x += 1)
                     {
