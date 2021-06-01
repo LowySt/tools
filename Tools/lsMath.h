@@ -79,6 +79,8 @@ extern "C"
     
     v2i operator*(v2i a, f32 v);
     
+    b32 ls_areV2iEqual(v2i v, v2i w);
+    
 #if 0
     b32 operator==(v2 v, v2 w); b32 operator==(v3 v, v3 w); b32 operator==(v4 v, v4 w);
     b32 operator!=(v2 v, v2 w); b32 operator!=(v3 v, v3 w); b32 operator!=(v4 v, v4 w);
@@ -713,6 +715,12 @@ v2i operator*(v2i a, f32 v)
 {
     v2i result = { (s32)((f32)a.x * v), (s32)((f32)a.y*v) };
     return result;
+}
+
+b32 ls_areV2iEqual(v2i v, v2i w)
+{
+    if((w.x == v.x) && (w.y == v.y)) { return TRUE; }
+    return FALSE;
 }
 
 #if 0
