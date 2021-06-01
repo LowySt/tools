@@ -3,7 +3,7 @@
 
 extern "C"
 {
-    void quicksort(u32 *a, u32 size);
+    void ls_quicksort(u32 *a, u32 size);
 };
 
 
@@ -53,7 +53,7 @@ static void qs_helper(u32 *a, s32 low, s32 high)
     }
 }
 
-void quicksort(u32 *a, u32 size)
+void ls_quicksort(u32 *a, u32 size)
 { qs_helper(a, 0, ((s32)size)-1); }
 
 
