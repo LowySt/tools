@@ -1860,8 +1860,10 @@ b32 ls_OpenTypeIsPointInEdge(OpenType_Glyph *glyph, s32 currEdgeIdx, s32 x, s32 
 }
 
 static
-s32 ls_OpenTypeGetBezierX(OpenType_Glyph::Edge *e, s32 y)
+s32 ls_OpenTypeGetBezierX(OpenType_Glyph::Edge *e, s32 y, s32 xS[3])
 {
+    u32 numXs = 0;
+    
     f32 t = 0.001f;
     
     for(u32 i = 0; i < 1000; i++)
@@ -1876,27 +1878,37 @@ s32 ls_OpenTypeGetBezierX(OpenType_Glyph::Edge *e, s32 y)
         if(Y == UINT32_MAX) { Y = 0; }
         if(X == UINT32_MAX) { X = 0; }
         
-        if(Y == y) { return X; }
+        if(Y == y)
+        { 
+            //NOTE: I hate this.
+            //NOTE: I need to skip a couple of values because 
+            //      I risk hitting the 'same' point twice as a rounding error.
+            if(numXs > 0)
+            {
+                s32 distance = ls_abs(X - xS[numXs-1]);
+                if(distance > 64)
+                {
+                    if(numXs >= 3) { ls_printf("Shit"); }
+                    xS[numXs] = X;
+                    numXs += 1;
+                }
+            }
+            else
+            {
+                xS[numXs] = X;
+                numXs += 1;
+            }
+        }
         
         t += 0.001f;
     }
     
-    return -999;
+    return numXs;
 }
 
 static
 b32 ls_OpenTypeScanlineIntersects(s32 y, OpenType_Glyph::Edge *e, s32 *xI)
 {
-    if(e->isCurve == TRUE)
-    {
-        s32 bezierX = ls_OpenTypeGetBezierX(e, y);
-        if(bezierX == -999) { return FALSE; }
-        
-        *xI = bezierX;
-        return TRUE;
-    }
-    
-    
     if(e->p1.y > e->p0.y) {
         if((e->p1.y < y) || (e->p0.y > y)) 
         { return FALSE; }
@@ -1932,10 +1944,9 @@ void ls_openTypeFillBetweenEdges(OpenType_Glyph *glyph, u8 *outBuf)
     
     const u32 bytesPerPixel = 4;
     
-#if 1
     for(u32 y = 0; y < glyph->height; y += 1)
     {
-        if(y == 360) { 
+        if(y == 305) { 
             int breakHere = 0;//return; //
         }
         
@@ -1947,21 +1958,42 @@ void ls_openTypeFillBetweenEdges(OpenType_Glyph *glyph, u8 *outBuf)
         {
             OpenType_Glyph::Edge *e = glyph->edges + eIdx;
             
-            if(ls_OpenTypeScanlineIntersects(y, e, &xIntersect))
+            if(e->isCurve == TRUE)
             {
-                //TODO:NOTE: I'm not sure this is good....
-                if(ls_OpenTypeIsPointACusp(glyph, xIntersect, y)) { continue; }
+                //NOTE: I believe the mathematical maximum is 3 intersection points.
+                // Because it's a 3rd degree polynomial. It probably would just work with 2.
+                s32 bezierXs[3] = {};
+                u32 numXs = ls_OpenTypeGetBezierX(e, y, bezierXs);
+                if(numXs == 0) { continue; }
                 
-                if((e->p0.y == e->p1.y) && (e->isCurve == FALSE))
+                for(u32 z = 0; z < numXs; z++)
                 {
-                    intersectsTemp[numTemps]     = e->p0.x;
-                    intersectsTemp[numTemps + 1] = e->p1.x;
-                    numTemps += 2;
-                }
-                else
-                {
-                    intersectsTemp[numTemps] = xIntersect;
+                    intersectsTemp[numTemps] = bezierXs[z];
                     numTemps += 1;
+                }
+            }
+            else
+            {
+                if(ls_OpenTypeScanlineIntersects(y, e, &xIntersect))
+                {
+                    //TODO:NOTE: I'm not sure this is good....
+                    //if(ls_OpenTypeIsPointACusp(glyph, xIntersect, y)) { continue; }
+                    
+                    if(e->p0.y == e->p1.y)
+                    {
+                        /*
+                        intersectsTemp[numTemps]     = e->p0.x;
+                        intersectsTemp[numTemps + 1] = e->p1.x;
+                        numTemps += 2;
+    */
+                        intersectsTemp[numTemps]     = e->p1.x;
+                        numTemps += 1;
+                    }
+                    else
+                    {
+                        intersectsTemp[numTemps] = xIntersect;
+                        numTemps += 1;
+                    }
                 }
             }
         }
@@ -2016,110 +2048,11 @@ void ls_openTypeFillBetweenEdges(OpenType_Glyph *glyph, u8 *outBuf)
                     }
                 }
             }
-#if 0
-            for(u32 x = 0; x < glyph->width; x += 1)
-            {
-                u32 remainingIntersects = numIntersects;
-                
-                u32 __debugX = 0;
-                
-                if((x == 798) && (y == 872))
-                {
-                    int breakHere = 0;
-                }
-                
-                if(ls_OpenTypeIsPointInEdge(glyph, 99, x, y))
-                {
-                    __debugX = x;
-                    
-                    remainingIntersects -= 1;
-                    
-                    s32 cIdx = (y*glyph->width + x)*bytesPerPixel;
-                    SetPixel(0xFF, 0, 0);
-                    
-                    x += 1;
-                    
-                    u32 counter = 0;
-                    b32 keepGoing = !ls_OpenTypeIsPointInEdge(glyph, 99, x, y);
-                    
-                    while(keepGoing)
-                    {
-                        keepGoing = FALSE;
-                        
-                        cIdx = (y*glyph->width + x)*bytesPerPixel;
-                        SetPixel(0xFF, 0, 0);
-                        
-                        counter += 1;
-                        x += 1;
-                        //Assert((x >= 0) && (x < glyph->width));
-                        
-                        if(!((x >= 0) && (x < glyph->width)))
-                        { ls_printf("\n\n P: (%d, %d)\n\n", __debugX, y); return; }
-                        
-                        keepGoing = !ls_OpenTypeIsPointInEdge(glyph, 99, x, y);
-                        if(keepGoing == FALSE)
-                        {
-                            remainingIntersects -= 1;
-                            if((remainingIntersects == 0) || (remainingIntersects >= 2))
-                            { break; }
-                            
-                            keepGoing = TRUE;
-                        }
-                        //if(ls_OpenTypeIsPointACusp(glyph, x, y)) { keepGoing = TRUE; }
-                    }
-                    
-                    cIdx = (y*glyph->width + x)*bytesPerPixel;
-                    SetPixel(0xFF, 0, 0);
-                    
-                    //x += 1;
-                }
-            }
-#endif
+            
         }
         
     }
     
-#else
-    for(u32 eIdx = 0; eIdx < glyph->edgeCount; eIdx++)
-    {
-        OpenType_Glyph::Edge *e = glyph->edges + eIdx;
-        
-        if(e->isCurve == FALSE)
-        {
-            b32 xInc = (e->p0.x <= e->p1.x);
-            b32 yInc = (e->p0.y <= e->p1.y);
-            
-            b32 drawsLeft = ((xInc && yInc) || (!xInc && yInc));
-            b32 isVertical = (e->p0.x == e->p1.x);
-            s32 incX = (drawsLeft == TRUE) ? -1 : 1;
-            
-            s32 incY = e->p0.y < e->p1.y ? 1 : -1;
-            
-            f32 m = (f32)(e->p1.y - e->p0.y) / (f32)(e->p1.x - e->p0.x);
-            f32 b = (f32)e->p0.y - (m*(f32)e->p0.x);
-            if(m == 0.0f) { b = (f32)e->p0.y; }
-            if(isVertical) { m = 0.0f; b = 0.0f; }
-            
-            for(s32 y = e->p0.y; y != e->p1.y; y += incY)
-            {
-                s32 x = (s32)(((f32)y - b) / m);
-                if(m == 0.0f) { x = e->p0.x; }
-                
-                while(!ls_OpenTypeIsPointInEdge(glyph, eIdx, x, y))
-                {
-                    s32 cIdx = (y*glyph->width + x)*bytesPerPixel;
-                    outBuf[cIdx]   = 0x00;
-                    outBuf[cIdx+1] = 0x00;
-                    outBuf[cIdx+2] = 0x00;
-                    outBuf[cIdx+3] = 0x00;
-                    
-                    x += incX;
-                    Assert((x >= 0) && (x < glyph->width));
-                }
-            }
-        }
-    }
-#endif
 }
 
 static
