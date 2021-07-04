@@ -46,6 +46,7 @@ extern "C" //STRINGS
     //C Bullshit
     void    ls_strNullTerminate(string *s);
     char   *ls_strToCStr(string s);
+    b32     ls_strToCStr_t(string s, char *buff, s32 buffSize);
     
     
     //OperateOn
@@ -276,6 +277,16 @@ char *ls_strToCStr(string s)
     result[s.len] = 0;
     
     return result;
+}
+
+b32 ls_strToCStr_t(string s, char *buff, s32 buffSize)
+{
+    if(buffSize < s.len+1) { ls_printf("C String Buff not large enough.\n"); return FALSE; }
+    
+    ls_memcpy(s.data, buff, s.len);
+    buff[s.len] = 0;
+    
+    return TRUE;
 }
 
 
