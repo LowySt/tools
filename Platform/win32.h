@@ -754,6 +754,7 @@ SYNCHRONIZE)
         typedef unsigned long   u_long;
         typedef u_long			SERVICETYPE;
         typedef UINT MMRESULT;   /* error return code, 0 means no error */
+        typedef LONG HRESULT;
         
 #pragma region ServiceTypeDefines
         
@@ -2157,34 +2158,36 @@ WS_SYSMENU)
         
         int		 CALLBACK	  WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow);
         LRESULT	 CALLBACK	  WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
-        WINBASEAPI	BOOL		WINAPI		CloseHandle(HANDLE hObject);
-        WINBASEAPI	FARPROC	 WINAPI		GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
-        WINBASEAPI	HMODULE	 WINAPI		GetModuleHandleA(LPCTSTR lpModuleName);
-        WINBASEAPI	HMODULE	 WINAPI		LoadLibraryA(LPCSTR lpLibFileName);
-        WINBASEAPI    HANDLE      WINAPI        CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSize, LPTHREAD_START_ROUTINE lpStartAddress,
-                                                             LPVOID lpParameter, DWORD dwCreationFlags, LPDWORD lpThreadId );
+        BOOL		WINAPI		CloseHandle(HANDLE hObject);
+        FARPROC	 WINAPI		GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
+        HMODULE	 WINAPI		GetModuleHandleA(LPCTSTR lpModuleName);
+        HMODULE	 WINAPI		LoadLibraryA(LPCSTR lpLibFileName);
+        HANDLE      WINAPI        CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes,
+                                               SIZE_T dwStackSize,LPTHREAD_START_ROUTINE lpStartAddress,
+                                               LPVOID lpParameter, DWORD dwCreationFlags, LPDWORD lpThreadId);
+        HRESULT     SetThreadDescription(HANDLE hThread, PCWSTR lpThreadDescription);
         
-        WINBASEAPI	VOID		WINAPI		GetSystemTime(LPSYSTEMTIME lpSystemTime);
-        WINBASEAPI    int         WINAPI        GetSystemMetrics(int nIndex);
-        WINBASEAPI	VOID		WINAPI		GetLocalTime(LPSYSTEMTIME lpSystemTime);
+        VOID		WINAPI		GetSystemTime(LPSYSTEMTIME lpSystemTime);
+        int         WINAPI        GetSystemMetrics(int nIndex);
+        VOID		WINAPI		GetLocalTime(LPSYSTEMTIME lpSystemTime);
         
-        _ACRTIMP      __time32_t  __cdecl       _time32(__time32_t* _Time);
-        _ACRTIMP      __time64_t  __cdecl       _time64(__time64_t* _Time);
+        __time32_t  __cdecl       _time32(__time32_t* _Time);
+        __time64_t  __cdecl       _time64(__time64_t* _Time);
         
-        WINBASEAPI	BOOL		WINAPI		GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
-        WINBASEAPI	VOID		WINAPI		GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
-        WINBASEAPI	VOID		WINAPI		GetSystemTimeAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
-        WINBASEAPI	BOOL		WINAPI		FileTimeToSystemTime(CONST FILETIME * lpFileTime, LPSYSTEMTIME lpSystemTime);
-        WINBASEAPI    MMRESULT    WINAPI        timeBeginPeriod(UINT uPeriod);
-        WINBASEAPI	BOOL		WINAPI		QueryPerformanceCounter(LARGE_INTEGER * lpPerformanceCount);
-        WINBASEAPI	BOOL		WINAPI		QueryPerformanceFrequency(LARGE_INTEGER * lpFrequency);
+        BOOL		WINAPI		GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
+        VOID		WINAPI		GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
+        VOID		WINAPI		GetSystemTimeAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
+        BOOL		WINAPI		FileTimeToSystemTime(CONST FILETIME * lpFileTime, LPSYSTEMTIME lpSystemTime);
+        MMRESULT    WINAPI        timeBeginPeriod(UINT uPeriod);
+        BOOL		WINAPI		QueryPerformanceCounter(LARGE_INTEGER * lpPerformanceCount);
+        BOOL		WINAPI		QueryPerformanceFrequency(LARGE_INTEGER * lpFrequency);
         
-        WINBASEAPI	VOID		WINAPI		Sleep(DWORD dwMilliseconds);
-        WINBASEAPI	DWORD	   WINAPI	    SleepEx(DWORD dwMilliseconds, BOOL bAlertable);
+        VOID		WINAPI		Sleep(DWORD dwMilliseconds);
+        DWORD	   WINAPI	    SleepEx(DWORD dwMilliseconds, BOOL bAlertable);
         
-        WINBASEAPI	VOID		WINAPI		OutputDebugStringA(LPCSTR lpOutputString);
-        WINBASEAPI	VOID		WINAPI		DebugBreak(VOID);
-        WINBASEAPI	DWORD	   WINAPI		GetLastError(VOID);
+        VOID		WINAPI		OutputDebugStringA(LPCSTR lpOutputString);
+        VOID		WINAPI		DebugBreak(VOID);
+        DWORD	   WINAPI		GetLastError(VOID);
         
 #pragma region ConsoleDefines
         
