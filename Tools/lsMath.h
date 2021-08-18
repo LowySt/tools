@@ -28,8 +28,11 @@ extern "C"
     f64 ls_truncEpsilon(f64 x);
     f32 ls_rad(f32 x);
     f64 ls_sqrt(f64 x);
+    f64 ls_cbrt(f64 x);
     u32 ls_gcd(u32 a, u32 b);
     b32 ls_isPrime(u32 a);
+    
+    b32 ls_isF64Normal(f64 v);
     
     //NOTE: This only has 12 digits of precision!
     f32 ls_reciprocal(f32 x);
@@ -308,6 +311,20 @@ f64 ls_sqrt(f64 x)
 }
 #endif
 
+f64 ls_cbrt(f64 x)
+{
+#ifdef LS_PLAT_WINDOWS
+    __m128d Result = _mm_set_pd1(x);
+    Result = _mm_cbrt_pd(Result);
+    
+    return Result.m128d_f64[0];
+#endif
+    
+#ifdef LS_PLAT_LINUX
+    return 0.0f;
+#endif
+}
+
 #ifdef __GNUG__
 f32 ls_reciprocal(f32 x)
 {
@@ -405,6 +422,17 @@ b32 ls_isPrime(u32 a)
     
     return TRUE;
 }
+
+b32 ls_isF64Normal(f64 v)
+{
+    u64 vBit = *((u64 *)(&v));
+    
+    u32 exp = (u32)((vBit >> 52) & 0x07FF);
+    if(exp == 0x0 || exp == 0x7FF) { return FALSE; }
+    
+    return TRUE;
+}
+
 
 f64 ls_sine(f64 x)
 {
