@@ -2,9 +2,24 @@
 #define LS_CRT_H
 
 #ifdef _DEBUG
+
+#define CAT(a,b) a##b
+#define CAT2(a,b) CAT(a,b)
+#define CAT3(a,b,c) CAT2(a,CAT2(b,c))
+
+#define AssertMsg(condition, msg) if(!(condition)) { \
+char *outString = CAT3("[ASSERT]", __FUNCTION__, ": "msg); \
+windows_WriteConsole(outString, ls_len(outString)); \
+DebugBreak(); }
+
 #define Assert(condition) if(!(condition)){DebugBreak();}
 #else
+#define AssertMsg(condition, msg) ((void)0);
 #define Assert(condition) ((void)0);
+
+#undef CAT
+#undef CAT2
+#undef CAT3
 #endif
 
 #define internal static
