@@ -897,7 +897,9 @@ struct OpenType_Font
 
 struct OpenType_Glyph
 {
-    struct Edge { v2i p0; v2i p1; v2i p2; v2i p3; b32 isCurve; };
+    struct Edge { v2i p0; v2i p1; v2i p2; v2i p3;
+        s32 topY; s32 botY; s32 leftX; s32 rightX;
+        s32 winding; s32 xIntersect[2]; u32 numIntersects; b32 isCurve; };
     
     u16 glyphID;
     u8  *charstring;
@@ -1522,37 +1524,8 @@ void ls_openTypeDrawBezier4(v2i P0, v2i P1, v2i P2, v2i P3, u8 *buff, u32 width,
     }
 }
 
-static
-void ls_openTypeDrawBezier(v2i P0, v2i P1, v2i P2, u8 *buff, u32 width, u32 height)
-{
-    const u32 bytesPerPixel = 4;
-    
-    f32 t = 0.001f;
-    
-    for(u32 i = 0; i < 1000; i++)
-    {
-        f32 lineOneX = (1.0f - t)*P0.x + t*P1.x;
-        f32 lineTwoX = (1.0f - t)*P1.x + t*P2.x;
-        u32 X = (u32)((1.0f - t)*lineOneX + t*lineTwoX);
-        
-        f32 lineOneY = (1.0f - t)*P0.y + t*P1.y;
-        f32 lineTwoY = (1.0f - t)*P1.y + t*P2.y;
-        u32 Y = (u32)((1.0f - t)*lineOneY + t*lineTwoY);
-        
-        u32 idx = (Y*width + X)*bytesPerPixel;
-        buff[idx]   = 0x00; //B
-        buff[idx+1] = 0x00; //G
-        buff[idx+2] = 0x00; //R
-        buff[idx+3] = 0x00; //A
-        
-        t += 0.001f;
-    }
-}
-
-
 static u32 __debug_indentation = 0;
 static u32 __debug_counter = 0;
-
 
 static
 void ls_openTypeMoveTo(v2i *pos, s32 dx, s32 dy)
@@ -1609,6 +1582,24 @@ void ls_openTypeCurveTo(stack *args, v2i *pos, u8 *outBuf, OpenType_Glyph *glyph
             e.p1 = p1;
             e.p2 = p2;
             e.p3 = p3;
+            
+            e.topY   = e.p0.y >= e.p3.y ? e.p0.y : e.p3.y;
+            e.botY   = e.p0.y < e.p3.y ? e.p0.y : e.p3.y;
+            e.leftX  = e.p0.x <= e.p3.x ? e.p0.x : e.p3.x;
+            e.rightX = e.p0.x > e.p3.x ? e.p0.x : e.p3.x;
+            
+            if(e.p0.y == e.p3.y)
+            {
+                if(e.p0.x > e.p3.x) { e.winding = -1; }
+                else { e.winding = 1; }
+            }
+            else
+            {
+                if(e.p0.y > e.p3.y) { e.winding =  1; }
+                else { e.winding = -1; }
+            }
+            
+            
             glyph->edges[glyph->edgeCount] = e;
             glyph->edgeCount += 1;
             
@@ -1652,6 +1643,23 @@ void ls_openTypeCurveTo(stack *args, v2i *pos, u8 *outBuf, OpenType_Glyph *glyph
             e.p1 = p1;
             e.p2 = p2;
             e.p3 = p3;
+            
+            e.topY   = e.p0.y >= e.p3.y ? e.p0.y : e.p3.y;
+            e.botY   = e.p0.y < e.p3.y ? e.p0.y : e.p3.y;
+            e.leftX  = e.p0.x <= e.p3.x ? e.p0.x : e.p3.x;
+            e.rightX = e.p0.x > e.p3.x ? e.p0.x : e.p3.x;
+            
+            if(e.p0.y == e.p3.y)
+            {
+                if(e.p0.x > e.p3.x) { e.winding = -1; }
+                else { e.winding = 1; }
+            }
+            else
+            {
+                if(e.p0.y > e.p3.y) { e.winding =  1; }
+                else { e.winding = -1; }
+            }
+            
             glyph->edges[glyph->edgeCount] = e;
             glyph->edgeCount += 1;
             
@@ -1701,6 +1709,14 @@ void ls_openTypeLineTo(stack *args, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf,
         e.isCurve = FALSE;
         e.p0 = *pos;
         e.p1 = { pos->x + diff1.x, pos->y + diff1.y };
+        e.topY   = e.p0.y >= e.p1.y ? e.p0.y : e.p1.y;
+        e.botY   = e.p0.y < e.p1.y ? e.p0.y : e.p1.y;
+        e.leftX  = e.p0.x <= e.p1.x ? e.p0.x : e.p1.x;
+        e.rightX = e.p0.x > e.p1.x ? e.p0.x : e.p1.x;
+        
+        if(e.p0.y > e.p1.y) { e.winding =  1; }
+        else { e.winding = -1; }
+        
         glyph->edges[glyph->edgeCount] = e;
         glyph->edgeCount += 1;
         
@@ -1748,6 +1764,14 @@ void ls_openTypeLineTo(stack *args, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf,
         e.isCurve = FALSE;
         e.p0 = *pos;
         e.p1 = { pos->x + diff1.x, pos->y + diff1.y };
+        e.topY   = e.p0.y >= e.p1.y ? e.p0.y : e.p1.y;
+        e.botY   = e.p0.y < e.p1.y ? e.p0.y : e.p1.y;
+        e.leftX  = e.p0.x <= e.p1.x ? e.p0.x : e.p1.x;
+        e.rightX = e.p0.x > e.p1.x ? e.p0.x : e.p1.x;
+        
+        if(e.p0.y > e.p1.y) { e.winding =  1; }
+        else { e.winding = -1; }
+        
         glyph->edges[glyph->edgeCount] = e;
         glyph->edgeCount += 1;
         
@@ -1771,6 +1795,14 @@ void ls_openTypeLineTo(stack *args, OpenType_Glyph *glyph, v2i *pos, u8 *outBuf,
         e.isCurve = FALSE;
         e.p0 = *pos;
         e.p1 = { pos->x + diff2.x, pos->y + diff2.y };
+        e.topY   = e.p0.y >= e.p1.y ? e.p0.y : e.p1.y;
+        e.botY   = e.p0.y < e.p1.y ? e.p0.y : e.p1.y;
+        e.leftX  = e.p0.x <= e.p1.x ? e.p0.x : e.p1.x;
+        e.rightX = e.p0.x > e.p1.x ? e.p0.x : e.p1.x;
+        
+        if(e.p0.y > e.p1.y) { e.winding =  1; }
+        else { e.winding = -1; }
+        
         glyph->edges[glyph->edgeCount] = e;
         glyph->edgeCount += 1;
         
@@ -1861,11 +1893,47 @@ b32 ls_OpenTypeIsPointInEdge(OpenType_Glyph *glyph, s32 currEdgeIdx, s32 x, s32 
 }
 
 static
-s32 ls_OpenTypeGetBezierX(OpenType_Glyph::Edge *e, b32 edgeStart, s32 y, s32 xS[3])
+s32 ls_OpenTypeGetBezierX(OpenType_Glyph::Edge *e, s32 y, s32 xS[2])
 {
+    //NOTE: Maybe Try Newton's Method (Newton-Rhapson)
+#if 1
+    s64 a = (e->p3.y - e->p0.y) + (3*e->p1.y) - (3*e->p2.y);
+    s64 b = (3*e->p2.y) + (3*e->p0.y) - (6*e->p1.y);
+    s64 c = (3*e->p1.y) - (3*e->p0.y);
+    s64 d = e->p0.y - y;
+    
+    s64 deltaZero = (b*b) - (3*a*c);
+    s64 deltaOne  = (2*b*b*b) - (9*a*b*c) + (27*a*a*d);
+    
+    if((deltaZero == 0) && (deltaOne == 0)) { xS[0] = 0; return 1; }
+    
+    f64 delta1Sq = deltaOne*deltaOne;
+    f64 delta0Cb = 4.0f*deltaZero*deltaZero*deltaZero;
+    
+    f64 sqRoot   = ls_sqrt(delta1Sq - delta0Cb);
+    
+    f64 coeff = ls_cbrt((deltaOne + sqRoot) / 2.0f);
+    
+    f64 inv3A = -(1.0f/(3.0f*(f64)a));
+    
+    f64 tVal = inv3A*((f64)b + coeff + ((f64)deltaZero / coeff));
+    
+    if(ls_isF64Normal(tVal) == FALSE) { return 0; }
+    if(tVal < 0.0f || tVal > 1.0f) { return 0; }
+    
+    f32 compl = (1.0f-tVal);
+    f32 compl2 = compl*compl;
+    f32 compl3 = compl2*compl;
+    s32 firstX = (compl3*e->p0.x) + (3.0f*compl2*tVal*e->p1.x) + 
+        (3.0f*compl*tVal*tVal*e->p2.x) + (tVal*tVal*tVal*e->p3.x);
+    
+    xS[0] = firstX;
+    return 1;
+    
+#else
     u32 numXs = 0;
     
-    f32 t = 0.001f;
+    f32 t = 0.0f;
     
     for(u32 i = 0; i < 1000; i++)
     {
@@ -1879,6 +1947,10 @@ s32 ls_OpenTypeGetBezierX(OpenType_Glyph::Edge *e, b32 edgeStart, s32 y, s32 xS[
         if(Y == UINT32_MAX) { Y = 0; }
         if(X == UINT32_MAX) { X = 0; }
         
+        //NOTE: Ignore all end points, only accept begin points
+        //      To avoid double counting overlapping lines.
+        //if(Y == e->p3.y) { continue; }
+        
         if(Y == y)
         { 
             //NOTE: I hate this.
@@ -1889,7 +1961,7 @@ s32 ls_OpenTypeGetBezierX(OpenType_Glyph::Edge *e, b32 edgeStart, s32 y, s32 xS[
                 s32 distance = ls_abs(X - xS[numXs-1]);
                 if(distance > 64)
                 {
-                    if(numXs >= 3) { ls_printf("Shit"); }
+                    if(numXs >= 2) { ls_printf("Shit"); }
                     xS[numXs] = X;
                     numXs += 1;
                 }
@@ -1905,105 +1977,183 @@ s32 ls_OpenTypeGetBezierX(OpenType_Glyph::Edge *e, b32 edgeStart, s32 y, s32 xS[
     }
     
     return numXs;
+#endif
 }
 
 static
-b32 ls_OpenTypeScanlineIntersects(s32 y, OpenType_Glyph::Edge *e, b32 edgeStart, s32 *xI)
+b32 ls_OpenTypeScanlineIntersects(s32 y, OpenType_Glyph::Edge *e)
 {
-    if(e->p1.y > e->p0.y) {
-        if((e->p1.y < y) || (e->p0.y > y)) 
-        { return FALSE; }
-    }
-    else if(e->p0.y > e->p1.y) {
-        if((e->p0.y < y) || (e->p1.y > y)) 
-        { return FALSE; }
-    }
-    else if(e->p0.y == e->p1.y) {
+#if 0
+    if(e->p0.y == e->p1.y) {
         if(e->p0.y == y) { return TRUE; }
         
         //NOTE: It does intersect but we skip horizontal lines!
         //TODO: FIX HORIZONTAL LINES MISSING INK LIKE IN 'T'
         return FALSE;
     }
-    
-    //We're touching the Start pixel
-    if((e->p0.y == y) && !edgeStart) { return FALSE;}
-    if((e->p1.y == y) && edgeStart)  { return FALSE;}
+#endif
     
     if(e->p0.x == e->p1.x)
-    { *xI = e->p0.x; return TRUE; }
+    { e->xIntersect[0] = e->p0.x; return TRUE; }
     
     f32 m = (f32)(e->p1.y - e->p0.y) / (f32)(e->p1.x - e->p0.x);
     f32 b = (f32)e->p0.y - (m*(f32)e->p0.x);
     
-    s32 xIntersect  = (s32)(((f32)y - b) / m);
-    *xI = xIntersect;
+    s32 xInter  = (s32)(((f32)y - b) / m);
+    e->xIntersect[0] = xInter;
     
     return TRUE;
 }
+
+s32 ls_openTypeSortEdgeTopY(void *e1, void *e2)
+{
+    OpenType_Glyph::Edge *edge1 = (OpenType_Glyph::Edge *)e1;
+    OpenType_Glyph::Edge *edge2 = (OpenType_Glyph::Edge *)e2;
+    
+    if(edge1->topY > edge2->topY) { return 1; }
+    else if(edge1->topY == edge2->topY) { return 0; }
+    else return -1;
+    
+    Assert(FALSE);
+}
+
+s32 ls_openTypeSortEdgeXIntersect(void *e1, void *e2)
+{
+    OpenType_Glyph::Edge *edge1 = (OpenType_Glyph::Edge *)e1;
+    OpenType_Glyph::Edge *edge2 = (OpenType_Glyph::Edge *)e2;
+    
+    if(edge1->xIntersect[0] > edge2->xIntersect[0]) { return 1; }
+    else if(edge1->xIntersect[0] == edge2->xIntersect[0]) { return 0; }
+    else return -1;
+    
+    Assert(FALSE);
+}
+
 
 void ls_openTypeFillBetweenEdges(OpenType_Glyph *glyph, u8 *outBuf)
 {
 #define SetPixel(R,G,B) outBuf[cIdx] = B; outBuf[cIdx+1] = G; outBuf[cIdx+2] = R; outBuf[cIdx+3] = 0x00;
     
     const u32 bytesPerPixel = 4;
+    OpenType_Glyph::Edge edges[64] = {};
+    ls_memcpy(glyph->edges, edges, glyph->edgeCount*sizeof(OpenType_Glyph::Edge));
+    
+    ls_quicksortCustom(edges, sizeof(OpenType_Glyph::Edge), 
+                       glyph->edgeCount, ls_openTypeSortEdgeTopY);
     
     for(u32 y = 0; y < glyph->height; y += 1)
     {
-        if((y == 400) && (glyph->glyphID == 35)){ 
+        OpenType_Glyph::Edge activeEdges[64] = {};
+        u32 activeEdgeCount = 0;
+        
+        if((y == 272) && (glyph->glyphID == 36)) {
             int breakHere = 0;//return; //
         }
         
-        s32 intersects[16] = {};
-        u32 numIntersects = 0;
         
-        s32 xIntersect = 0;
-        b32 edgeStart = TRUE;
+        //Create Active Edge array by removing edges that never intersect.
         for(u32 eIdx = 0; eIdx < glyph->edgeCount; eIdx++)
         {
-            OpenType_Glyph::Edge *e = glyph->edges + eIdx;
+            OpenType_Glyph::Edge *e = edges + eIdx;
             
-            if(e->isCurve == TRUE)
+            //NOTE: We skip all horizontal lines
+            //      Because those are null operations, 
+            //      already filled in while drawing edges.
+            if((e->p0.y == e->p1.y) && (e->isCurve == FALSE)) { continue; }
+            
+            if(e->isCurve == FALSE)
             {
-                //NOTE: I believe the mathematical maximum is 3 intersection points.
-                // Because it's a 3rd degree polynomial. It probably would just work with 2.
-                s32 bezierXs[3] = {};
-                u32 numXs = ls_OpenTypeGetBezierX(e, edgeStart, y, bezierXs);
-                if(numXs == 0) { continue; }
-                
-                for(u32 z = 0; z < numXs; z++)
+                if(e->topY >= y && e->botY <= y) 
                 {
-                    intersects[numIntersects] = bezierXs[z];
-                    numIntersects += 1;
+                    activeEdges[activeEdgeCount] = *e;
+                    ls_OpenTypeScanlineIntersects(y, activeEdges + activeEdgeCount);
+                    activeEdgeCount += 1;
                 }
-                
-                edgeStart = !edgeStart;
             }
             else
             {
-                if(ls_OpenTypeScanlineIntersects(y, e, edgeStart, &xIntersect))
+                s32 bezierXs[2] = {};
+                u32 numXs = ls_OpenTypeGetBezierX(e, y, bezierXs);
+                if(numXs == 0) { continue; }
+                
+                if(numXs == 1)
                 {
-                    if(e->p0.y == e->p1.y)
+                    b32 toRemove = FALSE;
+                    for(u32 eYdx = 0; eYdx < activeEdgeCount; eYdx++)
                     {
-                        intersects[numIntersects] = e->p0.x;
-                        numIntersects += 1;
-                        intersects[numIntersects] = e->p1.x;
-                        numIntersects += 1;
-                        continue;
-                    }
-                    else
-                    {
-                        intersects[numIntersects] = xIntersect;
-                        numIntersects += 1;
+                        OpenType_Glyph::Edge *e = activeEdges + eYdx;
+                        if(e->isCurve != TRUE) { continue; }
+                        
+                        if(e->xIntersect[0] == bezierXs[0]) { toRemove = TRUE; break; }
                     }
                     
-                    edgeStart = !edgeStart;
+                    if(toRemove) { continue; }
+                }
+                
+                
+                activeEdges[activeEdgeCount] = *e;
+                activeEdges[activeEdgeCount].numIntersects = numXs;
+                
+                for(u32 z = 0; z < numXs; z++)
+                { activeEdges[activeEdgeCount].xIntersect[z] = bezierXs[z]; }
+                
+                activeEdgeCount += 1;
+            }
+        }
+        
+        if(activeEdgeCount == 0) { continue; }
+        
+        //NOTE:DEBUG
+        if((y == 612) && (glyph->glyphID == 36)) {
+            int breakHere = 0;//return; //
+        }
+        
+        ls_quicksortCustom(activeEdges, sizeof(OpenType_Glyph::Edge), 
+                           activeEdgeCount, ls_openTypeSortEdgeXIntersect);
+        
+        s32 currentWinding = 0;
+        for(u32 i = 0; i < activeEdgeCount; i++)
+        {
+            OpenType_Glyph::Edge *e = activeEdges + i;
+            currentWinding += e->winding;
+            
+            if(e->isCurve == TRUE)
+            {
+                if(currentWinding != 0)
+                {
+                    Assert(i != (activeEdgeCount - 1));
+                    
+                    s32 startX = e->xIntersect[0];
+                    s32 endX = (e+1)->xIntersect[0];
+                    
+                    for(s32 x = startX; x <= endX; x += 1)
+                    {
+                        s32 cIdx = (y*glyph->width + x)*bytesPerPixel;
+                        SetPixel(0, 0x88, 0x99);
+                    }
+                }
+                
+                if(e->numIntersects == 2) { currentWinding += -(e->winding); }
+            }
+            else
+            {
+                if(currentWinding != 0)
+                {
+                    Assert(i != (activeEdgeCount - 1));
+                    
+                    s32 startX = e->xIntersect[0];
+                    s32 endX = (e+1)->xIntersect[0];
+                    
+                    for(s32 x = startX; x <= endX; x += 1)
+                    {
+                        s32 cIdx = (y*glyph->width + x)*bytesPerPixel;
+                        SetPixel(0, 0x88, 0x99);
+                    }
                 }
             }
         }
         
-        ls_quicksort((u32 *)intersects, numIntersects);
-        
+#if 0
         if(numIntersects > 1)
         {
             //Assert((numIntersects % 2) == 0);
@@ -2043,8 +2193,8 @@ void ls_openTypeFillBetweenEdges(OpenType_Glyph *glyph, u8 *outBuf)
                     }
                 }
             }
-            
         }
+#endif
         
     }
     
@@ -2205,8 +2355,16 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                         
                         OpenType_Glyph::Edge e = {};
                         e.isCurve = FALSE;
-                        e.p0 = *pos;
-                        e.p1 = glyph->startDrawPos;
+                        e.p0     = *pos;
+                        e.p1     = glyph->startDrawPos;
+                        e.topY   = e.p0.y >= e.p1.y ? e.p0.y : e.p1.y;
+                        e.botY   = e.p0.y < e.p1.y ? e.p0.y : e.p1.y;
+                        e.leftX  = e.p0.x <= e.p1.x ? e.p0.x : e.p1.x;
+                        e.rightX = e.p0.x > e.p1.x ? e.p0.x : e.p1.x;
+                        
+                        if(e.p0.y > e.p1.y) { e.winding =  1; }
+                        else { e.winding = -1; }
+                        
                         glyph->edges[glyph->edgeCount] = e;
                         glyph->edgeCount += 1;
                         
@@ -2244,8 +2402,16 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     
                     OpenType_Glyph::Edge e = {};
                     e.isCurve = FALSE;
-                    e.p0 = curr;
-                    e.p1 = *pos;
+                    e.p0     = curr;
+                    e.p1     = *pos;
+                    e.topY   = e.p0.y >= e.p1.y ? e.p0.y : e.p1.y;
+                    e.botY   = e.p0.y < e.p1.y ? e.p0.y : e.p1.y;
+                    e.leftX  = e.p0.x <= e.p1.x ? e.p0.x : e.p1.x;
+                    e.rightX = e.p0.x > e.p1.x ? e.p0.x : e.p1.x;
+                    
+                    if(e.p0.y > e.p1.y) { e.winding =  1; }
+                    else { e.winding = -1; }
+                    
                     glyph->edges[glyph->edgeCount] = e;
                     glyph->edgeCount += 1;
                     
@@ -2312,6 +2478,23 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     e.p1 = p1;
                     e.p2 = p2;
                     e.p3 = p3;
+                    
+                    e.topY   = e.p0.y >= e.p3.y ? e.p0.y : e.p3.y;
+                    e.botY   = e.p0.y < e.p3.y ? e.p0.y : e.p3.y;
+                    e.leftX  = e.p0.x <= e.p3.x ? e.p0.x : e.p3.x;
+                    e.rightX = e.p0.x > e.p3.x ? e.p0.x : e.p3.x;
+                    
+                    if(e.p0.y == e.p3.y)
+                    {
+                        if(e.p0.x > e.p3.x) { e.winding = -1; }
+                        else { e.winding = 1; }
+                    }
+                    else
+                    {
+                        if(e.p0.y > e.p3.y) { e.winding =  1; }
+                        else { e.winding = -1; }
+                    }
+                    
                     glyph->edges[glyph->edgeCount] = e;
                     glyph->edgeCount += 1;
                     
@@ -2373,8 +2556,16 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     {
                         OpenType_Glyph::Edge e = {};
                         e.isCurve = FALSE;
-                        e.p0 = *pos;
-                        e.p1 = glyph->startDrawPos;
+                        e.p0     = *pos;
+                        e.p1     = glyph->startDrawPos;
+                        e.topY   = e.p0.y >= e.p1.y ? e.p0.y : e.p1.y;
+                        e.botY   = e.p0.y < e.p1.y ? e.p0.y : e.p1.y;
+                        e.leftX  = e.p0.x <= e.p1.x ? e.p0.x : e.p1.x;
+                        e.rightX = e.p0.x > e.p1.x ? e.p0.x : e.p1.x;
+                        
+                        if(e.p0.y > e.p1.y) { e.winding =  1; }
+                        else { e.winding = -1; }
+                        
                         glyph->edges[glyph->edgeCount] = e;
                         glyph->edgeCount += 1;
                         
@@ -2472,8 +2663,16 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     {
                         OpenType_Glyph::Edge e = {};
                         e.isCurve = FALSE;
-                        e.p0 = *pos;
-                        e.p1 = glyph->startDrawPos;
+                        e.p0     = *pos;
+                        e.p1     = glyph->startDrawPos;
+                        e.topY   = e.p0.y >= e.p1.y ? e.p0.y : e.p1.y;
+                        e.botY   = e.p0.y < e.p1.y ? e.p0.y : e.p1.y;
+                        e.leftX  = e.p0.x <= e.p1.x ? e.p0.x : e.p1.x;
+                        e.rightX = e.p0.x > e.p1.x ? e.p0.x : e.p1.x;
+                        
+                        if(e.p0.y > e.p1.y) { e.winding =  1; }
+                        else { e.winding = -1; }
+                        
                         glyph->edges[glyph->edgeCount] = e;
                         glyph->edgeCount += 1;
                         
@@ -2505,8 +2704,16 @@ void ls_OpenTypeCharstringToImage(OpenType_Font *font, OpenType_Glyph *glyph, v2
                     {
                         OpenType_Glyph::Edge e = {};
                         e.isCurve = FALSE;
-                        e.p0 = *pos;
-                        e.p1 = glyph->startDrawPos;
+                        e.p0     = *pos;
+                        e.p1     = glyph->startDrawPos;
+                        e.topY   = e.p0.y >= e.p1.y ? e.p0.y : e.p1.y;
+                        e.botY   = e.p0.y < e.p1.y ? e.p0.y : e.p1.y;
+                        e.leftX  = e.p0.x <= e.p1.x ? e.p0.x : e.p1.x;
+                        e.rightX = e.p0.x > e.p1.x ? e.p0.x : e.p1.x;
+                        
+                        if(e.p0.y > e.p1.y) { e.winding =  1; }
+                        else { e.winding = -1; }
+                        
                         glyph->edges[glyph->edgeCount] = e;
                         glyph->edgeCount += 1;
                         
