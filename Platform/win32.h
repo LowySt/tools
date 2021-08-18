@@ -800,6 +800,8 @@ SYNCHRONIZE)
         DECLARE_HANDLE(HGLRC);
         DECLARE_HANDLE(HMODULE);
         DECLARE_HANDLE(HKL);
+        DECLARE_HANDLE(HFONT);
+        
         //
         // Function Pointers
         //
@@ -1337,7 +1339,7 @@ SYNCHRONIZE)
         typedef DWORD COLORREF;
         typedef DWORD* LPCOLORREF;
         
-#define RGB(r,g,b) ((COLORREF)(((BYTE)(r)|((WORD)((BYTE)(g))<<8))|(((DWORD)(BYTE)(b))<<16)))
+#define win32RGB(r,g,b) ((COLORREF)(((BYTE)(r)|((WORD)((BYTE)(g))<<8))|(((DWORD)(BYTE)(b))<<16)))
         
         typedef struct tagMENUINFO
         {
@@ -3880,6 +3882,137 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
 #define LB_ERR              (-1)
 #define LB_ERRSPACE         (-2)
         
+        
+        typedef struct _FIXED {
+            short   value;
+            WORD    fract;
+        } FIXED;
+        
+        typedef struct _MAT2 {
+            FIXED  eM11;
+            FIXED  eM12;
+            FIXED  eM21;
+            FIXED  eM22;
+        } MAT2, *LPMAT2;
+        
+        
+        
+        typedef struct _GLYPHMETRICS {
+            UINT    gmBlackBoxX;
+            UINT    gmBlackBoxY;
+            POINT   gmptGlyphOrigin;
+            short   gmCellIncX;
+            short   gmCellIncY;
+        } GLYPHMETRICS, *LPGLYPHMETRICS;
+        
+#define GGI_MARK_NONEXISTING_GLYPHS  0X0001
+        
+        /*
+         * Font Families
+*/
+#define FF_DONTCARE         (0<<4)  /* Don't care or don't know. */
+#define FF_ROMAN            (1<<4)  /* Variable stroke width, serifed. Times Roman, Century Schoolbook, etc. */
+#define FF_SWISS            (2<<4)  /* Variable stroke width, sans-serifed. Helvetica, Swiss, etc. */
+#define FF_MODERN           (3<<4)  /* Constant stroke width, serifed or sans-serifed. Pica, Elite, Courier, etc. */
+#define FF_SCRIPT           (4<<4)  /* Cursive, etc. */
+#define FF_DECORATIVE       (5<<4)  /* Old English, etc. */
+        
+        /* 
+* Font Weights 
+*/
+#define FW_DONTCARE         0
+#define FW_THIN             100
+#define FW_EXTRALIGHT       200
+#define FW_LIGHT            300
+#define FW_NORMAL           400
+#define FW_MEDIUM           500
+#define FW_SEMIBOLD         600
+#define FW_BOLD             700
+#define FW_EXTRABOLD        800
+#define FW_HEAVY            900
+        
+#define FW_ULTRALIGHT       FW_EXTRALIGHT
+#define FW_REGULAR          FW_NORMAL
+#define FW_DEMIBOLD         FW_SEMIBOLD
+#define FW_ULTRABOLD        FW_EXTRABOLD
+#define FW_BLACK            FW_HEAVY
+        
+#define OUT_DEFAULT_PRECIS          0
+#define OUT_STRING_PRECIS           1
+#define OUT_CHARACTER_PRECIS        2
+#define OUT_STROKE_PRECIS           3
+#define OUT_TT_PRECIS               4
+#define OUT_DEVICE_PRECIS           5
+#define OUT_RASTER_PRECIS           6
+#define OUT_TT_ONLY_PRECIS          7
+#define OUT_OUTLINE_PRECIS          8
+#define OUT_SCREEN_OUTLINE_PRECIS   9
+#define OUT_PS_ONLY_PRECIS          10
+        
+#define CLIP_DEFAULT_PRECIS     0
+#define CLIP_CHARACTER_PRECIS   1
+#define CLIP_STROKE_PRECIS      2
+#define CLIP_MASK               0xf
+#define CLIP_LH_ANGLES          (1<<4)
+#define CLIP_TT_ALWAYS          (2<<4)
+#define CLIP_DFA_DISABLE        (4<<4)
+#define CLIP_EMBEDDED           (8<<4)
+        
+#define DEFAULT_QUALITY           0
+#define DRAFT_QUALITY             1
+#define PROOF_QUALITY             2
+#define NONANTIALIASED_QUALITY    3
+#define ANTIALIASED_QUALITY       4
+#define CLEARTYPE_QUALITY         5
+#define CLEARTYPE_NATURAL_QUALITY 6
+        
+#define DEFAULT_PITCH           0
+#define FIXED_PITCH             1
+#define VARIABLE_PITCH          2
+#define MONO_FONT               8
+        
+#define ANSI_CHARSET            0
+#define DEFAULT_CHARSET         1
+#define SYMBOL_CHARSET          2
+#define SHIFTJIS_CHARSET        128
+#define HANGEUL_CHARSET         129
+#define HANGUL_CHARSET          129
+#define GB2312_CHARSET          134
+#define CHINESEBIG5_CHARSET     136
+#define OEM_CHARSET             255
+#define JOHAB_CHARSET           130
+#define HEBREW_CHARSET          177
+#define ARABIC_CHARSET          178
+#define GREEK_CHARSET           161
+#define TURKISH_CHARSET         162
+#define VIETNAMESE_CHARSET      163
+#define THAI_CHARSET            222
+#define EASTEUROPE_CHARSET      238
+#define RUSSIAN_CHARSET         204
+        
+#define MAC_CHARSET             77
+#define BALTIC_CHARSET          186
+        
+        /*
+* GetGlyphOutline constants
+*/
+        
+#define GGO_METRICS        0
+#define GGO_BITMAP         1
+#define GGO_NATIVE         2
+#define GGO_BEZIER         3
+#define  GGO_GRAY2_BITMAP   4
+#define  GGO_GRAY4_BITMAP   5
+#define  GGO_GRAY8_BITMAP   6
+#define  GGO_GLYPH_INDEX    0x0080
+#define  GGO_UNHINTED       0x0100
+        
+#define TT_POLYGON_TYPE   24
+#define TT_PRIM_LINE       1
+#define TT_PRIM_QSPLINE    2
+#define TT_PRIM_CSPLINE    3
+        
+        
         /*
          DrawTextEX Formatter
          */
@@ -4005,6 +4138,20 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         BOOL     EndMenu(VOID);
         
         BOOL     IsWindowVisible(HWND hWnd);
+        
+        HFONT    CreateFontA(int cHeight, int cWidth, int cEscapement, int cOrientation, int cWeight, DWORD bItalic,
+                             DWORD bUnderline, DWORD bStrikeOut, DWORD iCharSet, DWORD iOutPrecision,
+                             DWORD iClipPrecision, DWORD iQuality, DWORD iPitchAndFamily, LPCSTR pszFaceName);
+        
+        DWORD    GetFontData (HDC hdc, DWORD dwTable, DWORD dwOffset, PVOID pvBuffer, DWORD cjBuffer);
+        
+        DWORD    GetGlyphOutlineA(HDC hdc, UINT uChar, UINT fuFormat, LPGLYPHMETRICS lpgm, DWORD cjBuffer,
+                                  LPVOID pvBuffer, CONST MAT2 *lpmat2);
+        DWORD GetGlyphOutlineW(HDC hdc, UINT uChar, UINT fuFormat, LPGLYPHMETRICS lpgm, DWORD cjBuffer,
+                               LPVOID pvBuffer, const MAT2 *lpmat2);
+        
+        DWORD    GetGlyphIndicesA(HDC hdc, LPCSTR lpstr, int c, LPWORD pgi, DWORD fl);
+        DWORD    GetGlyphIndicesW(HDC hdc, LPCWSTR lpstr, int c, LPWORD pgi, DWORD fl);
         
         BOOL     DrawCaption(HWND hwnd, HDC hdc, CONST RECT * lprect, UINT flags);
         BOOL     DrawFrameControl(HDC hdc, LPRECT lprect, UINT frameType, UINT frameState);
@@ -7107,8 +7254,3 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
 #pragma endregion
     }
     
-#ifdef _DEBUG
-#define Assert(condition) if(!(condition)){DebugBreak();}
-#else
-#define Assert(condition) ((void)0);
-#endif
