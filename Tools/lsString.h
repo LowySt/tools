@@ -37,6 +37,11 @@ extern "C" //STRINGS
     
     //Manage
     string  ls_strInit(char *s);
+    
+    //NOTE: In this case the char * string lives on the STACK!
+    string  ls_strConstant(char *p);
+    string  ls_strConstChar(char c);
+    
     void    ls_strClear(string *s);
     string  ls_strCopy(string s);
     void	ls_strNCopy(string s, string *dst, size_t size);
@@ -158,6 +163,19 @@ string *ls_strAllocPtr(u32 size)
     
     return Result;
 };
+
+string ls_strConstant(char *p)
+{
+    string s = {p, sizeof(p)/sizeof(p[0])-1, sizeof(p)/sizeof(p[0])-1};
+    return s;
+}
+
+string ls_strConstChar(char c)
+{
+    string s = {&c, 1, 1};
+    return s;
+}
+
 
 void ls_strFree(string *a)
 {
@@ -690,9 +708,9 @@ string ls_strCatCStr(string s1, char *s2)
 
 void ls_strPrepend(string *s1, string s2)
 {
-    Assert(s1);
-    Assert(s1->data);
-    Assert(s2.data);
+    AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsg(s1->data, "Base string data is null\n");
+    AssertMsg(s2.data, "Input string data is null\n");
     
     if(s1->len + s2.len > s1->size)
     {
@@ -716,8 +734,8 @@ void ls_strPrepend(string *s1, string s2)
 
 void ls_strPrependChar(string *s1, char c)
 {
-    Assert(s1);
-    Assert(s1->data);
+    AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsg(s1->data, "Base string data is null\n");
     
     if(s1->len + 1 > s1->size)
     { ls_strGrow(s1, 32); }
@@ -740,9 +758,9 @@ void ls_strPrependChar(string *s1, char c)
 
 void ls_strPrependCStr(string *s1, char *s2)
 {
-    Assert(s1);
-    Assert(s2);
-    Assert(s1->data);
+    AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsg(s1->data, "Base string data is null\n");
+    AssertMsg(s2, "C string ptr is null\n");
     
     u32 s2Len = ls_len(s2);
     
@@ -762,10 +780,9 @@ void ls_strPrependCStr(string *s1, char *s2)
 //seems to be good. - 29/04/2019
 void ls_strAppend(string *s1, string s2)
 {
-    //NOTE: Do I want these asserts?
-    Assert(s1);
-    Assert(s1->data);
-    Assert(s2.data);
+    AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsg(s1->data, "Base string data is null\n");
+    AssertMsg(s2.data, "Input string data is null\n");
     
     if(s1->len + s2.len > s1->size)
     {
@@ -779,9 +796,8 @@ void ls_strAppend(string *s1, string s2)
 
 void ls_strAppendView(string *s, view v)
 {
-    //NOTE: Do I want these asserts?
-    Assert(s);
-    Assert(s->data);
+    AssertMsg(s, "Base string ptr is null\n");
+    AssertMsg(s->data, "Base string data is null\n");
     
     if(s->len + v.s.len > s->size)
     {
@@ -795,9 +811,8 @@ void ls_strAppendView(string *s, view v)
 
 void ls_strAppendChar(string *s1, char c)
 {
-    //NOTE: Do I want these asserts?
-    Assert(s1);
-    Assert(s1->data);
+    AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsg(s1->data, "Base string data is null\n");
     
     if(s1->len + 1 > s1->size)
     { ls_strGrow(s1, 32); }
@@ -808,6 +823,10 @@ void ls_strAppendChar(string *s1, char c)
 
 void ls_strAppendCStr(string *s1, char *c)
 {
+    AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsg(s1->data, "Base string data is null\n");
+    AssertMsg(c, "C String ptr is null\n");
+    
     u32 len = ls_len(c);
     ls_strAppendNCStr(s1, c, len);
 }
@@ -815,9 +834,9 @@ void ls_strAppendCStr(string *s1, char *c)
 void ls_strAppendNCStr(string *s1, char *c, u32 s2Len)
 {
     //NOTE: Do I want these asserts?
-    Assert(s1);
-    Assert(c);
-    Assert(s1->data);
+    AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsg(s1->data, "Base string data is null\n");
+    AssertMsg(c, "C String ptr is null\n");
     
     if(s1->len + s2Len > s1->size)
     {
