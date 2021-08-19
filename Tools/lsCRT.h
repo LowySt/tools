@@ -376,6 +376,7 @@ ls_dangerousNotToBeCalledInitFunctionHere();
 
 #include "FunctionTables/FunctionTables.h"
 #include <immintrin.h>
+#include <emmintrin.h>
 
 #ifdef LS_PLAT_WINDOWS
 #ifndef __GNUG__
