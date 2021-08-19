@@ -52,7 +52,10 @@ enum RegionTimerPrecision
     RT_MILLISECOND,
     RT_HUNDMICRO,
     RT_TENSMICRO,
-    RT_MICRO
+    RT_MICRO,
+    RT_HUNDNANO,
+    RT_TENSNANO,
+    RT_NANO
 };
 
 LARGE_INTEGER __global_QueryPerfFreq;
@@ -78,6 +81,28 @@ struct RegionTimer
 #define DebugTimerEnd(T)
 #define DebugTimerGet(T) 0
 #endif
+
+
+struct CycleCounter
+{
+    u64 beginCycle;
+    u64 endCycle;
+};
+
+#define CycleCounterBegin(C) (C.beginCycle = __rdtsc())
+#define CycleCounterEnd(C)   (C.endCycle   = __rdtsc())
+#define CycleCounterGet(C)   (C.endCycle - C.beginCycle)
+
+#ifdef _DEBUG
+#define DebugCounterBegin(C) (C.beginCycle = __rdtsc())
+#define DebugCounterEnd(C)   (C.endCycle   = __rdtsc())
+#define DebugCounterGet(C)   (C.endCycle - C.beginCycle)
+#else
+#define DebugCounterBegin(C)
+#define DebugCounterEnd(C)
+#define DebugCounterGet(C) 0
+#endif
+
 
 //NOTE: Memory System
 #define MAX_ARENA_NUM 256
@@ -521,6 +546,10 @@ void windows_freeSlice(MemoryBlock *b, MemoryList *slice)
 
 void windows_memFree(void *ptr)
 {
+    //NOTE:TODO: Apparently C free() is a no-op when ptr is NULL.
+    //AssertMsg(ptr, "Pointer was NULL\n");
+    if(!ptr) { return; }
+    
     /*Arenas*/
     if(Memory.isUsingArena == TRUE) { return; }
     
@@ -1264,6 +1293,9 @@ void windows_initRegionTimer(RegionTimerPrecision p)
     else if(p == RT_HUNDMICRO) { __global_TimerPrecMulti = 10000; }
     else if(p == RT_TENSMICRO) { __global_TimerPrecMulti = 100000; }
     else if(p == RT_MICRO)     { __global_TimerPrecMulti = 1000000; }
+    else if(p == RT_HUNDNANO)  { __global_TimerPrecMulti = 10000000; }
+    else if(p == RT_TENSNANO)  { __global_TimerPrecMulti = 100000000; }
+    else if(p == RT_NANO)      { __global_TimerPrecMulti = 1000000000; }
     //TODO: What if a wrong value is passed?
     
     //__global_QueryPerfFreq.QuadPart /= 1000*10;
