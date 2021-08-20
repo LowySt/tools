@@ -24,12 +24,13 @@ extern "C"
     
     stack  ls_stackInit(u32 elementSize, u32 initialCapacity);
     
+    //NOTETODO Make ls_stackPush return the Top after the push. For convenience.
     void   ls_stackPush(stack *s, void *data);
     void  *ls_stackPop(stack *s);
-    void  *ls_stackTop(stack *s);
+    void  *ls_stackTop(stack *s); //TODO: Top doesn't care if the count == 0
     
     void  *ls_stackPull(stack *s);
-    void  *ls_stackBot(stack *s);
+    void  *ls_stackBot(stack *s); //TODO: Bottom doesn't care if the count == 0
     
     
     void   ls_stackClear(stack *s);
@@ -139,6 +140,7 @@ void *ls_stackPop(stack *s)
     return Result;
 }
 
+//TODO: Top doesn't care if the count == 0
 void *ls_stackTop(stack *s)
 { return s->top; }
 
@@ -158,6 +160,7 @@ void *ls_stackPull(stack *s)
     return Result;
 }
 
+//TODO: Bottom doesn't care if the count == 0
 void *ls_stackBottom(stack *s)
 { return s->bot; }
 
