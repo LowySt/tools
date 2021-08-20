@@ -40,7 +40,7 @@ extern "C" //STRINGS
     
     //NOTE: In this case the char * string lives on the STACK!
     string  ls_strConstant(char *p);
-    string  ls_strConstChar(char c);
+    string  ls_strConstChar(char *c);
     
     void    ls_strClear(string *s);
     string  ls_strCopy(string s);
@@ -170,9 +170,9 @@ string ls_strConstant(char *p)
     return s;
 }
 
-string ls_strConstChar(char c)
+string ls_strConstChar(char *c)
 {
-    string s = {&c, 1, 1};
+    string s = {c, 1, 1};
     return s;
 }
 
