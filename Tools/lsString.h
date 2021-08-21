@@ -379,7 +379,11 @@ void ls_strRmAllNonTextChar(string *s)
 }
 
 void ls_strTrimRight(string *s, u32 numChars)
-{ s->len -= numChars; }
+{ 
+    AssertMsg(s, "Null string pointer passed\n");
+    AssertMsg(s->len > 0, "Trying to trim an empty string\n");
+    s->len -= numChars; 
+}
 
 string *ls_breakByDelimeter(string s, u32 *numOfStrings, char c)
 {
