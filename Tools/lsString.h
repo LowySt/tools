@@ -59,6 +59,8 @@ extern "C" //STRINGS
     void    ls_strRmSubstr(string *s, u32 beginIdx, u32 endIdx);
     void    ls_strRmIdx(string *s, u32 idx);
     void    ls_strRmAllNonTextChar(string *s);
+    void    ls_strTrimRight(string *s, u32 numChars);
+    
     
     //NOTE: Maybe reword these?
     string  *ls_breakByDelimeter(string s, u32 *numOfStrings, char c);
@@ -375,6 +377,9 @@ void ls_strRmAllNonTextChar(string *s)
     
     return;
 }
+
+void ls_strTrimRight(string *s, u32 numChars)
+{ s->len -= numChars; }
 
 string *ls_breakByDelimeter(string s, u32 *numOfStrings, char c)
 {
