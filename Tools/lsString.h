@@ -61,6 +61,9 @@ extern "C" //STRINGS
     void    ls_strRmAllNonTextChar(string *s);
     void    ls_strTrimRight(string *s, u32 numChars);
     
+    void    ls_strInsertSubstr(string *s, string toInsert, u32 insertIdx);
+    void    ls_strInsertChar(string *s, char c, u32 idx);
+    
     
     //NOTE: Maybe reword these?
     string  *ls_breakByDelimeter(string s, u32 *numOfStrings, char c);
@@ -131,6 +134,8 @@ extern "C" //VIEWS
 /*vv INTERNAL vv*/
 static void ls_strGrow(string *s, u32 amount)
 {
+    AssertMsg(s, "String ptr was null\n");
+    AssertMsg(amount < UINT32_MAX-1, "Amount was UINT32_MAX. Probably not a good sign. Off by 1 error?\n");
     u32 newSize = s->size + amount;
     
     char *newData = (char *)ls_alloc(sizeof(char)*newSize);
@@ -301,7 +306,7 @@ char *ls_strToCStr(string s)
 
 b32 ls_strToCStr_t(string s, char *buff, s32 buffSize)
 {
-    if(buffSize < s.len+1) { ls_printf("C String Buff not large enough.\n"); return FALSE; }
+    AssertMsg(buffSize >= s.len+1, "C String Buff not large enough\n");
     
     ls_memcpy(s.data, buff, s.len);
     buff[s.len] = 0;
@@ -337,7 +342,7 @@ void ls_strRmSubstr(string *s, u32 beginIdx, u32 endIdx)
     if((beginIdx < 0 || beginIdx >= s->size) ||
        (endIdx < 0 || endIdx >= s->size) ||
        (endIdx - beginIdx >= s->size))
-    { return; }
+    { return; } //TODO: This should probably be an AssertMsg()
     
     u32 remove = ((endIdx - beginIdx) + 1);
     remove = remove > s->len ? s->len : remove;
@@ -345,7 +350,7 @@ void ls_strRmSubstr(string *s, u32 beginIdx, u32 endIdx)
     copyLen = copyLen == 0 ? 1 : copyLen;
     ls_memcpy((void *)(s->data + endIdx + 1), (void *)(s->data + beginIdx), copyLen);
     s->len -= remove;
-    s->data[s->len] = 0;
+    s->data[s->len] = 0; //TODO: Fuck C strings. Remove this abomination.
     
     return;
 }
@@ -385,9 +390,31 @@ void ls_strTrimRight(string *s, u32 numChars)
     s->len -= numChars; 
 }
 
+void ls_strInsertSubstr(string *s, string toInsert, u32 insertIdx)
+{
+    AssertMsg(s, "Null string pointer passed\n");
+    AssertMsg(insertIdx < s->len, "Insertion index past string length\n");
+    
+    if(s->size < s->len + toInsert.len)
+    { ls_strGrow(s, toInsert.len); }
+    
+    ls_memcpy(s->data + insertIdx, s->data + insertIdx + toInsert.len, s->len - insertIdx);
+    ls_memcpy(toInsert.data, s->data + insertIdx, toInsert.len);
+    
+    s->len += toInsert.len;
+}
+
+void ls_strInsertChar(string *s, char c, u32 idx)
+{
+    string insertString = ls_strConstChar(&c);
+    ls_strInsertSubstr(s, insertString, idx);
+}
+
+
+
 string *ls_breakByDelimeter(string s, u32 *numOfStrings, char c)
 {
-    if(s.data == NULL) { return NULL; }
+    if(s.data == NULL) { return NULL; } //TODO: This should probably be an AssertMsg()
     
     string *Result = 0;
     //The thing could crash if this buff overflows
