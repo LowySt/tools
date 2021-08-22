@@ -1434,11 +1434,12 @@ void ls_memcpy(void *src, void *dest, size_t size)
     
 }
 
+//TODO: SIMD these functions
 void ls_memset(void *src, u8 v, size_t numBytes)
 {
     u8 *At = (u8 *)src;
     u32 i = 0;
-    while(numBytes--, i) { At[i] = v; i += 1; }
+    while(numBytes--) { At[i] = v; i += 1; }
 }
 
 b32 ls_memcmp(void *a, void *b, size_t size)
@@ -1458,103 +1459,7 @@ b32 ls_memcmp(void *a, void *b, size_t size)
 }
 
 void ls_zeroMem(void *mem, size_t size)
-{
-    
-    char *To = (char *)mem;
-    size_t it = size;
-    
-    switch (size)
-    {
-        case 1:
-        *To = 0;
-        return;
-        case 2:
-        *(u16 *)To = 0;
-        return;
-        case 4:
-        *(u32 *)To = 0;
-        return;
-        case 8:
-        *(u64 *)To = 0;
-        return;
-        case 16:
-        *(u64 *)To = 0;
-        To += 8;
-        *(u64 *)To = 0;
-        return;
-        case 32:
-        for (int i = 0; i < 4; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 64:
-        for (int i = 0; i < 8; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 128:
-        for (int i = 0; i < 16; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 256:
-        for (int i = 0; i < 32; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 512:
-        for (int i = 0; i < 64; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 1024:
-        for (int i = 0; i < 128; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 2048:
-        for (int i = 0; i < 256; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 4096:
-        for (int i = 0; i < 512; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 8192:
-        for (int i = 0; i < 1024; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 16384:
-        for (int i = 0; i < 2048; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 32768:
-        for (int i = 0; i < 4096; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 65536:
-        for (int i = 0; i < 8192; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 131072:
-        for (int i = 0; i < 16384; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 262144:
-        for (int i = 0; i < 32768; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 524288:
-        for (int i = 0; i < 65536; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        case 1048576:
-        for (int i = 0; i < 131072; i++)
-        { *(((u64 *)To) + i) = 0; }
-        return;
-        default:
-        while (it--)
-        {
-            *To = 0;
-            To++;
-        }
-        return;
-    }
-}
+{ ls_memset(mem, 0, size); }
 
 //@TODO: Modify ls_alloc to automatically check if the returned pointer is null.
 void *ls_alloc(u64 size)
