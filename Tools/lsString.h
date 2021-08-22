@@ -398,12 +398,8 @@ void ls_strInsertSubstr(string *s, string toInsert, u32 insertIdx)
     if(s->size < s->len + toInsert.len)
     { ls_strGrow(s, toInsert.len); }
     
-    //NOTE:TODO: Need a reverse memcpy to avoid auto-stomping and tempBuffer.
-    char *tempBuffer = (char *)ls_alloc(s->len - insertIdx);
-    ls_memcpy(s->data + insertIdx, tempBuffer, s->len - insertIdx);
+    ls_memcpy(s->data + insertIdx, s->data + insertIdx + toInsert.len, s->len - insertIdx);
     ls_memcpy(toInsert.data, s->data + insertIdx, toInsert.len);
-    ls_memcpy(tempBuffer, s->data + insertIdx + toInsert.len, s->len - insertIdx);
-    ls_free(tempBuffer);
     
     s->len += toInsert.len;
 }
