@@ -1365,102 +1365,73 @@ void ls_sleep(u64 milliseconds)
 
 void ls_memcpy(void *src, void *dest, size_t size)
 {
+    AssertMsg(src, "Source ptr was null\n");
+    AssertMsg(dest, "Destination ptr was null\n");
+    
     if(size == 0) { return; }
     
-    char *At = (char *)src;
-    char *To = (char *)dest;
-    size_t it = size;
+    u8 *At = (u8 *)src;
+    u8 *To = (u8 *)dest;
+    s32 direction = 1;
     
-    switch (size)
+    //NOTE: SIMD path
+    if(size > 32)
     {
-        case 1:
-        *To = *At;
-        return;
-        case 2:
-        *(u16 *)To = *(u16 *)At;
-        return;
-        case 4:
-        *(u32 *)To = *(u32 *)At;
-        return;
-        case 8:
-        *(u64 *)To = *(u64 *)At;
-        return;
-        case 16:
-        *(u64 *)To = *(u64 *)At;
-        At += 8; To += 8;
-        *(u64 *)To = *(u64 *)At;
-        return;
-        case 32:
-        for (int i = 0; i < 4; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 64:
-        for (int i = 0; i < 8; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 128:
-        for (int i = 0; i < 16; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 256:
-        for (int i = 0; i < 32; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 512:
-        for (int i = 0; i < 64; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 1024:
-        for (int i = 0; i < 128; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 2048:
-        for (int i = 0; i < 256; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 4096:
-        for (int i = 0; i < 512; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 8192:
-        for (int i = 0; i < 1024; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 16384:
-        for (int i = 0; i < 2048; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 32768:
-        for (int i = 0; i < 4096; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 65536:
-        for (int i = 0; i < 8192; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 131072:
-        for (int i = 0; i < 16384; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 262144:
-        for (int i = 0; i < 32768; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        return;
-        case 524288:
-        for (int i = 0; i < 65536; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        case 1048576:
-        for (int i = 0; i < 131072; i++)
-        { *(((u64 *)To) + i) = *(((u64 *)At) + i); }
-        default:
-        while (it--)
+        s32 simdDiff = size % 16;
+        s32 simdSize = size - simdDiff;
+        
+        //NOTE: Copy-pastad to avoid an extra check in the byte path when setting To
+        if(((At + size) >= To) && (At + size < To + size)) //NOTE: memory overwrites itself, so we write backwards.
+        {
+            At = (u8 *)src + size-16;
+            To = (u8 *)dest + size-16;
+            direction = -1;
+        }
+        
+        __m128i *simdAt = (__m128i *)At;
+        __m128i *simdTo = (__m128i *)To;
+        
+        while(simdSize)
+        {
+            _mm_storeu_si128(simdTo, *simdAt);
+            
+            At += (direction*16);
+            To += (direction*16);
+            
+            simdAt = (__m128i *)At;
+            simdTo = (__m128i *)To;
+            simdSize -= 16;
+        }
+        
+        while(simdDiff)
         {
             *To = *At;
-            At++;
-            To++;
+            At += direction;
+            To += direction;
+            simdDiff -= 1;
         }
-        return;
     }
+    else //NOTE:BYTE Path
+    {
+        //NOTE: Copy-pastad to avoid an extra check in the simd path when setting To
+        if(((At + size) >= To) && (At + size < To + size)) //NOTE: memory overwrites itself, so we write backwards.
+        {
+            At = (u8 *)src + size-1;
+            To = (u8 *)dest + size-1;
+            direction = -1;
+        }
+        
+        while(size)
+        {
+            *To = *At;
+            At += direction;
+            To += direction;
+            size -= 1;
+        }
+    }
+    
+    return;
+    
 }
 
 void ls_memset(void *src, u8 v, size_t numBytes)
