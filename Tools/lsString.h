@@ -30,6 +30,7 @@ extern "C" //STRINGS
     //Create/Destroy
     string  ls_strAlloc(u32 size);
     string *ls_strAllocPtr(u32 size);
+    string *ls_strAllocArr(u32 numStrings, s32 initialSize);
     void    ls_strFree(string *s);
     void    ls_strFreePtr(string *s);
     void    ls_strFreeArr(string *s, u32 arrSize);
@@ -63,6 +64,7 @@ extern "C" //STRINGS
     
     void    ls_strInsertSubstr(string *s, string toInsert, u32 insertIdx);
     void    ls_strInsertChar(string *s, char c, u32 idx);
+    void    ls_strInsertCStr(string *s, char *toInsert, u32 insertIdx);
     
     
     //NOTE: Maybe reword these?
@@ -170,6 +172,17 @@ string *ls_strAllocPtr(u32 size)
     
     return Result;
 };
+
+string *ls_strAllocArr(u32 numStrings, s32 initialSize = 0)
+{
+    string *s = (string *)ls_alloc(sizeof(string)*numStrings);
+    if(initialSize > 0)
+    {
+        for(u32 i = 0; i < numStrings; i++) { s[i] = ls_strAlloc(initialSize); }
+    }
+    
+    return s;
+}
 
 string ls_strConstant(char *p)
 {
@@ -408,6 +421,12 @@ void ls_strInsertChar(string *s, char c, u32 idx)
 {
     string insertString = ls_strConstChar(&c);
     ls_strInsertSubstr(s, insertString, idx);
+}
+
+void ls_strInsertCStr(string *s, char *toInsert, u32 insertIdx)
+{
+    string insertString = ls_strConstant(toInsert);
+    ls_strInsertSubstr(s, insertString, insertIdx);
 }
 
 
