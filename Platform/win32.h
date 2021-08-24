@@ -801,6 +801,7 @@ SYNCHRONIZE)
         DECLARE_HANDLE(HMODULE);
         DECLARE_HANDLE(HKL);
         DECLARE_HANDLE(HFONT);
+        DECLARE_HANDLE(HGLOBAL);
         
         //
         // Function Pointers
@@ -1213,6 +1214,51 @@ SYNCHRONIZE)
             ATOM  atomWindowType;
             WORD  wCreatorVersion;
         } WINDOWINFO, *PWINDOWINFO, *LPWINDOWINFO;
+        
+        
+#define CF_TEXT             1
+#define CF_BITMAP           2
+#define CF_METAFILEPICT     3
+#define CF_SYLK             4
+#define CF_DIF              5
+#define CF_TIFF             6
+#define CF_OEMTEXT          7
+#define CF_DIB              8
+#define CF_PALETTE          9
+#define CF_PENDATA          10
+#define CF_RIFF             11
+#define CF_WAVE             12
+#define CF_UNICODETEXT      13
+#define CF_ENHMETAFILE      14
+#define CF_HDROP            15
+#define CF_LOCALE           16
+#define CF_DIBV5            17
+#define CF_MAX              18
+        
+#define CF_OWNERDISPLAY     0x0080
+#define CF_DSPTEXT          0x0081
+#define CF_DSPBITMAP        0x0082
+#define CF_DSPMETAFILEPICT  0x0083
+#define CF_DSPENHMETAFILE   0x008E
+        
+        /*
+         * "Private" formats don't get GlobalFree()'d
+         */
+#define CF_PRIVATEFIRST     0x0200
+#define CF_PRIVATELAST      0x02FF
+        
+        /*
+         * "GDIOBJ" formats do get DeleteObject()'d
+         */
+#define CF_GDIOBJFIRST      0x0300
+#define CF_GDIOBJLAST       0x03FF
+        
+        
+#define GHND          0x0042
+#define GMEM_FIXED    0x0000
+#define GMEM_MOVEABLE 0x0002
+#define GMEM_ZEROINIT 0x0040
+#define GPTR          0x0040
         
         
         //
@@ -2158,38 +2204,48 @@ WS_SYSMENU)
 #define TIMERR_NOCANDO        (TIMERR_BASE+1)      /* request not completed */
 #define TIMERR_STRUCT         (TIMERR_BASE+33)     /* time struct size */
         
-        int		 CALLBACK	  WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow);
-        LRESULT	 CALLBACK	  WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
-        BOOL		WINAPI		CloseHandle(HANDLE hObject);
-        FARPROC	 WINAPI		GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
-        HMODULE	 WINAPI		GetModuleHandleA(LPCTSTR lpModuleName);
-        HMODULE	 WINAPI		LoadLibraryA(LPCSTR lpLibFileName);
-        HANDLE      WINAPI        CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes,
-                                               SIZE_T dwStackSize,LPTHREAD_START_ROUTINE lpStartAddress,
-                                               LPVOID lpParameter, DWORD dwCreationFlags, LPDWORD lpThreadId);
-        HRESULT     SetThreadDescription(HANDLE hThread, PCWSTR lpThreadDescription);
+        int        WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow);
+        LRESULT    WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
+        BOOL       CloseHandle(HANDLE hObject);
+        FARPROC    GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
+        HMODULE    GetModuleHandleA(LPCTSTR lpModuleName);
+        HMODULE    LoadLibraryA(LPCSTR lpLibFileName);
+        HANDLE     CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes,
+                                SIZE_T dwStackSize,LPTHREAD_START_ROUTINE lpStartAddress,
+                                LPVOID lpParameter, DWORD dwCreationFlags, LPDWORD lpThreadId);
+        HRESULT    SetThreadDescription(HANDLE hThread, PCWSTR lpThreadDescription);
         
-        VOID		WINAPI		GetSystemTime(LPSYSTEMTIME lpSystemTime);
-        int         WINAPI        GetSystemMetrics(int nIndex);
-        VOID		WINAPI		GetLocalTime(LPSYSTEMTIME lpSystemTime);
+        VOID       GetSystemTime(LPSYSTEMTIME lpSystemTime);
+        int        GetSystemMetrics(int nIndex);
+        VOID       GetLocalTime(LPSYSTEMTIME lpSystemTime);
         
-        __time32_t  __cdecl       _time32(__time32_t* _Time);
-        __time64_t  __cdecl       _time64(__time64_t* _Time);
+        __time32_t _time32(__time32_t* _Time);
+        __time64_t _time64(__time64_t* _Time);
         
-        BOOL		WINAPI		GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
-        VOID		WINAPI		GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
-        VOID		WINAPI		GetSystemTimeAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
-        BOOL		WINAPI		FileTimeToSystemTime(CONST FILETIME * lpFileTime, LPSYSTEMTIME lpSystemTime);
-        MMRESULT    WINAPI        timeBeginPeriod(UINT uPeriod);
-        BOOL		WINAPI		QueryPerformanceCounter(LARGE_INTEGER * lpPerformanceCount);
-        BOOL		WINAPI		QueryPerformanceFrequency(LARGE_INTEGER * lpFrequency);
+        BOOL       GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
+        VOID       GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
+        VOID       GetSystemTimeAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
+        BOOL       FileTimeToSystemTime(CONST FILETIME * lpFileTime, LPSYSTEMTIME lpSystemTime);
+        MMRESULT   timeBeginPeriod(UINT uPeriod);
+        BOOL       QueryPerformanceCounter(LARGE_INTEGER * lpPerformanceCount);
+        BOOL       QueryPerformanceFrequency(LARGE_INTEGER * lpFrequency);
         
-        VOID		WINAPI		Sleep(DWORD dwMilliseconds);
-        DWORD	   WINAPI	    SleepEx(DWORD dwMilliseconds, BOOL bAlertable);
+        VOID       Sleep(DWORD dwMilliseconds);
+        DWORD      SleepEx(DWORD dwMilliseconds, BOOL bAlertable);
         
-        VOID		WINAPI		OutputDebugStringA(LPCSTR lpOutputString);
-        VOID		WINAPI		DebugBreak(VOID);
-        DWORD	   WINAPI		GetLastError(VOID);
+        VOID       OutputDebugStringA(LPCSTR lpOutputString);
+        VOID       DebugBreak(VOID);
+        DWORD      GetLastError(VOID);
+        
+        HGLOBAL    GlobalAlloc(UINT uFlags, SIZE_T dwBytes);
+        LPVOID     GlobalLock(HGLOBAL hMem);
+        BOOL       GlobalUnlock(HGLOBAL hMem);
+        
+        BOOL       OpenClipboard(HWND hWndNewOwner);
+        BOOL       CloseClipboard(VOID);
+        HANDLE     GetClipboardData(UINT uFormat);
+        HANDLE     SetClipboardData(UINT uFormat, HANDLE hMem);
+        BOOL EmptyClipboard();
         
 #pragma region ConsoleDefines
         
@@ -2843,6 +2899,7 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         BOOL     InvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase);
         VOID     ExitProcess(UINT uExitCode);
         
+        HCURSOR  SetCursor(HCURSOR hCursor);
         HCURSOR  LoadCursorA(HINSTANCE hInstance, LPCSTR lpCursorName);
         HCURSOR  LoadCursorW(HINSTANCE hInstance, LPCWSTR lpCursorName);
         HWND     SetCapture(HWND hWnd);
