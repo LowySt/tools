@@ -253,7 +253,7 @@ struct Array
     
     T& operator[](u32 index)
     {
-        Assert(index < count); //NOTE: Should this be a crash or an error?
+        AssertMsg(index < count, "Index out of bounds in Array<>\n"); //NOTE: Should this be a crash or an error?
         return data[index];
     }
     
@@ -299,7 +299,7 @@ struct Array
         data[index] = val;
     }
     
-    void remove(T val, u32 index)
+    void remove(u32 index)
     {
         size_t dataSize = sizeof(T);
         u32 numElements = count - index;
