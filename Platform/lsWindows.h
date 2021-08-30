@@ -169,7 +169,7 @@ extern "C"
     void windows_destroyArena(void *data, u32 id);
     
 	u64 windows_ReadConsole(char *Dest, u32 bytesToRead);
-	u64 windows_WriteConsole(char *buffer, u32 bytesToWrite);
+	u64 windows_WriteConsole(char *buff, u32 bytesToWrite);
 	u64 windows_ReadFile(char *Path, char **Dest, u32 bytesToRead);
     u64 windows_ReadFileByOffset(char *Path, char **Dest, u32 offset, u32 bytesToRead);
 	u64 windows_WriteFile(char *Path, char *source, u32 bytesToWrite, b32 append);
@@ -241,7 +241,7 @@ u64 windows_ReadConsole(char *Dest, u32 bytesToRead)
 	return BytesRead;
 }
 
-u64 windows_WriteConsole(char *buffer, u32 bytesToWrite)
+u64 windows_WriteConsole(char *buff, u32 bytesToWrite)
 {
 	DWORD Error = 0;
 	HANDLE FileHandle = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -262,7 +262,7 @@ u64 windows_WriteConsole(char *buffer, u32 bytesToWrite)
 #endif
     
 	DWORD BytesWritten = 0;
-	if (!WriteFile(FileHandle, buffer, bytesToWrite, &BytesWritten, NULL))
+	if (!WriteFile(FileHandle, buff, bytesToWrite, &BytesWritten, NULL))
 	{
 		Error = GetLastError();
 		OutputDebugStringA("When writing to Console Output got error\n");
