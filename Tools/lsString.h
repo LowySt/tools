@@ -17,6 +17,13 @@ struct string
     u32  size;
 };
 
+struct unistring
+{
+    u32 *data;
+    u32  len;
+    u32  size;
+};
+
 struct view
 {
     string s;
@@ -68,11 +75,11 @@ extern "C" //STRINGS
     
     
     //NOTE: Maybe reword these?
-    string  *ls_breakByDelimeter(string s, u32 *numOfStrings, char c);
-    string  *ls_breakByLine(string s, u32 *numOfLines);
-    string  *ls_breakByWhitespace(string s, u32 *numOfStrings);
-    string  *ls_breakBySpace(string s, u32 *numOfStrings);
-    string  *ls_breakBySpaceUntilDelimiter(string s, char delimiter, u32 *numOfStrings);
+    string  *ls_strBreakByDelimeter(string s, u32 *numOfStrings, char c);
+    string  *ls_strBreakByLine(string s, u32 *numOfLines);
+    string  *ls_strBreakByWhitespace(string s, u32 *numOfStrings);
+    string  *ls_strBreakBySpace(string s, u32 *numOfStrings);
+    string  *ls_strBreakBySpaceUntilDelimiter(string s, char delimiter, u32 *numOfStrings);
     u32     ls_strLeftFind(string s, char c);
     u32     ls_strRightFind(string s, char c);
     
@@ -109,6 +116,67 @@ extern "C" //STRINGS
     b32     ls_strIsEqualNCStr(string s1, char *s2, u32 len);
 };
 
+extern "C" //UTF32 UNICODE STRINGS
+{
+    //Create/Destroy
+    unistring  ls_unistrAlloc(u32 size);
+    unistring *ls_unistrAllocPtr(u32 size);
+    unistring *ls_unistrAllocArr(u32 numStrings, s32 initialSize);
+    void       ls_unistrFree(unistring *s);
+    void       ls_unistrFreePtr(unistring *s);
+    void       ls_unistrFreeArr(unistring *s, u32 arrSize);
+    
+    unistring  ls_unistrFromAscii(char *s);
+    
+    //Manage
+    void       ls_unistrClear(unistring *s);
+    unistring  ls_unistrCopy(unistring s);
+    void	   ls_unistrNCopy(unistring s, unistring *dst, size_t size);
+    unistring  ls_unistrCopySubstr(unistring s, u32 beginIdx, u32 _endIdx = (u32)-1);
+    
+    //OperateOn
+    void    ls_unistrReverse(unistring *s);
+    void    ls_unistrRmSubstr(unistring *s, u32 beginIdx, u32 endIdx);
+    void    ls_unistrRmIdx(unistring *s, u32 idx);
+    void    ls_unistrRmAllNonTextChar(unistring *s);
+    void    ls_unistrTrimRight(unistring *s, u32 numChars);
+    
+    void    ls_unistrInsertSubstr(unistring *s, unistring toInsert, u32 insertIdx);
+    void    ls_unistrInsertChar(unistring *s, u32 c, u32 idx);
+    void    ls_unistrInsertCStr(unistring *s, char *toInsert, u32 insertIdx);
+    
+    
+    //NOTE: Maybe reword these?
+    unistring  *ls_unistrBreakByDelimeter(unistring s, u32 *numOfStrings, u32 c);
+    unistring  *ls_unistrBreakByLine(unistring s, u32 *numOfLines);
+    unistring  *ls_unistrBreakByWhitespace(unistring s, u32 *numOfStrings);
+    unistring  *ls_unistrBreakBySpace(unistring s, u32 *numOfStrings);
+    unistring  *ls_unistrBreakBySpaceUntilDelimiter(unistring s, u32 delimiter, u32 *numOfStrings);
+    u32         ls_unistrLeftFind(unistring s, u32 c);
+    u32         ls_unistrRightFind(unistring s, u32 c);
+    
+    
+    //Merge
+    unistring  ls_unistrConcat(unistring s1, unistring s2);
+    void       ls_unistrConcatOn(unistring s1, unistring s2, unistring *out);
+    unistring  ls_unistrCatChar(unistring s1, u32 c);
+    unistring  ls_unistrCatCStr(unistring s1, char *c);
+    void       ls_unistrPrepend(unistring *s1, unistring s2);
+    void       ls_unistrPrependChar(unistring *s, u32 c);
+    void       ls_unistrPrependCStr(unistring *s, char *c);
+    void       ls_unistrAppend(unistring *s1, unistring s2);
+    void       ls_unistrAppendChar(unistring *s1, u32 c);
+    void       ls_unistrAppendCStr(unistring *s1, char *c);
+    void       ls_unistrAppendNCStr(unistring *s1, char *c, u32 len);
+    void       ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen);
+    
+#if 0 //TODO:Fix this?
+    //Operator
+    b32     operator==(unistring s1, unistring s2);
+    b32     operator!=(unistring s1, unistring s2);
+#endif
+    
+};
 
 
 extern "C" //VIEWS
@@ -150,6 +218,23 @@ static void ls_strGrow(string *s, u32 amount)
     s->data = newData;
     s->size = newSize;
 }
+
+static void ls_unistrGrow(unistring *s, u32 amount)
+{
+    AssertMsg(s, "String ptr was null\n");
+    AssertMsg(amount < UINT32_MAX-1, "Amount was UINT32_MAX. Probably not a good sign. Off by 1 error?\n");
+    u32 newSize = s->size + amount;
+    
+    u32 *newData = (u32 *)ls_alloc(sizeof(u32)*newSize);
+    if(s->data)
+    {
+        ls_memcpy(s->data, newData, s->len*4);
+        ls_free(s->data);
+    }
+    
+    s->data = newData;
+    s->size = newSize;
+}
 /*^^ INTERNAL ^^*/
 
 
@@ -184,19 +269,6 @@ string *ls_strAllocArr(u32 numStrings, s32 initialSize = 0)
     return s;
 }
 
-string ls_strConstant(char *p)
-{
-    string s = {p, sizeof(p)/sizeof(p[0])-1, sizeof(p)/sizeof(p[0])-1};
-    return s;
-}
-
-string ls_strConstChar(char *c)
-{
-    string s = {c, 1, 1};
-    return s;
-}
-
-
 void ls_strFree(string *a)
 {
     ls_free(a->data);
@@ -222,6 +294,19 @@ void ls_strFreeArr(string *s, u32 arrSize)
     
     ls_free(s);
 }
+
+string ls_strConstant(char *p)
+{
+    string s = {p, sizeof(p)/sizeof(p[0])-1, sizeof(p)/sizeof(p[0])-1};
+    return s;
+}
+
+string ls_strConstChar(char *c)
+{
+    string s = {c, 1, 1};
+    return s;
+}
+
 
 //  Create/Destroy  //
 //------------------//
@@ -431,7 +516,7 @@ void ls_strInsertCStr(string *s, char *toInsert, u32 insertIdx)
 
 
 
-string *ls_breakByDelimeter(string s, u32 *numOfStrings, char c)
+string *ls_strBreakByDelimeter(string s, u32 *numOfStrings, char c)
 {
     if(s.data == NULL) { return NULL; } //TODO: This should probably be an AssertMsg()
     
@@ -491,7 +576,7 @@ string *ls_breakByDelimeter(string s, u32 *numOfStrings, char c)
     return Result;
 }
 
-string *ls_breakByLine(string s, u32 *numOfLines)
+string *ls_strBreakByLine(string s, u32 *numOfLines)
 {
     if(s.data == NULL) { return NULL; }
     
@@ -550,7 +635,7 @@ string *ls_breakByLine(string s, u32 *numOfLines)
     return Result;
 }
 
-string *ls_breakByWhitespace(string s, u32 *numOfStrings)
+string *ls_strBreakByWhitespace(string s, u32 *numOfStrings)
 {
     if(s.data == NULL) { return NULL; }
     
@@ -616,13 +701,13 @@ string *ls_breakByWhitespace(string s, u32 *numOfStrings)
     return Result;
 }
 
-string *ls_breakBySpace(string s, u32 *numOfStrings)
+string *ls_strBreakBySpace(string s, u32 *numOfStrings)
 {
     Assert(s.len != 0);
-    return ls_breakByDelimeter(s, numOfStrings, ' ');
+    return ls_strBreakByDelimeter(s, numOfStrings, ' ');
 }
 
-string *ls_breakBySpaceUntilDelimiter(string s, char delimiter, u32 *numOfStrings)
+string *ls_strBreakBySpaceUntilDelimiter(string s, char delimiter, u32 *numOfStrings)
 {
     string *Result = 0;
     string buff[256] = {};
@@ -1136,6 +1221,773 @@ b32 ls_strIsEqualNCStr(string s1, char *s2, u32 len)
 
 
 
+
+
+
+//UTF32 UNICODE STRINGS
+
+//------------------//
+//  Create/Destroy  //
+
+unistring ls_unistrAlloc(u32 size)
+{
+    u32 *data = (u32 *)ls_alloc(sizeof(u32)*size);
+    unistring Result = {data, 0, size};
+    
+    return Result;
+}
+
+unistring *ls_unistrAllocPtr(u32 size)
+{
+    unistring *Result = (unistring *)ls_alloc(sizeof(string));
+    *Result = ls_unistrAlloc(size);
+    
+    return Result;
+}
+
+unistring *ls_unistrAllocArr(u32 numStrings, s32 initialSize)
+{
+    unistring *s = (unistring *)ls_alloc(sizeof(unistring)*numStrings);
+    if(initialSize > 0)
+    {
+        for(u32 i = 0; i < numStrings; i++) { s[i] = ls_unistrAlloc(initialSize); }
+    }
+    
+    return s;
+}
+
+void ls_unistrFree(unistring *s)
+{
+    ls_free(s->data);
+    s->data = 0;
+    s->len = 0;
+    s->size = 0;
+}
+
+void ls_unistrFreePtr(unistring *s)
+{
+    ls_free(s->data);
+    s->data = 0;
+    s->len = 0;
+    s->size = 0;
+    
+    ls_free(s);
+}
+
+void ls_unistrFreeArr(unistring *s, u32 arrSize)
+{
+    for(u32 i = 0; i < arrSize; i++)
+    { ls_unistrFree(&s[i]);}
+    
+    ls_free(s);
+}
+
+
+unistring ls_unistrFromAscii(char *s)
+{
+    u32 len = ls_len(s);
+    unistring Result = ls_unistrAlloc(len*4);
+    
+    for(u32 i = 0; i < len; i++) { Result.data[i] = (u32)s[i]; }
+    
+    return Result;
+}
+
+//  Create/Destroy  //
+//------------------//
+
+//------------------//
+//     Manage       //
+
+
+void ls_unistrClear(unistring *s)
+{ s->len = 0; }
+
+unistring ls_unistrCopy(unistring s)
+{
+    unistring Result = ls_unistrAlloc(s.len);
+    ls_memcpy(s.data, Result.data, s.len*4);
+    Result.len = s.len;
+    
+    return Result;
+}
+
+void ls_unistrNCopy(unistring src, unistring *dst, size_t size)
+{
+    u32 copySize = size;
+    if(size > src.len) { copySize = src.len; }
+    
+    if(dst->data == NULL) { *dst = ls_unistrAlloc(copySize); }
+    
+    if(dst->size < src.len)
+    {
+        u32 growAmount = (dst->size - src.len + 32);
+        ls_unistrGrow(dst, growAmount);
+    }
+    
+    ls_memcpy(src.data, dst->data, copySize*4);
+    dst->len = copySize;
+}
+
+unistring ls_unistrCopySubstr(unistring s, u32 beginIdx, u32 _endIdx)
+{
+    u32 endIdx = 0;
+    if(_endIdx == (u32)-1) { endIdx = s.len-1; }
+    else { endIdx = _endIdx; }
+    
+    if((beginIdx < 0 || beginIdx >= s.size) ||
+       (endIdx < 0 || endIdx >= s.size) ||
+       (endIdx - beginIdx >= s.size))
+    { unistring error = {}; return error; }
+    
+    unistring result = ls_unistrAlloc((endIdx - beginIdx) + 1);
+    
+    ls_memcpy(s.data + beginIdx, result.data, result.size*4);
+    result.len = ((endIdx - beginIdx) + 1);
+    
+    return result;
+}
+
+//      Manage      //
+//------------------//
+
+//------------------//
+//     OperateOn    //
+
+void ls_unistrReverse(unistring *s)
+{
+    u32 *Begin = s->data;
+    u32 *End   = s->data + s->len;
+    u32 temp = 0;
+    //NOTE: unistring doesn't have null-terminators if(*End == 0) { End--; } Ignore null-terminator
+    while (Begin < End)
+    {
+        temp   = *Begin;
+        *Begin = *End;
+        *End   = temp;
+        
+        Begin += 1;
+        End   -= 1;
+    }
+}
+
+void ls_unistrRmSubstr(unistring *s, u32 beginIdx, u32 endIdx)
+{
+    AssertMsg((beginIdx >= 0 && beginIdx < s->size), "Begin idx is out of bounds\n");
+    AssertMsg((endIdx   >= 0 && endIdx   < s->size), "End idx is out of bounds\n");
+    AssertMsg((endIdx - beginIdx < s->size), "Index difference is larger than string size. How??\n");
+    
+    u32 remove  = ((endIdx - beginIdx) + 1);
+    u32 copyLen = s->len - (endIdx + 1);
+    ls_memcpy((void *)(s->data + endIdx + 1), (void *)(s->data + beginIdx), copyLen*4);
+    s->len -= remove;
+    
+    return;
+}
+
+void ls_unistrRmIdx(unistring *s, u32 idx)
+{ ls_unistrRmSubstr(s, idx, idx); }
+
+
+void ls_unistrRmAllNonTextChar(unistring *s)
+{
+    AssertMsg(FALSE, "Function needs to be implemented\n");
+    
+#if 0
+    unistring *Result = ls_unistrAllocPtr(s->size);
+    
+    for(u32 i = 0; i < s->len; i++)
+    {
+        char c = s->data[i];
+        if(!ls_isANumber(c))
+        {
+            if(c != '\r' && c != '\n' && c != '\t')
+            {
+                if(c < 32 || c > 126)
+                { continue; }
+            }
+        }
+        
+        ls_unistrAppendChar(Result, c);
+    }
+    
+    ls_free(s->data);
+    *s = *Result;
+    
+    return;
+#endif
+}
+
+void ls_unistrTrimRight(unistring *s, u32 numChars)
+{ 
+    AssertMsg(s, "Null unistring pointer passed\n");
+    AssertMsg(s->len > 0, "Trying to trim an empty unistring\n");
+    s->len -= numChars; 
+}
+
+void ls_unistrInsertSubstr(unistring *s, unistring toInsert, u32 insertIdx)
+{
+    AssertMsg(s, "Null unistring pointer passed\n");
+    AssertMsg(insertIdx < s->len, "Insertion index past unistring length\n");
+    
+    
+    if(s->len + toInsert.len > s->size)
+    {
+        u32 growSize = ((s->len + toInsert.len) - s->size) + 32;
+        ls_unistrGrow(s, growSize);
+    }
+    
+    ls_memcpy(s->data + insertIdx, s->data + insertIdx + toInsert.len, (s->len - insertIdx)*sizeof(u32));
+    ls_memcpy(toInsert.data, s->data + insertIdx, toInsert.len*sizeof(u32));
+    
+    s->len += toInsert.len;
+}
+
+void ls_unistrInsertChar(unistring *s, u32 c, u32 idx)
+{
+    unistring insertString = {&c, 1, 1};
+    ls_unistrInsertSubstr(s, insertString, idx);
+}
+
+void ls_unistrInsertCStr(unistring *s, char *toInsert, u32 insertIdx)
+{
+    AssertMsg(s, "Null unistring pointer passed\n");
+    AssertMsg(toInsert, "C String pointer passed is null\n");
+    AssertMsg(insertIdx < s->len, "Insertion index past unistring length\n");
+    
+    u32 len = ls_len(toInsert);
+    
+    if(s->len + len > s->size)
+    {
+        u32 growSize = ((s->len + len) - s->size) + 32;
+        ls_unistrGrow(s, growSize);
+    }
+    
+    ls_memcpy(s->data + insertIdx, s->data + insertIdx + len, (s->len - insertIdx)*sizeof(u32));
+    
+    u32 *At = s->data + insertIdx;
+    for(u32 i = 0; i < len; i++) { At[i] = (u32)toInsert[i]; }
+    s->len += len;
+}
+
+void ls_unistrInsertBuffer(unistring *s, u32 *toInsert, u32 buffLen, u32 insertIdx)
+{
+    unistring insertString = {toInsert, buffLen, buffLen};
+    ls_unistrInsertSubstr(s, insertString, insertIdx);
+}
+
+unistring *ls_unistrBreakByDelimeter(unistring s, u32 *numOfStrings, u32 c)
+{
+    AssertMsg(s.data, "Unistring data pointer is NUll\n");
+    
+    unistring *Result = 0;
+    
+    //TODO: Shitty solution. The thing could crash if this buff overflows
+    unistring buff[16384] = {};
+    u32 buffIdx = 0;
+    u32 *At = s.data;
+    
+    u32 count = 0;
+    u32 done = 0;
+    do
+    {
+        Assert(buffIdx < 16384);
+        
+        if (*At == c)
+        {
+            buff[buffIdx].data = (u32 *)ls_alloc(sizeof(u32)*count);
+            
+            ls_memcpy(s.data + done, buff[buffIdx].data, count);
+            buff[buffIdx].size = count;
+            buff[buffIdx].len  = count;
+            
+            done += count;
+            buffIdx++;
+            count = 0;
+            At++;
+            continue;
+        }
+        At++;
+        count++;
+        
+        if ((*At == 0) && (count))
+        {
+            buff[buffIdx].data = (u32 *)ls_alloc(sizeof(u32)*count);
+            
+            ls_memcpy(s.data + done, buff[buffIdx].data, count);
+            buff[buffIdx].size = count;
+            buff[buffIdx].len  = count;
+            
+            done += count;
+            buffIdx++;
+            count = 0;
+            At++;
+            break;
+        }
+        
+    } while (*At);
+    
+    Result = (unistring *)ls_alloc(sizeof(unistring)*buffIdx);
+    ls_memcpy(buff, Result, sizeof(unistring)*buffIdx); //TODO: Shitty
+    
+    if(numOfStrings) { *numOfStrings = buffIdx; }
+    
+    return Result;
+}
+
+unistring *ls_unistrBreakByLine(unistring s, u32 *numOfLines)
+{
+    AssertMsg(s.data, "Unistring data pointer is NUll\n");
+    
+    AssertMsg(FALSE, "Not implemented\n");
+    unistring *Result = 0;
+    return Result;
+    
+#if 0
+    u32 numLines = 1; // NOTE: Last line doesn't have newline in unistring? Can it?
+    
+    char*bAt = s.data;
+    u32 l = s.len;
+    
+    //NOTE: This is currently overcounting when there's two newlines one after the other
+    //But it doesn't matter because I only need the base pointer to free this, so no
+    //memory is leaked, only slightly overused for most cases.
+    while(l--)
+    {
+        if(*bAt == '\r') { numLines++; bAt += 2; l -= 1; continue; }
+        if(*bAt == '\n') { numLines++; bAt += 1; continue; }
+        bAt += 1;
+    }
+    
+    unistring *Result = (unistring *)ls_alloc(sizeof(unistring)*numLines);
+    
+    char *At = s.data;
+    u32 count = 0;
+    u32 done = 0;
+    u32 idx = 0;
+    numLines = 0;
+    
+    u32 currLen = s.len;
+    while(currLen--)
+    {
+        if(*At == '\r' && count == 0) { At += 2; currLen--; done += 2; continue; }
+        if(*At == '\n' && count == 0) { At += 1; done += 1; continue; }
+        
+        
+        if(*At == '\n' || currLen == 0)
+        {
+            u32 extra = 0;
+            if(*(At-1) == '\r') { count--; extra = 1; }
+            if(currLen == 0) {count += 1;}
+            
+            Result[idx] = ls_strAlloc(count + 1); numLines += 1;
+            ls_memcpy(s.data + done, Result[idx].data, count);
+            Result[idx].data[count] = 0;
+            Result[idx].len  = count;
+            
+            done += count + 1 + extra;
+            idx++;
+            count = 0;
+            
+            At++;
+            continue;
+        }
+        
+        At++;
+        count++;
+    }
+    
+    if(numOfLines) { *numOfLines = numLines; }
+    return Result;
+#endif
+}
+
+unistring *ls_unistrBreakByWhitespace(unistring s, u32 *numOfStrings)
+{
+    AssertMsg(s.data, "Unistring data pointer is NUll\n");
+    
+    AssertMsg(FALSE, "Not implemented\n");
+    unistring *Result = 0;
+    return Result;
+    
+#if 0
+    unistring *Result = 0;
+    unistring buff[16384] = {};
+    u32 buffIdx = 0;
+    char *At = s.data;
+    
+    u32 count = 0;
+    u32 done = 0;
+    do
+    {
+        Assert(buffIdx < 16384);
+        
+        if ((*At == ' ') || (*At == '\n') || (*At == '\t') || (*At == '\r') )
+        {
+            //TODO: Test this
+            if((*At == '\r') && (*(At + 1) == '\n'))
+            {
+                done++;
+                At++;
+            }
+            
+            buff[buffIdx].data = (char *)ls_alloc(sizeof(char)*(count + 1));
+            
+            ls_memcpy(s.data + done, buff[buffIdx].data, count);
+            buff[buffIdx].data[count] = 0;
+            buff[buffIdx].size = count + 1;
+            buff[buffIdx].len  = count;
+            
+            done += count + 1;
+            buffIdx++;
+            count = 0;
+            At++;
+            continue;
+        }
+        At++;
+        count++;
+        
+        if ((*At == 0) && (count))
+        {
+            buff[buffIdx].data = (char *)ls_alloc(sizeof(char)*(count + 1));
+            
+            ls_memcpy(s.data + done, buff[buffIdx].data, count);
+            buff[buffIdx].data[count] = 0;
+            buff[buffIdx].size = count + 1;
+            buff[buffIdx].len  = count;
+            
+            done += count + 1;
+            buffIdx++;
+            count = 0;
+            At++;
+            break;
+        }
+        
+    } while (*At);
+    
+    Result = (unistring *)ls_alloc(sizeof(unistring)*buffIdx);
+    ls_memcpy(buff, Result, sizeof(unistring)*buffIdx);
+    
+    if(numOfStrings) {*numOfStrings = buffIdx;}
+    
+    return Result;
+#endif
+}
+
+unistring *ls_unistrBreakBySpace(unistring s, u32 *numOfStrings)
+{
+    AssertMsg(FALSE, "Not implmented\n");
+    unistring *Result = 0;
+    return Result;
+#if 0
+    Assert(s.len != 0);
+    return ls_breakByDelimeter(s, numOfStrings, ' ');
+#endif
+}
+
+unistring *ls_unistrBreakBySpaceUntilDelimiter(unistring s, u32 delimiter, u32 *numOfStrings)
+{
+    AssertMsg(FALSE, "Not implmented\n");
+    unistring *Result = 0;
+    return Result;
+    
+#if 0
+    unistring *Result = 0;
+    unistring buff[256] = {};
+    u32 buffIdx = 0;
+    char *At = s.data;
+    
+    u32 count = 0;
+    u32 done = 0;
+    do
+    {
+        Assert(buffIdx < 256);
+        
+        if (*At == delimiter)
+        {
+            if(*(At + 1) == ' ') {done++;}
+            done++;
+            break;
+        }
+        
+        if (*At == ' ')
+        {
+            
+            buff[buffIdx].data = (char *)ls_alloc(sizeof(char)*count);
+            
+            ls_memcpy(s.data + done, buff[buffIdx].data, count);
+            buff[buffIdx].size = count;
+            buff[buffIdx].len  = count;
+            
+            done += count + 1;
+            buffIdx++;
+            count = 0;
+            At++;
+            continue;
+        }
+        At++;
+        count++;
+        
+        if ((*At == 0) && (count))
+        {
+            buff[buffIdx].data = (char *)ls_alloc(sizeof(char)*count);
+            
+            ls_memcpy(s.data + done, buff[buffIdx].data, count);
+            buff[buffIdx].size = count;
+            buff[buffIdx].len  = count;
+            
+            done += count + 1;
+            buffIdx++;
+            count = 0;
+            At++;
+            continue;
+        }
+        
+    } while (*At);
+    
+    Result = (unistring *)ls_alloc(sizeof(unistring)*buffIdx);
+    ls_memcpy(buff, Result, sizeof(unistring)*buffIdx);
+    if(numOfStrings) { *numOfStrings = buffIdx; }
+    
+    return Result;
+#endif
+}
+
+u32 ls_unistrLeftFind(unistring s, u32 c)
+{
+    u32 *At = s.data;
+    u32 offset = 0;
+    
+    //NOTE:TODO Is && correct!?
+    while ((*At != c) && (At != (s.data + s.len)))
+    { At++; offset++; }
+    
+    return offset;
+}
+
+u32 ls_unistrRightFind(unistring s, u32 c)
+{
+    u32 *At = s.data + s.len;
+    u32 offset = s.len;
+    
+    //NOTE:TODO Is && correct!?
+    while((*At != c) && (At != s.data))
+    {
+        At--;
+        offset--;
+    }
+    
+    return offset;
+}
+
+//    OperateOn     //
+//------------------//
+
+
+
+//------------------//
+//      Merge       //
+
+unistring ls_unistrConcat(unistring s1, unistring s2)
+{
+    unistring Result = ls_unistrAlloc(s1.len + s2.len);
+    if(s1.len) { ls_memcpy(s1.data, Result.data, s1.len*4); }
+    if(s2.len) { ls_memcpy(s2.data, Result.data + s1.len, s2.len*4); }
+    Result.len = s1.len + s2.len;
+    
+    return Result;
+}
+
+void ls_unistrConcatOn(unistring s1, unistring s2, unistring *out)
+{
+    AssertMsg(out, "Output unistring ptr is null\n");
+    AssertMsg(out->data, "Output unistring data is null\n");
+    AssertMsg((out->size < (s1.len + s2.len)), "Output unistring is too small to fit inputs\n");
+    
+    if(s1.len) { ls_memcpy(s1.data, out->data, s1.len*4); }
+    if(s2.len) { ls_memcpy(s2.data, out->data + s1.len, s2.len*4); }
+    out->len = s1.len + s2.len;
+}
+
+unistring ls_unistrCatChar(unistring s, u32 c)
+{
+    AssertMsg(s.data, "Input unistring data is null\n");
+    
+    unistring Result = ls_unistrAlloc(s.len + 1);
+    if(s.len) { ls_memcpy(s.data, Result.data, s.len*4); }
+    Result.data[s.len] = c;
+    Result.len = s.len + 1;
+    
+    return Result;
+}
+
+unistring ls_unistrCatCStr(unistring s1, char *s2)
+{
+    AssertMsg(NULL, "Not implemented\n");
+    unistring Result = {};
+    return Result;
+#if 0
+    u32 s2Len = ls_len(s2);
+    
+    unistring Result = ls_unistrAlloc(s1.len + s2Len);
+    if(s1.len) { ls_memcpy(s1.data, Result.data, s1.len); }
+    if(s2Len) { ls_memcpy(s2, Result.data + s1.len, s2Len); }
+    Result.len = s1.len + s2Len;
+    
+    return Result;
+#endif
+}
+
+void ls_unistrPrepend(unistring *s1, unistring s2)
+{
+    AssertMsg(s1,       "Base unistring ptr is null\n");
+    AssertMsg(s1->data, "Base unistring data is null\n");
+    AssertMsg(s2.data,  "Input unistring data is null\n");
+    
+    if(s1->len + s2.len > s1->size)
+    {
+        u32 growSize = ((s1->len + s2.len) - s1->size) + 32;
+        ls_unistrGrow(s1, growSize);
+    }
+    
+    //NOTE: TODO: Backwards memcpy
+    u32 cpySize = s1->len;
+    u32 *At = s1->data + s1->len - 1;
+    u32 *To = s1->data + s1->len + s2.len - 1;
+    while(cpySize--)
+    {
+        *To = *At;
+        At--;
+        To--;
+    }
+    ls_memcpy(s2.data, s1->data, s2.len*4);
+    s1->len = s1->len + s2.len;
+}
+
+void ls_unistrPrependChar(unistring *s1, u32 c)
+{
+    AssertMsg(s1, "Base unistring ptr is null\n");
+    AssertMsg(s1->data, "Base unistring data is null\n");
+    
+    if(s1->len + 1 > s1->size)
+    { ls_unistrGrow(s1, 32); }
+    
+    //NOTE: TODO: Backwards memcpy
+    u32 cpySize = s1->len;
+    u32 *At = s1->data + s1->len - 1;
+    u32 *To = s1->data + s1->len;
+    while(cpySize--)
+    {
+        *To = *At;
+        At--;
+        To--;
+    }
+    ls_memcpy(s1->data, s1->data + 1, s1->len*4);
+    
+    s1->data[0] = c;
+    s1->len += 1;
+}
+
+void ls_unistrPrependCStr(unistring *s1, char *s2)
+{
+    AssertMsg(NULL, "Not implemented\n");
+    
+#if 0
+    AssertMsg(s1, "Base unistring ptr is null\n");
+    AssertMsg(s1->data, "Base unistring data is null\n");
+    AssertMsg(s2, "C unistring ptr is null\n");
+    
+    u32 s2Len = ls_len(s2);
+    
+    if(s1->len + s2Len > s1->size)
+    {
+        u32 growSize = ((s1->len + s2Len) - s1->size) + 32;
+        ls_unistrGrow(s1, growSize);
+    }
+    
+    ls_memcpy(s1->data, s1->data + s2Len, s1->len);
+    ls_memcpy(s2, s1->data, s2Len);
+    s1->len = s1->len + s2Len;
+#endif
+}
+
+void ls_unistrAppend(unistring *s1, unistring s2)
+{
+    AssertMsg(s1, "Base unistring ptr is null\n");
+    AssertMsg(s1->data, "Base unistring data is null\n");
+    AssertMsg(s2.data, "Input unistring data is null\n");
+    
+    if(s1->len + s2.len > s1->size)
+    {
+        u32 growSize = ((s1->len + s2.len) - s1->size) + 32;
+        ls_unistrGrow(s1, growSize);
+    }
+    
+    ls_memcpy(s2.data, s1->data + s1->len, s2.len*4);
+    s1->len += s2.len;
+}
+
+void ls_unistrAppendChar(unistring *s1, u32 c)
+{
+    AssertMsg(s1, "Base unistring ptr is null\n");
+    AssertMsg(s1->data, "Base unistring data is null\n");
+    
+    if(s1->len + 1 > s1->size)
+    { ls_unistrGrow(s1, 32); }
+    
+    s1->data[s1->len] = c;
+    s1->len += 1;
+}
+
+void ls_unistrAppendCStr(unistring *s1, char *c)
+{
+    AssertMsg(s1, "Base unistring ptr is null\n");
+    AssertMsg(s1->data, "Base unistring data is null\n");
+    AssertMsg(c, "C String ptr is null\n");
+    
+    u32 len = ls_len(c);
+    ls_unistrAppendNCStr(s1, c, len);
+}
+
+void ls_unistrAppendNCStr(unistring *s1, char *c, u32 s2Len)
+{
+    //NOTE: We are assuming a classical C String is ASCII
+    AssertMsg(s1, "Base unistring ptr is null\n");
+    AssertMsg(s1->data, "Base unistring data is null\n");
+    AssertMsg(c, "C String ptr is null\n");
+    
+    if(s1->len + s2Len > s1->size)
+    {
+        u32 growSize = ((s1->len + s2Len) - s1->size) + 32;
+        ls_unistrGrow(s1, growSize);
+    }
+    
+    u32 *At = s1->data + s1->len;
+    for(u32 i = 0; i < s2Len; i++) { At[i] = (u32)c[i]; }
+    s1->len += s2Len;
+}
+
+void ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen)
+{
+    AssertMsg(s1, "Base unistring ptr is null\n");
+    AssertMsg(s1->data, "Base unistring data is null\n");
+    AssertMsg(buff, "C String ptr is null\n");
+    
+    if(s1->len + buffLen > s1->size)
+    {
+        u32 growSize = ((s1->len + buffLen) - s1->size) + 32;
+        ls_unistrGrow(s1, growSize);
+    }
+    
+    u32 *At = s1->data + s1->len;
+    ls_memcpy(buff, At, buffLen*sizeof(u32));
+    s1->len += buffLen;
+}
+
+
+
+//      Merge       //
+//------------------//
 
 
 
