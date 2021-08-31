@@ -32,7 +32,7 @@ extern "C"
     void   ls_bufferAddDWord(buffer *buff, u32 v);
     void   ls_bufferAddQWord(buffer *buff, u64 v);
     void   ls_bufferAddString(buffer *buff, string v);
-    void   ls_bufferAddData(buffer *buff, void *data, u32 len);
+    void   ls_bufferAddData(buffer *buff, void *data, u32 len); //TODO: Bad design. Allocated data must know size.
     void   ls_bufferAddDataClean(buffer *buff, void *data, u32 len);
     
     u8     ls_bufferPeekByte(buffer *buff);
