@@ -544,20 +544,20 @@ char *ls_ftoa(f64 x)
     f32 absX = (x < 0.0f) ? x*(-1.0f) : x;
     if (absX < 1.0f)
     {
-        s32 fractValue = s32((absX) * 1000000);
+        s32 fractValue = s32((absX) * 1000000000);
         FractPart = ls_itoa(fractValue);
         fractLen = ls_len(FractPart);
     }
     else if (x >= 10.0f)
     {
         f32 fixedX = (absX - (int)absX);
-        s32 fractValue = s32(fixedX * 1000000);
+        s32 fractValue = s32(fixedX * 1000000000);
         FractPart = ls_itoa(fractValue);
         fractLen = ls_len(FractPart);
     }
     else
     {
-        s32 fractValue = s32(absX * 1000000);
+        s32 fractValue = s32(absX * 1000000000);
         FractPart = ls_itoa(fractValue);
         fractLen = ls_len(FractPart);
     }
@@ -599,18 +599,18 @@ u32 ls_ftoa_t(f64 x, char *buff, u32 buffMax)
     f32 absX = (x < 0.0f) ? x*(-1.0f) : x;
     if (absX < 1.0f)
     {
-        s32 fractValue = s32((absX) * 1000000);
+        s32 fractValue = s32((absX) * 1000000000);
         fractLen = ls_itoa_t(fractValue, FractPart, 32);
     }
     else if (x >= 10.0f)
     {
         f32 fixedX = (absX - (int)absX);
-        s32 fractValue = s32(fixedX * 1000000);
+        s32 fractValue = s32(fixedX * 1000000000);
         fractLen = ls_itoa_t(fractValue, FractPart, 32);
     }
     else
     {
-        s32 fractValue = s32(absX * 1000000);
+        s32 fractValue = s32(absX * 1000000000);
         fractLen = ls_itoa_t(fractValue, FractPart, 32);
     }
     
