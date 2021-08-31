@@ -4,6 +4,8 @@
 #include "lsCRT.h"
 
 #define PI_32 3.1415926f
+#define PI_64 3.141592653589793
+
 #define LS_EPSILON 0.00001f
 
 #define ls_min(a, b) (a < b ? a : b)
@@ -37,12 +39,13 @@ extern "C"
     //NOTE: This only has 12 digits of precision!
     f32 ls_reciprocal(f32 x);
     
-    f64 ls_sine(f64 x);
+    f64 ls_sin(f64 rad);
     f64 ls_asin(f64 x);
-    f64 ls_cos(f64 x);
+    f64 ls_cos(f64 rad);
     f64 ls_acos(f64 x);
-    f64 ls_tan(f64 x);
+    f64 ls_tan(f64 rad);
     f64 ls_atan(f64 x);
+    f64 ls_atan2(f64 a, f64 b);
 };
 
 
@@ -434,146 +437,62 @@ b32 ls_isF64Normal(f64 v)
 }
 
 
-f64 ls_sine(f64 x)
+f64 ls_sin(f64 radians)
 {
-    b32 isNegative = (x > 0) ? FALSE : TRUE;
-    f64 mappedX = x;
+    __m128d rad128 = _mm_set_pd1(radians);
+    __m128d sinVal = _mm_sin_pd(rad128);
     
-    if (isNegative)
-    {
-        while (mappedX < -(2.0f*PI_32))
-        {
-            mappedX += (2.0f*PI_32);
-        }
-        
-        mappedX += 2.0f*PI_32;
-    }
-    else
-    {
-        while (mappedX > 2.0f*PI_32)
-        {
-            mappedX -= (2.0f*PI_32);
-        }
-    }
-    
-    f64 z = (mappedX - 3.1416f) / 1.8413f;
-    
-    f64 cube = z*z*z;
-    f64 fifth = cube*z*z;
-    f64 seventh = fifth*z*z;
-    f64 ninth = seventh*z*z;
-    
-    f64 square = z*z;
-    f64 fourth = square*square;
-    f64 sixth = fourth*square;
-    f64 eigth = fourth*fourth;
-    f64 tenth = eigth*square;
-    
-    return (1.9252e-16*tenth) - (0.00052653*ninth) - (1.3721e-15*eigth) + (0.013847*seventh) + (3.344e-15*sixth)
-        - (0.17589*fifth) - (3.0365e-15*fourth) + (1.0402*cube) + (1.6822e-16*square) - (1.8412*z) + (5.4606e-16);
+    return sinVal.m128d_f64[0];
 }
 
 f64 ls_asin(f64 x)
 {
-    if ((x < -1.0f) || (x > 1.0f))
-        return 0;
+    __m128d xVal = _mm_set_pd1(x);
+    __m128d asinVal = _mm_asin_pd(xVal);
     
-    f64 z = (x + 7.2164e-17f) / 0.5817f;
-    
-    f64 cube = z*z*z;
-    f64 fifth = cube*z*z;
-    f64 seventh = fifth*z*z;
-    f64 ninth = seventh*z*z;
-    
-    f64 square = z*z;
-    f64 fourth = square*square;
-    f64 sixth = fourth*square;
-    f64 eigth = fourth*fourth;
-    f64 tenth = eigth*square;
-    
-    return (1.6544e-15*tenth) + (0.024044*ninth) - (1.1741e-14*eigth) - (0.12358*seventh) + (2.9093e-14*sixth)
-        + (0.22158*fifth) - (2.938e-14*fourth) - (0.10393*cube) + (1.0267e-14*square) + (0.60425*z) - 6.3772e-16;
+    return asinVal.m128d_f64[0];
 }
 
-f64 ls_cos(f64 x)
+f64 ls_cos(f64 rad)
 {
-    b32 isNegative = (x > 0) ? FALSE : TRUE;
-    f64 mappedX = x;
+    __m128d rad128 = _mm_set_pd1(rad);
+    __m128d cosVal = _mm_cos_pd(rad128);
     
-    if (isNegative)
-    {
-        while (mappedX < -(2.0f*PI_32))
-        {
-            mappedX += (2.0f*PI_32);
-        }
-        mappedX += 2.0f*PI_32;
-    }
-    else
-    {
-        while (mappedX > 2.0f*PI_32)
-        {
-            mappedX -= (2.0f*PI_32);
-        }
-    }
-    
-    f64 z = (mappedX - 3.1416f) / 1.8413f;
-    
-    f64 cube = z*z*z;
-    f64 fifth = cube*z*z;
-    f64 seventh = fifth*z*z;
-    f64 ninth = seventh*z*z;
-    
-    f64 square = z*z;
-    f64 fourth = square*square;
-    f64 sixth = fourth*square;
-    f64 eigth = fourth*fourth;
-    f64 tenth = eigth*square;
-    
-    return (9.9058e-05*tenth) - (2.4826e-16*ninth) - (0.0032018*eigth) + (1.475e-15*seventh) + (0.054013*sixth)
-        - (3.0717e-15*fifth) - (0.47883*fourth) + (2.9256e-15*cube) + (1.6951*square) - (1.5395e-15*z) - 1;
+    return cosVal.m128d_f64[0];
 }
 
 f64 ls_acos(f64 x)
 {
-    if ((x < -1.0f) || (x > 1.0f))
-        return 0;
+    __m128d xVal = _mm_set_pd1(x);
+    __m128d acosVal = _mm_acos_pd(xVal);
     
-    f64 z = (x + 7.2164e-17f) / 0.5817f;
-    
-    f64 cube = z*z*z;
-    f64 fifth = cube*z*z;
-    f64 seventh = fifth*z*z;
-    f64 ninth = seventh*z*z;
-    
-    f64 square = z*z;
-    f64 fourth = square*square;
-    f64 sixth = fourth*square;
-    f64 eigth = fourth*fourth;
-    f64 tenth = eigth*square;
-    
-    return -(2.3277e-15*tenth) - (0.024044*ninth) + (1.7628e-14*eigth) + (0.12358*seventh) - (4.6935e-14*sixth)
-        - (0.22158*fifth) + (5.1126e-14*fourth) + (0.10393*cube) - (1.9655e-14*square) - (0.60425*z) + 1.5708;
+    return acosVal.m128d_f64[0];
 }
 
-f64 ls_tan(f64 x)
+f64 ls_tan(f64 rad)
 {
-    return (ls_sine(x) / ls_cos(x));
+    __m128d rad128 = _mm_set_pd1(rad);
+    __m128d tanVal = _mm_tan_pd(rad128);
+    
+    return tanVal.m128d_f64[0];
 }
 
 f64 ls_atan(f64 x)
 {
-    b32 isNegative = x < 0.0f ? TRUE : FALSE;
-    if ((x > 10.00f) || (x < -10.00f))
-    {
-        if (isNegative) { return -arctan[1000]; }
-        else { return arctan[1000]; }
-    }
+    __m128d xVal = _mm_set_pd1(x);
+    __m128d atanVal = _mm_atan_pd(xVal);
     
-    f32 xValue = ls_fabs((f32)x)*100.0f;
-    if (isNegative) { return -arctan[(int)xValue]; }
-    else { return arctan[(int)xValue]; }
+    return atanVal.m128d_f64[0];
 }
 
+f64 ls_atan2(f64 a, f64 b)
+{
+    __m128d aVal = _mm_set_pd1(a);
+    __m128d bVal = _mm_set_pd1(b);
+    __m128d atanVal = _mm_atan2_pd(aVal, bVal);
+    
+    return atanVal.m128d_f64[0];
+}
 
 /////////////
 // VECTORS //
@@ -1671,8 +1590,8 @@ Mat4 RotateX(f32 Angle)
 	Mat4 Result = Identity4();
 	Result.values[1][1] = (f32)ls_cos(Angle);
 	Result.values[2][2] = (f32)ls_cos(Angle);
-	Result.values[1][2] = (f32)-ls_sine(Angle);
-	Result.values[2][1] = (f32)ls_sine(Angle);
+	Result.values[1][2] = (f32)-ls_sin(Angle);
+	Result.values[2][1] = (f32)ls_sin(Angle);
     
 	return Result;
 }
@@ -1681,8 +1600,8 @@ Mat4 RotateY(f32 Angle)
 {
 	Mat4 Result = Identity4();
 	Result.values[0][0] = (f32)ls_cos(Angle);
-	Result.values[0][2] = (f32)ls_sine(Angle);
-	Result.values[2][0] = (f32)-ls_sine(Angle);
+	Result.values[0][2] = (f32)ls_sin(Angle);
+	Result.values[2][0] = (f32)-ls_sin(Angle);
 	Result.values[2][2] = (f32)ls_cos(Angle);
     
 	return Result;
@@ -1693,8 +1612,8 @@ Mat4 RotateZ(f32 Angle)
 	Mat4 Result = Identity4();
 	Result.values[0][0] = (f32)ls_cos(Angle);
 	Result.values[1][1] = (f32)ls_cos(Angle);
-	Result.values[1][0] = (f32)ls_sine(Angle);
-	Result.values[0][1] = (f32)-ls_sine(Angle);
+	Result.values[1][0] = (f32)ls_sin(Angle);
+	Result.values[0][1] = (f32)-ls_sin(Angle);
     
 	return Result;
 }
