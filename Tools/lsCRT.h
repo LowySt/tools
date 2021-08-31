@@ -544,13 +544,13 @@ char *ls_ftoa(f64 x)
     f32 absX = (x < 0.0f) ? x*(-1.0f) : x;
     if (absX < 1.0f)
     {
-        s32 fractValue = s32((absX + 1.0f) * 1000000);
+        s32 fractValue = s32((absX) * 1000000);
         FractPart = ls_itoa(fractValue);
         fractLen = ls_len(FractPart);
     }
     else if (x >= 10.0f)
     {
-        f32 fixedX = (absX - (int)absX) + 1.0f;
+        f32 fixedX = (absX - (int)absX);
         s32 fractValue = s32(fixedX * 1000000);
         FractPart = ls_itoa(fractValue);
         fractLen = ls_len(FractPart);
@@ -599,12 +599,12 @@ u32 ls_ftoa_t(f64 x, char *buff, u32 buffMax)
     f32 absX = (x < 0.0f) ? x*(-1.0f) : x;
     if (absX < 1.0f)
     {
-        s32 fractValue = s32((absX + 1.0f) * 1000000);
+        s32 fractValue = s32((absX) * 1000000);
         fractLen = ls_itoa_t(fractValue, FractPart, 32);
     }
     else if (x >= 10.0f)
     {
-        f32 fixedX = (absX - (int)absX) + 1.0f;
+        f32 fixedX = (absX - (int)absX);
         s32 fractValue = s32(fixedX * 1000000);
         fractLen = ls_itoa_t(fractValue, FractPart, 32);
     }
@@ -884,12 +884,14 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
             isBinary = TRUE; 
         }
         
+        if(*p == 'l')
+        {
+            isLong = TRUE;
+            p += 1;
+        }
+        
         switch (*p)
         {
-            case 'l':
-            isLong = TRUE;
-            p++;
-            
             case 'd':
             {
                 if (isLong) { nInt = va_arg(argList, s64); }
