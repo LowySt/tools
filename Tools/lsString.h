@@ -1286,9 +1286,10 @@ void ls_unistrFreeArr(unistring *s, u32 arrSize)
 unistring ls_unistrFromAscii(char *s)
 {
     u32 len = ls_len(s);
-    unistring Result = ls_unistrAlloc(len*4);
+    unistring Result = ls_unistrAlloc(len);
     
     for(u32 i = 0; i < len; i++) { Result.data[i] = (u32)s[i]; }
+    Result.len = len;
     
     return Result;
 }
