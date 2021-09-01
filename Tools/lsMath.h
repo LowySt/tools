@@ -39,13 +39,14 @@ extern "C"
     //NOTE: This only has 12 digits of precision!
     f32 ls_reciprocal(f32 x);
     
-    f64 ls_sin(f64 rad);
-    f64 ls_asin(f64 x);
-    f64 ls_cos(f64 rad);
-    f64 ls_acos(f64 x);
-    f64 ls_tan(f64 rad);
-    f64 ls_atan(f64 x);
-    f64 ls_atan2(f64 a, f64 b);
+    f64  ls_sin(f64 rad);
+    f64  ls_asin(f64 x);
+    f64  ls_cos(f64 rad);
+    f64  ls_acos(f64 x);
+    void ls_sincos(f64 rad, f64 *sin, f64 *cos);
+    f64  ls_tan(f64 rad);
+    f64  ls_atan(f64 x);
+    f64  ls_atan2(f64 a, f64 b);
 };
 
 
@@ -467,6 +468,17 @@ f64 ls_acos(f64 x)
     __m128d acosVal = _mm_acos_pd(xVal);
     
     return acosVal.m128d_f64[0];
+}
+
+void ls_sincos(f64 rad, f64 *sin, f64 *cos)
+{
+    f64 cosRet[2] = {};
+    
+    __m128d rad128 = _mm_set_pd1(rad);
+    __m128d sinVal = _mm_sincos_pd((__m128d *)cosRet, rad128);
+    
+    *sin = sinVal.m128d_f64[0];
+    *cos = cosRet[0];
 }
 
 f64 ls_tan(f64 rad)
