@@ -3,8 +3,8 @@
 
 #include "lsCRT.h"
 
-#define PI_32 3.1415926f
-#define PI_64 3.141592653589793
+#define PI  3.141592653589793
+#define TAU 6.283185307179586
 
 #define LS_EPSILON 0.00001f
 
@@ -19,18 +19,25 @@ extern "C"
 {
     s32 ls_floor(f64 v);
     s32 ls_ceil(f64 v);
+    
     s32 ls_abs(s32 x);
     f64 ls_fabs(f64 x);
+    
+    f64 ls_mathClamp(f64 currValue, f64 maxValue, f64 minValue);
+    
     s64 ls_e10(s32 x);
     u64 ls_powui(u64 v, u32 exp);
     s64 ls_powi(s64 v, u32 exp);
     f64 ls_powf(f64 v, s32 exp);
+    
     f64 ls_fmod(f64 v, f64 w);
     s64 ls_truncate(f64 x);
     f64 ls_truncEpsilon(f64 x);
+    
     f32 ls_rad(f32 x);
     f64 ls_sqrt(f64 x);
     f64 ls_cbrt(f64 x);
+    
     u32 ls_gcd(u32 a, u32 b);
     b32 ls_isPrime(u32 a);
     
@@ -217,6 +224,14 @@ f64 ls_fabs(f64 x)
     return (x < 0.0f) ? x*(-1.0f) : x;
 }
 
+f64 ls_mathClamp(f64 currValue, f64 maxValue, f64 minValue)
+{
+    if(currValue < minValue) { return minValue; }
+    if(currValue > maxValue) { return maxValue; }
+    
+    return currValue;
+}
+
 s64 ls_e10(s32 x)
 {
     s64 Result = 1;
@@ -288,7 +303,7 @@ f64 ls_truncEpsilon(f64 x)
 
 f32 ls_rad(f32 x)
 {
-    return ((x*PI_32) / 180.0f);
+    return ((x*PI) / 180.0f);
 }
 
 #ifdef __GNUG__
