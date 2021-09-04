@@ -852,11 +852,7 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
         b32 isBinary = FALSE;
         maxLen = -1;
         
-        if(i >= destLen)
-        {
-            Assert(FALSE);
-            int BufferOverrun = 0;
-        }
+        AssertMsg(i < destLen, "Buffer Overrun");
         
         // Just copy wathever is not a passed parameter
         if (*p != '%')
@@ -918,11 +914,10 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
                     break;
                 }
                 
-                char *s = ls_itoa(nInt);
-                u32 sLen = ls_len(s);
-                ls_memcpy(s, buff + i, sLen);
+                char intBuff[32] = {};
+                u32 sLen = ls_itoa_t(nInt, intBuff, 32);
+                ls_memcpy(intBuff, buff + i, sLen);
                 i += sLen;
-                ls_free(s);
             } break;
             
             case 'c':
@@ -947,24 +942,24 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
             case 'f':
             {
                 nFloat = va_arg(argList, f64);
-                char *s = ls_ftoa(nFloat);
-                u32 sLen = ls_len(s);
+                
+                char floatBuff[32] = {};
+                u32 sLen = ls_ftoa_t(nFloat, floatBuff, 32);
                 
                 u32 dotLen = 1;
-                while(s[dotLen-1] != '.') { dotLen++; }
+                while(floatBuff[dotLen-1] != '.') { dotLen++; }
                 
                 if(maxLen != -1 && maxLen < sLen - dotLen) 
                 {
-                    ls_memcpy(s, buff + i, dotLen + maxLen);
+                    ls_memcpy(floatBuff, buff + i, dotLen + maxLen);
                     i += dotLen + maxLen;
                 }
                 else 
                 {
-                    ls_memcpy(s, buff + i, sLen);
+                    ls_memcpy(floatBuff, buff + i, sLen);
                     i += sLen;
                 }
                 
-                ls_free(s);
             } break;
             
             case 's':
@@ -985,11 +980,11 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
             case 'p':
             {
                 uLongInt = (u64)va_arg(argList, void *);
-                char *s = ls_itoa(uLongInt);
-                u32 sLen = ls_len(s);
-                ls_memcpy(s, buff + i, sLen);
+                
+                char intBuff[32] = {};
+                u32 sLen = ls_itoa_t(uLongInt, intBuff, 32);
+                ls_memcpy(intBuff, buff + i, sLen);
                 i += sLen;
-                ls_free(s);
             } break;
             
             case '%':
@@ -1010,6 +1005,7 @@ s32 ls_vsprintf(char *dest, const char *format, va_list argList)
     const u32 buffSize = KB(1);
     char buff[buffSize] = {};
     
+    //NOTE:TODO: Is there any way to remove the double memcpy??
     s32 charactersWritten = ls_formatStringInternal_(format, buff, buffSize, argList);
     ls_memcpy(buff, dest, charactersWritten);
     
@@ -1045,7 +1041,6 @@ s32 ls_vprintf(const char *format, va_list argList)
     return charactersWritten;
 }
 
-//TODO: Check if format actually has the right number of arguments!
 s32 ls_printf(const char *format, ...)
 {
     va_list argList;
