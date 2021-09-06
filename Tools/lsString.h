@@ -170,6 +170,8 @@ extern "C" //UTF32 UNICODE STRINGS
     void       ls_unistrAppendNCStr(unistring *s1, char *c, u32 len);
     void       ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen);
     
+    unistring  ls_unistrIntToStr(s64 x);
+    
 #if 0 //TODO:Fix this?
     //Operator
     b32     operator==(unistring s1, unistring s2);
@@ -1988,9 +1990,24 @@ void ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen)
 }
 
 
-
 //      Merge       //
 //------------------//
+
+
+//------------------//
+//      Stuff       //
+
+
+//TODO: Should I try optimizing it for utf-32 directly, rather than converting?
+unistring  ls_unistrIntToStr(s64 x)
+{
+    char buff[32] = {};
+    ls_itoa_t(x, buff, 32);
+    
+    unistring s = ls_unistrFromAscii(buff);
+    return s;
+}
+
 
 
 
