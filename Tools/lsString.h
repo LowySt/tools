@@ -230,7 +230,7 @@ static void ls_unistrGrow(unistring *s, u32 amount)
     u32 *newData = (u32 *)ls_alloc(sizeof(u32)*newSize);
     if(s->data)
     {
-        ls_memcpy(s->data, newData, s->len*4);
+        ls_memcpy(s->data, newData, s->len*sizeof(u32));
         ls_free(s->data);
     }
     
@@ -441,15 +441,18 @@ void ls_strReverse(string *s)
 
 void ls_strRmSubstr(string *s, u32 beginIdx, u32 endIdx)
 {
-    if((beginIdx < 0 || beginIdx >= s->size) ||
-       (endIdx < 0 || endIdx >= s->size) ||
-       (endIdx - beginIdx >= s->size))
-    { return; } //TODO: This should probably be an AssertMsg()
+    AssertMsg(s, "String pointer is null\n");
+    AssertMsg(beginIdx < s->len, "Begin Index Out of Bounds. Larger than string length\n");
+    AssertMsg(endIdx < s->len, "End Index Out of Bounds. Larger than string length\n");
+    AssertMsg(beginIdx < endIdx, "Begin Index is larger than End Index\n");
+    AssertMsg((endIdx - beginIdx) < s->len, "Index Range is larger than length of string. How did this happen?\n");
     
     u32 remove = ((endIdx - beginIdx) + 1);
     remove = remove > s->len ? s->len : remove;
+    
     u32 copyLen = s->len - (endIdx + 1);
     copyLen = copyLen == 0 ? 1 : copyLen;
+    
     ls_memcpy((void *)(s->data + endIdx + 1), (void *)(s->data + beginIdx), copyLen);
     s->len -= remove;
     s->data[s->len] = 0; //TODO: Fuck C strings. Remove this abomination.
@@ -500,7 +503,14 @@ void ls_strInsertSubstr(string *s, string toInsert, u32 insertIdx)
     if(s->size < s->len + toInsert.len)
     { ls_strGrow(s, toInsert.len); }
     
-    ls_memcpy(s->data + insertIdx, s->data + insertIdx + toInsert.len, s->len - insertIdx);
+    
+    //TODO:Make a better reverse memcpy for non byte-boundary blocks.
+    s32 moveBytes = s->len - insertIdx;
+    
+    u8 *tempBuff = (u8 *)ls_alloc(moveBytes);
+    ls_memcpy(s->data + insertIdx, tempBuff, moveBytes);
+    ls_memcpy(tempBuff, s->data + insertIdx + toInsert.len, moveBytes);
+    
     ls_memcpy(toInsert.data, s->data + insertIdx, toInsert.len);
     
     s->len += toInsert.len;
@@ -1378,12 +1388,14 @@ void ls_unistrReverse(unistring *s)
 
 void ls_unistrRmSubstr(unistring *s, u32 beginIdx, u32 endIdx)
 {
-    AssertMsg((beginIdx >= 0 && beginIdx < s->size), "Begin idx is out of bounds\n");
-    AssertMsg((endIdx   >= 0 && endIdx   < s->size), "End idx is out of bounds\n");
-    AssertMsg((endIdx - beginIdx < s->size), "Index difference is larger than string size. How??\n");
+    AssertMsg(s, "Unistring pointer is null\n");
+    AssertMsg(beginIdx < s->len, "Begin Index is out of bounds. Larger than string length\n");
+    AssertMsg(endIdx   < s->len, "End Index is out of bounds. Larger than string length\n");
+    AssertMsg((endIdx - beginIdx) < s->len, "Index Range is larger than string length. How??\n");
     
     u32 remove  = ((endIdx - beginIdx) + 1);
     u32 copyLen = s->len - (endIdx + 1);
+    
     ls_memcpy((void *)(s->data + endIdx + 1), (void *)(s->data + beginIdx), copyLen*4);
     s->len -= remove;
     
@@ -1427,6 +1439,7 @@ void ls_unistrTrimRight(unistring *s, u32 numChars)
 { 
     AssertMsg(s, "Null unistring pointer passed\n");
     AssertMsg(s->len > 0, "Trying to trim an empty unistring\n");
+    AssertMsg(numChars < s->len, "Trying to trim more than the string length.\n");
     s->len -= numChars; 
 }
 
@@ -1435,14 +1448,19 @@ void ls_unistrInsertSubstr(unistring *s, unistring toInsert, u32 insertIdx)
     AssertMsg(s, "Null unistring pointer passed\n");
     AssertMsg(insertIdx < s->len, "Insertion index past unistring length\n");
     
-    
     if(s->len + toInsert.len > s->size)
     {
         u32 growSize = ((s->len + toInsert.len) - s->size) + 32;
         ls_unistrGrow(s, growSize);
     }
     
-    ls_memcpy(s->data + insertIdx, s->data + insertIdx + toInsert.len, (s->len - insertIdx)*sizeof(u32));
+    //TODO:Make a better reverse memcpy for non byte-boundary blocks.
+    s32 moveBytes = (s->len - insertIdx)*sizeof(u32);
+    
+    u32 *tempBuff = (u32 *)ls_alloc(moveBytes);
+    ls_memcpy(s->data + insertIdx, tempBuff, moveBytes);
+    ls_memcpy(tempBuff, s->data + insertIdx + toInsert.len, moveBytes);
+    
     ls_memcpy(toInsert.data, s->data + insertIdx, toInsert.len*sizeof(u32));
     
     s->len += toInsert.len;
