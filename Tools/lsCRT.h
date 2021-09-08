@@ -1368,21 +1368,35 @@ void ls_memcpy(void *src, void *dest, size_t size)
     
     u8 *At = (u8 *)src;
     u8 *To = (u8 *)dest;
+    
+#if 0
     s32 direction = 1;
+    
+    //SIMD PATH
+    if(((At + size) >= To) && (At + size < To + size)) //NOTE: memory overwrites itself, so we write backwards.
+    {
+        At = (u8 *)src + size-16;
+        To = (u8 *)dest + size-16;
+        direction = -1;
+    }
+    
+    //BYTE PATH
+    //TODO: This is busted for non-byte moves (Like moving a u32 pointer)
+    //NOTE: Copy-pastad to avoid an extra check in the simd path when setting To
+    if(((At + size) >= To) && (At + size < To + size)) //NOTE: memory overwrites itself, so we write backwards.
+    {
+        At = (u8 *)src + size-1;
+        To = (u8 *)dest + size-1;
+        direction = -1;
+    }
+    
+#endif
     
     //NOTE: SIMD path
     if(size > 32)
     {
         s32 simdDiff = size % 16;
         s32 simdSize = size - simdDiff;
-        
-        //NOTE: Copy-pastad to avoid an extra check in the byte path when setting To
-        if(((At + size) >= To) && (At + size < To + size)) //NOTE: memory overwrites itself, so we write backwards.
-        {
-            At = (u8 *)src + size-16;
-            To = (u8 *)dest + size-16;
-            direction = -1;
-        }
         
         __m128i *simdAt = (__m128i *)At;
         __m128i *simdTo = (__m128i *)To;
@@ -1391,8 +1405,8 @@ void ls_memcpy(void *src, void *dest, size_t size)
         {
             _mm_storeu_si128(simdTo, *simdAt);
             
-            At += (direction*16);
-            To += (direction*16);
+            At += 16;
+            To += 16;
             
             simdAt = (__m128i *)At;
             simdTo = (__m128i *)To;
@@ -1402,26 +1416,18 @@ void ls_memcpy(void *src, void *dest, size_t size)
         while(simdDiff)
         {
             *To = *At;
-            At += direction;
-            To += direction;
+            At += 1;
+            To += 1;
             simdDiff -= 1;
         }
     }
     else //NOTE:BYTE Path
     {
-        //NOTE: Copy-pastad to avoid an extra check in the simd path when setting To
-        if(((At + size) >= To) && (At + size < To + size)) //NOTE: memory overwrites itself, so we write backwards.
-        {
-            At = (u8 *)src + size-1;
-            To = (u8 *)dest + size-1;
-            direction = -1;
-        }
-        
         while(size)
         {
             *To = *At;
-            At += direction;
-            To += direction;
+            At += 1;
+            To += 1;
             size -= 1;
         }
     }
