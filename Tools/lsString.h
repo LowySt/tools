@@ -1441,7 +1441,7 @@ void ls_unistrTrimRight(unistring *s, u32 numChars)
 { 
     AssertMsg(s, "Null unistring pointer passed\n");
     AssertMsg(s->len > 0, "Trying to trim an empty unistring\n");
-    AssertMsg(numChars < s->len, "Trying to trim more than the string length.\n");
+    AssertMsg(numChars <= s->len, "Trying to trim more than the string length.\n");
     s->len -= numChars; 
 }
 
