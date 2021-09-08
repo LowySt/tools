@@ -511,6 +511,8 @@ void ls_strInsertSubstr(string *s, string toInsert, u32 insertIdx)
     ls_memcpy(s->data + insertIdx, tempBuff, moveBytes);
     ls_memcpy(tempBuff, s->data + insertIdx + toInsert.len, moveBytes);
     
+    ls_free(tempBuff);
+    
     ls_memcpy(toInsert.data, s->data + insertIdx, toInsert.len);
     
     s->len += toInsert.len;
@@ -1460,6 +1462,8 @@ void ls_unistrInsertSubstr(unistring *s, unistring toInsert, u32 insertIdx)
     u32 *tempBuff = (u32 *)ls_alloc(moveBytes);
     ls_memcpy(s->data + insertIdx, tempBuff, moveBytes);
     ls_memcpy(tempBuff, s->data + insertIdx + toInsert.len, moveBytes);
+    
+    ls_free(tempBuff);
     
     ls_memcpy(toInsert.data, s->data + insertIdx, toInsert.len*sizeof(u32));
     
