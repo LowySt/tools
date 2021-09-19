@@ -127,6 +127,8 @@ extern "C" //UTF32 UNICODE STRINGS
     void       ls_unistrFreeArr(unistring *s, u32 arrSize);
     
     unistring  ls_unistrFromAscii(char *s);
+    unistring  ls_unistrConstant(const char32_t *p);
+    
     
     //Manage
     void       ls_unistrClear(unistring *s);
@@ -1307,6 +1309,16 @@ unistring ls_unistrFromAscii(char *s)
     for(u32 i = 0; i < len; i++) { Result.data[i] = (u32)s[i]; }
     Result.len = len;
     
+    return Result;
+}
+
+unistring ls_unistrConstant(const char32_t *p)
+{
+    u32 len = 0;
+    u32 *At = (u32 *)p;
+    while(*At != 0) { len += 1; At += 1; }
+    
+    unistring Result = { (u32 *)p, len, len };
     return Result;
 }
 
