@@ -150,6 +150,8 @@ struct MemoryArena
     b32 isUsingArena;
     u32 currArenaId;
     
+    u32 totalBytesBusy;
+    
     /*Arenas System*/
     InternalArena arenas[MAX_ARENA_NUM];
     b32           used[MAX_ARENA_NUM];
@@ -471,7 +473,7 @@ void *windows_memAlloc(size_t size)
         //NOTE:TODO: 24/08/2020 Gotten into a bug, I think that maxSlices
         // Shouldn't be ignored, as it is right now???
         // So gonna skip any block that has reached curSlices == maxSlices
-        if(curr->curSlices == curr->maxSlices) { continue; }
+        if(curr->curSlices == curr->maxSlices) { curr = curr->next; continue; }
         
         
         MemoryList *free = curr->free;
@@ -500,6 +502,9 @@ void *windows_memAlloc(size_t size)
     }
     
     void *beginOfSliceData = windows_sliceBlockIfNeeded(curr, best, size);
+    
+    //NOTE: Logging the memory usage.
+    Memory.totalBytesBusy += size;
     
     //TODONOTE: ZeroMem the slice??
     // 14 May 2021. I found a single case in which I got returned a pointer with old data inside.
@@ -572,7 +577,7 @@ void windows_memFree(void *ptr)
     
     //NOTE: Trying to free something that wasn't an allocated pointer.
     //      Should this even crash, or should I just silently exit?
-    Assert(found == TRUE);
+    AssertMsg(found == TRUE, "Trying to free something that wasn't an allocated pointer.\n");
     
     found = FALSE;
     u32 relativePtr = (u64)ptr - (u64)curr;
@@ -587,10 +592,15 @@ void windows_memFree(void *ptr)
     
     //NOTE: Trying to free a non busy pointer. Either a DOUBLE FREE,
     //      Or for some reason a busy pointer wasn't put in the busy list?
-    Assert(found == TRUE);
+    AssertMsg(found == TRUE, "Trying to free a non-busy pointer.\n\tEither a double free or for some reason a busy"
+              "pointer wasn't punt in the busy list?\n");
     
     //TODO: ZeroMem the slice??
     windows_freeSlice(curr, slice);
+    
+    //NOTE: Logging the memory usage.
+    Memory.totalBytesBusy -= slice->sliceSize;
+    
     return;
 }
 
