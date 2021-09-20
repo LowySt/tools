@@ -127,6 +127,8 @@ extern "C" //UTF32 UNICODE STRINGS
     void       ls_unistrFreeArr(unistring *s, u32 arrSize);
     
     unistring  ls_unistrFromAscii(char *s);
+    unistring  ls_unistrFromInt(s64 x);
+    void       ls_unistrFromInt_t(s64 x, unistring *s);
     unistring  ls_unistrConstant(const char32_t *p);
     
     
@@ -172,7 +174,8 @@ extern "C" //UTF32 UNICODE STRINGS
     void       ls_unistrAppendNCStr(unistring *s1, char *c, u32 len);
     void       ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen);
     
-    unistring  ls_unistrIntToStr(s64 x);
+    // Convert
+    s64        ls_unistrToInt(unistring s);
     
 #if 0 //TODO:Fix this?
     //Operator
@@ -2033,7 +2036,7 @@ void ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen)
 
 
 //TODO: Should I try optimizing it for utf-32 directly, rather than converting?
-unistring  ls_unistrIntToStr(s64 x)
+unistring  ls_unistrFromInt(s64 x)
 {
     char buff[32] = {};
     ls_itoa_t(x, buff, 32);
@@ -2042,6 +2045,46 @@ unistring  ls_unistrIntToStr(s64 x)
     return s;
 }
 
+void ls_unistrFromInt_t(s64 x, unistring *s)
+{
+    AssertMsg(s, "Unistring pointer is null");
+    
+    if(s->data == NULL)
+    {
+        unistring str = ls_unistrFromInt(x);
+        *s = str;
+    }
+    else
+    {
+        char buff[32] = {};
+        s32 len = ls_itoa_t(x, buff, 32);
+        
+        if(s->size < len)
+        {
+            u32 growSize = len + 32;
+            ls_unistrGrow(s, growSize);
+        }
+        
+        for(u32 i = 0; i < len; i++)
+        { s->data[i] = (u32)buff[i]; }
+        
+        s->len = len;
+    }
+}
+
+s64 ls_unistrToInt(unistring s)
+{
+    char numBuff[64] = {};
+    AssertMsg(s.len < 64, "Unistring passed represents a number that contains too many digits.");
+    
+    u32 i = 0;
+    for(i = 0; i < s.len; i++)
+    {
+        numBuff[i] = (char)(s.data[i]);
+    }
+    
+    return ls_atoi(numBuff, i);
+}
 
 
 
