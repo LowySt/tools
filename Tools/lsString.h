@@ -126,12 +126,13 @@ extern "C" //UTF32 UNICODE STRINGS
     void       ls_unistrFreePtr(unistring *s);
     void       ls_unistrFreeArr(unistring *s, u32 arrSize);
     
+    void       ls_unistrSet(unistring *toSet, unistring source);
+    
     unistring  ls_unistrFromAscii(char *s);
     unistring  ls_unistrFromUTF32(const char32_t *s);
     unistring  ls_unistrFromInt(s64 x);
     void       ls_unistrFromInt_t(s64 x, unistring *s);
     unistring  ls_unistrConstant(const char32_t *p);
-    
     
     //Manage
     void       ls_unistrClear(unistring *s);
@@ -1302,6 +1303,20 @@ void ls_unistrFreeArr(unistring *s, u32 arrSize)
     { ls_unistrFree(&s[i]);}
     
     ls_free(s);
+}
+
+void ls_unistrSet(unistring *toSet, unistring source)
+{
+    AssertMsg(toSet, "String to be set pointer is null\n");
+    
+    if(toSet->size < source.len)
+    {
+        u32 growAmount = (toSet->size - source.len + 32);
+        ls_unistrGrow(toSet, growAmount);
+    }
+    
+    ls_memcpy(source.data, toSet->data, source.len*sizeof(u32));
+    toSet->len = source.len;
 }
 
 
