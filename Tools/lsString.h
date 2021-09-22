@@ -131,7 +131,7 @@ extern "C" //UTF32 UNICODE STRINGS
     unistring  ls_unistrFromAscii(char *s);
     unistring  ls_unistrFromUTF32(const char32_t *s);
     unistring  ls_unistrFromInt(s64 x);
-    void       ls_unistrFromInt_t(s64 x, unistring *s);
+    void       ls_unistrFromInt_t(unistring *s, s64 x);
     unistring  ls_unistrConstant(const char32_t *p);
     
     //Manage
@@ -2074,7 +2074,7 @@ unistring  ls_unistrFromInt(s64 x)
     return s;
 }
 
-void ls_unistrFromInt_t(s64 x, unistring *s)
+void ls_unistrFromInt_t(unistring *s, s64 x)
 {
     AssertMsg(s, "Unistring pointer is null");
     
