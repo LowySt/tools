@@ -526,59 +526,6 @@ u32 ls_itoa_t(s64 x, char *buff, u32 buffMax)
     return i;
 }
 
-char *ls_ftoa(f64 x)
-{
-    char ResultBuffer[32] = {};
-    u32 BuffIdx = 0;
-    
-    char *IntegerPart = ls_itoa((int)x);
-    u32 intLen = ls_len(IntegerPart);
-    
-    char *FractPart = 0;
-    u32 fractLen = 0;
-    
-    ls_memcpy(IntegerPart, ResultBuffer, intLen);
-    BuffIdx += intLen;
-    
-    f32 absX = (x < 0.0f) ? x*(-1.0f) : x;
-    if (absX < 1.0f)
-    {
-        s32 fractValue = s32((absX) * 1000000000);
-        FractPart = ls_itoa(fractValue);
-        fractLen = ls_len(FractPart);
-    }
-    else if (x >= 10.0f)
-    {
-        f32 fixedX = (absX - (int)absX);
-        s32 fractValue = s32(fixedX * 1000000000);
-        FractPart = ls_itoa(fractValue);
-        fractLen = ls_len(FractPart);
-    }
-    else
-    {
-        s32 fractValue = s32(absX * 1000000000);
-        FractPart = ls_itoa(fractValue);
-        fractLen = ls_len(FractPart);
-    }
-    
-    //NOTE: If Integer is negative Integer part is gonna already
-    //Have the '-' prepended. No reason to add another one.
-    ResultBuffer[BuffIdx] = '.';
-    BuffIdx += 1;
-    
-    ls_memcpy(FractPart, ResultBuffer + BuffIdx, fractLen);
-    BuffIdx += fractLen;
-    
-    
-    ls_free(IntegerPart);
-    ls_free(FractPart);
-    
-    char *Result = (char *)ls_alloc(sizeof(char) * BuffIdx);
-    ls_memcpy(ResultBuffer, Result, BuffIdx);
-    
-    return Result;
-}
-
 u32 ls_ftoa_t(f64 x, char *buff, u32 buffMax)
 {
     char *ResultBuffer = buff;
@@ -601,15 +548,10 @@ u32 ls_ftoa_t(f64 x, char *buff, u32 buffMax)
         s32 fractValue = s32((absX) * 1000000000);
         fractLen = ls_itoa_t(fractValue, FractPart, 32);
     }
-    else if (x >= 10.0f)
+    else
     {
         f32 fixedX = (absX - (int)absX);
         s32 fractValue = s32(fixedX * 1000000000);
-        fractLen = ls_itoa_t(fractValue, FractPart, 32);
-    }
-    else
-    {
-        s32 fractValue = s32(absX * 1000000000);
         fractLen = ls_itoa_t(fractValue, FractPart, 32);
     }
     
@@ -624,6 +566,17 @@ u32 ls_ftoa_t(f64 x, char *buff, u32 buffMax)
     BuffIdx += fractLen;
     
     return BuffIdx;
+}
+
+char *ls_ftoa(f64 x)
+{
+    char ResultBuffer[32] = {};
+    u32 buffLen = ls_ftoa_t(x, ResultBuffer, 32);
+    
+    char *Result = (char *)ls_alloc(sizeof(char) * buffLen);
+    ls_memcpy(ResultBuffer, Result, buffLen);
+    
+    return Result;
 }
 
 s64 ls_atoi(char *s, u32 len)
