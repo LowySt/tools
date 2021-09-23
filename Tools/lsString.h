@@ -2103,6 +2103,8 @@ void ls_unistrFromInt_t(unistring *s, s64 x)
 
 s64 ls_unistrToInt(unistring s)
 {
+    if(s.len == 0) { return 0; }
+    
     char numBuff[64] = {};
     AssertMsg(s.len < 64, "Unistring passed represents a number that contains too many digits.");
     
