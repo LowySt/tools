@@ -1543,6 +1543,11 @@ void ls_unistrInsertCStr(unistring *s, char *toInsert, u32 insertIdx)
 
 void ls_unistrInsertBuffer(unistring *s, u32 *toInsert, u32 buffLen, u32 insertIdx)
 {
+    AssertMsg(s, "Dest string pointer is null\n");
+    AssertMsg(toInsert, "To Insert string pointer is null\n");
+    
+    if(buffLen == 0) { return; }
+    
     unistring insertString = {toInsert, buffLen, buffLen};
     ls_unistrInsertSubstr(s, insertString, insertIdx);
 }
@@ -2043,6 +2048,8 @@ void ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen)
     AssertMsg(s1, "Base unistring ptr is null\n");
     AssertMsg(s1->data, "Base unistring data is null\n");
     AssertMsg(buff, "C String ptr is null\n");
+    
+    if(buffLen == 0) { return; }
     
     if(s1->len + buffLen > s1->size)
     {
