@@ -132,6 +132,7 @@ extern "C" //UTF32 UNICODE STRINGS
     unistring  ls_unistrFromUTF32(const char32_t *s);
     unistring  ls_unistrFromInt(s64 x);
     void       ls_unistrFromInt_t(unistring *s, s64 x);
+    void       ls_unistrFromF64_t(unistring *s, f64 x);
     unistring  ls_unistrConstant(const char32_t *p);
     
     //Manage
@@ -177,6 +178,7 @@ extern "C" //UTF32 UNICODE STRINGS
     void       ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen);
     
     // Convert
+    s32        ls_unistrToAscii_t(unistring *s, char *buff, u32 buffMaxLen);
     s64        ls_unistrToInt(unistring s);
     
 #if 0 //TODO:Fix this?
@@ -2106,6 +2108,51 @@ void ls_unistrFromInt_t(unistring *s, s64 x)
         
         s->len = len;
     }
+}
+
+void ls_unistrFromF64_t(unistring *s, f64 x)
+{
+    AssertMsg(s, "Unistring ptr is null\n");
+    
+    if(s->data == NULL)
+    {
+        //TODO: Add string allocation
+        AssertMsg(s->data, "Unistring data allocation is not YET implemented.\n");
+    }
+    else
+    {
+        char buff[32] = {};
+        u32 len = ls_ftoa_t(x, buff, 32);
+        
+        if(s->size < len)
+        {
+            u32 growSize = len + 32;
+            ls_unistrGrow(s, growSize);
+        }
+        
+        for(u32 i = 0; i < len; i++)
+        { s->data[i] = (u32)buff[i]; }
+        
+        s->len = len;
+    }
+}
+
+s32 ls_unistrToAscii_t(unistring *s, char *buff, u32 buffMaxLen)
+{
+    AssertMsg(s, "Unistring pointer is null\n");
+    AssertMsg(buff, "Output buffer pointer is null\n");
+    
+    u32 *At = s->data;
+    u32 idx = 0;
+    while(*At && idx < buffMaxLen)
+    {
+        buff[idx] = (char)(*At);
+        
+        At  += 1;
+        idx += 1;
+    }
+    
+    return idx;
 }
 
 s64 ls_unistrToInt(unistring s)
