@@ -31,7 +31,6 @@ extern "C"
     void   ls_bufferAddWord(buffer *buff, u16 v);
     void   ls_bufferAddDWord(buffer *buff, u32 v);
     void   ls_bufferAddQWord(buffer *buff, u64 v);
-    void   ls_bufferAddString(buffer *buff, string v);
     void   ls_bufferAddData(buffer *buff, void *data, u32 len); //TODO: Bad design. Allocated data must know size.
     void   ls_bufferAddDataClean(buffer *buff, void *data, u32 len);
     
@@ -44,17 +43,25 @@ extern "C"
     u16    ls_bufferReadWord(buffer *buff);
     u32    ls_bufferReadDWord(buffer *buff);
     u64    ls_bufferReadQWord(buffer *buff);
-    string ls_bufferReadString(buffer *buff);
     u32    ls_bufferReadData(buffer *buff, void *out);
     
     u8     ls_bufferPullByte(buffer *buff);
     u16    ls_bufferPullWord(buffer *buff);
     u32    ls_bufferPullDWord(buffer *buff);
     u64    ls_bufferPullQWord(buffer *buff);
-    //NOTE: To be able to pull strings we need to change the implementation of AddString
+    //TODONOTE: To be able to pull strings we need to change the implementation of AddString
     //      to add the string len both before and after the string data, so that the len can be known
     //      whether you're reading forward or backward. Remeber also to change ReadString to skip the
     //      2nd len bytes.
+    
+#ifdef LS_STRING_H
+    void      ls_bufferAddString(buffer *buff, string v);
+    void      ls_bufferAddUnistring(buffer *buff, unistring v);
+    
+    string    ls_bufferReadString(buffer *buff);
+    unistring ls_bufferReadUnistring(buffer *buff);
+#endif
+    
 };
 
 #endif //LS_BUFFER_H
@@ -222,20 +229,6 @@ void ls_bufferAddQWord(buffer *buff, u64 v)
     buff->cursor += 8;
 }
 
-void ls_bufferAddString(buffer *buff, string v)
-{
-    Assert(buff->data);
-    
-    if(buff->cursor + v.len + 4 > buff->size)
-    { ls_bufferGrow(buff, v.len + 4 + 4096); }
-    
-    ls_bufferAddDWord(buff, v.len);
-    
-    u8 *At = (u8 *)buff->data + buff->cursor;
-    ls_memcpy(v.data, At, v.len);
-    buff->cursor += v.len;
-}
-
 void ls_bufferAddData(buffer *buff, void *data, u32 len)
 {
     Assert(buff->data);
@@ -330,21 +323,6 @@ u64 ls_bufferReadQWord(buffer *buff)
     return v;
 }
 
-string ls_bufferReadString(buffer *buff)
-{
-    Assert(buff->data);
-    
-    u32 strLen = ls_bufferReadDWord(buff);
-    string s = ls_strAlloc(strLen);
-    
-    u8 *At = (u8 *)buff->data + buff->cursor;
-    ls_memcpy(At, s.data, strLen);
-    s.len = strLen;
-    
-    buff->cursor += strLen;
-    return s;
-}
-
 u32 ls_bufferReadData(buffer *buff, void *out)
 {
     Assert(buff->data);
@@ -379,7 +357,8 @@ u16 ls_bufferPullWord(buffer *buff)
 
 u32 ls_bufferPullDWord(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff, "Buffer pointer is NULL");
+    AssertMsg(buff->data, "Buffer data is not allocated");
     
     buff->cursor -= 4;
     u32 v = *(u32 *)((u8 *)buff->data + buff->cursor);
@@ -388,11 +367,85 @@ u32 ls_bufferPullDWord(buffer *buff)
 
 u64 ls_bufferPullQWord(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff, "Buffer pointer is NULL");
+    AssertMsg(buff->data, "Buffer data is not allocated");
     
     buff->cursor -= 8;
     u64 v = *(u64 *)((u8 *)buff->data + buff->cursor);
     return v;
 }
+
+#ifdef LS_STRING_H
+void ls_bufferAddString(buffer *buff, string v)
+{
+    AssertMsg(buff, "Buffer pointer is NULL");
+    AssertMsg(buff->data, "Buffer data is not allocated");
+    
+    //NOTE: We add count the string data(v.len) and the string len itself (sizeof(u32))
+    if(buff->cursor + v.len + sizeof(u32) > buff->size)
+    { ls_bufferGrow(buff, v.len + sizeof(u32) + 4096); }
+    
+    ls_bufferAddDWord(buff, v.len);
+    
+    u8 *At = (u8 *)buff->data + buff->cursor;
+    ls_memcpy(v.data, At, v.len);
+    buff->cursor += v.len;
+}
+
+void ls_bufferAddUnistring(buffer *buff, unistring v)
+{
+    AssertMsg(buff, "Buffer pointer is NULL");
+    AssertMsg(buff->data, "Buffer data is not allocated");
+    
+    u32 lenInBytes = v.len*sizeof(u32);
+    u32 totalLen   = lenInBytes + sizeof(u32); //Adding the lenght of len itself.
+    
+    if(buff->cursor + totalLen > buff->size)
+    { ls_bufferGrow(buff, totalLen + 4096); }
+    
+    ls_bufferAddDWord(buff, v.len);
+    
+    u8 *At = (u8 *)buff->data + buff->cursor;
+    ls_memcpy(v.data, At, lenInBytes);
+    buff->cursor += lenInBytes;
+}
+
+
+
+string ls_bufferReadString(buffer *buff)
+{
+    AssertMsg(buff, "Buffer pointer is NULL");
+    AssertMsg(buff->data, "Buffer data is not allocated");
+    
+    u32 strLen = ls_bufferReadDWord(buff);
+    string s = ls_strAlloc(strLen);
+    
+    u8 *At = (u8 *)buff->data + buff->cursor;
+    ls_memcpy(At, s.data, strLen);
+    s.len = strLen;
+    
+    buff->cursor += strLen;
+    return s;
+}
+
+unistring ls_bufferReadUnistring(buffer *buff)
+{
+    AssertMsg(buff, "Buffer pointer is NULL");
+    AssertMsg(buff->data, "Buffer data is not allocated");
+    
+    u32 strLen     = ls_bufferReadDWord(buff);
+    u32 lenInBytes = strLen*sizeof(u32);
+    
+    unistring s    = ls_unistrAlloc(strLen);
+    
+    u8 *At = (u8 *)buff->data + buff->cursor;
+    ls_memcpy(At, s.data, lenInBytes);
+    s.len = strLen;
+    
+    buff->cursor += lenInBytes;
+    return s;
+}
+
+#endif //STRING_H
 
 #endif //IMPLEMENTATION
