@@ -60,6 +60,7 @@ extern "C"
     
     string    ls_bufferReadString(buffer *buff);
     unistring ls_bufferReadUnistring(buffer *buff);
+    void      ls_bufferReadIntoUnistring(buffer *buff, unistring *s);
 #endif
     
 };
@@ -357,8 +358,8 @@ u16 ls_bufferPullWord(buffer *buff)
 
 u32 ls_bufferPullDWord(buffer *buff)
 {
-    AssertMsg(buff, "Buffer pointer is NULL");
-    AssertMsg(buff->data, "Buffer data is not allocated");
+    AssertMsg(buff, "Buffer pointer is NULL\n");
+    AssertMsg(buff->data, "Buffer data is not allocated\n");
     
     buff->cursor -= 4;
     u32 v = *(u32 *)((u8 *)buff->data + buff->cursor);
@@ -367,8 +368,8 @@ u32 ls_bufferPullDWord(buffer *buff)
 
 u64 ls_bufferPullQWord(buffer *buff)
 {
-    AssertMsg(buff, "Buffer pointer is NULL");
-    AssertMsg(buff->data, "Buffer data is not allocated");
+    AssertMsg(buff, "Buffer pointer is NULL\n");
+    AssertMsg(buff->data, "Buffer data is not allocated\n");
     
     buff->cursor -= 8;
     u64 v = *(u64 *)((u8 *)buff->data + buff->cursor);
@@ -378,8 +379,8 @@ u64 ls_bufferPullQWord(buffer *buff)
 #ifdef LS_STRING_H
 void ls_bufferAddString(buffer *buff, string v)
 {
-    AssertMsg(buff, "Buffer pointer is NULL");
-    AssertMsg(buff->data, "Buffer data is not allocated");
+    AssertMsg(buff, "Buffer pointer is NULL\n");
+    AssertMsg(buff->data, "Buffer data is not allocated\n");
     
     //NOTE: We add count the string data(v.len) and the string len itself (sizeof(u32))
     if(buff->cursor + v.len + sizeof(u32) > buff->size)
@@ -394,8 +395,8 @@ void ls_bufferAddString(buffer *buff, string v)
 
 void ls_bufferAddUnistring(buffer *buff, unistring v)
 {
-    AssertMsg(buff, "Buffer pointer is NULL");
-    AssertMsg(buff->data, "Buffer data is not allocated");
+    AssertMsg(buff, "Buffer pointer is NULL\n");
+    AssertMsg(buff->data, "Buffer data is not allocated\n");
     
     u32 lenInBytes = v.len*sizeof(u32);
     u32 totalLen   = lenInBytes + sizeof(u32); //Adding the lenght of len itself.
@@ -414,8 +415,8 @@ void ls_bufferAddUnistring(buffer *buff, unistring v)
 
 string ls_bufferReadString(buffer *buff)
 {
-    AssertMsg(buff, "Buffer pointer is NULL");
-    AssertMsg(buff->data, "Buffer data is not allocated");
+    AssertMsg(buff, "Buffer pointer is NULL\n");
+    AssertMsg(buff->data, "Buffer data is not allocated\n");
     
     u32 strLen = ls_bufferReadDWord(buff);
     string s = ls_strAlloc(strLen);
@@ -430,11 +431,11 @@ string ls_bufferReadString(buffer *buff)
 
 unistring ls_bufferReadUnistring(buffer *buff)
 {
-    AssertMsg(buff, "Buffer pointer is NULL");
-    AssertMsg(buff->data, "Buffer data is not allocated");
+    AssertMsg(buff, "Buffer pointer is NULL\n");
+    AssertMsg(buff->data, "Buffer data is not allocated\n");
     
     u32 strLen     = ls_bufferReadDWord(buff);
-    u32 lenInBytes = strLen*sizeof(u32);
+    u32 lenInBytes = strLen * sizeof(u32);
     
     unistring s    = ls_unistrAlloc(strLen);
     
@@ -446,6 +447,29 @@ unistring ls_bufferReadUnistring(buffer *buff)
     return s;
 }
 
+void ls_bufferReadIntoUnistring(buffer *buff, unistring *s)
+{
+    AssertMsg(buff, "Buffer pointer is NULL\n");
+    AssertMsg(s, "Unistring pointer is NULL\n");
+    AssertMsg(buff->data, "Buffer data is not allocated");
+    
+    if(!s->data) { *s = ls_bufferReadUnistring(buff); return; }
+    
+    u32 strLen     = ls_bufferReadDWord(buff);
+    u32 lenInBytes = strLen * sizeof(u32);
+    
+    if(s->size < strLen)
+    {
+        s32 growSize = (strLen - s->size) + 32;
+        ls_unistrGrow(s, growSize);
+    }
+    
+    u8 *At = (u8 *)buff->data + buff->cursor;
+    ls_memcpy(At, s->data, lenInBytes);
+    s->len = strLen;
+    
+    buff->cursor += lenInBytes;
+}
 #endif //STRING_H
 
 #endif //IMPLEMENTATION
