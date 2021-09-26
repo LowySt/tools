@@ -7,7 +7,7 @@
 #include "OpenGL\wglExt.h"
 
 #define GL_FN(a, b) __declspec(selectany) a b;
-#define GET_FN(a, b) a = (b)GetAnyGLFuncAddress("a");
+#define GET_FN(a, b) a = (b)GetAnyGLFuncAddress(#a);
 
 extern "C"
 {
@@ -205,12 +205,11 @@ extern "C"
 	GL_FN(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap);
     
     
-    extern const GLubyte* APIENTRY gluErrorString( GLenum errorCode );
-    void *GetAnyGLFuncAddress(const char *name);
-    GLint getGLVersion();
+    extern const GLubyte* APIENTRY ls_glUErrorString( GLenum errorCode );
+    GLint ls_glVersion();
     
 #ifdef LS_PLAT_WINDOWS
-    void LoadGLFunc(HDC DeviceContext);
+    void ls_glLoadFunc(HDC DeviceContext);
 #endif
 }
 
@@ -222,7 +221,7 @@ extern "C"
 //					LOADING FUNCTIONS
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void *GetAnyGLFuncAddress(const char *name)
+static void *GetAnyGLFuncAddress(const char *name)
 {
     void *p = (void *)wglGetProcAddress(name);
     if ((p == 0) || (p == (void*)0x1) || (p == (void*)0x2) || (p == (void*)0x3) || (p == (void*)-1))
@@ -234,7 +233,7 @@ void *GetAnyGLFuncAddress(const char *name)
     return p;
 }
 
-GLint getGLVersion()
+GLint ls_glVersion()
 {
     GLint Result = 0;
     GLint Major = 0;
@@ -244,28 +243,29 @@ GLint getGLVersion()
     if (Major == 0)
     {
         GLenum Error = glGetError();
-        ls_printf("In getGLVersion error: %d", Error);
+        ls_printf("In getGLVersion error: %d\n", Error);
     }
     
     glGetIntegerv(GL_MINOR_VERSION, &Minor);
     if (Minor == 0)
     {
         GLenum Error = glGetError();
-        ls_printf("In getGLVersion error: %d", Error);
+        ls_printf("In getGLVersion error: %d\n", Error);
     }
     
     Result = (Major * 10) + Minor;
     return Result;
 }
 #ifdef LS_PLAT_WINDOWS
-void LoadGLFunc(HDC DeviceContext)
+void ls_glLoadFunc(HDC DeviceContext)
 {
     glGetIntegerv  = (PFNGLGETINTEGERVPROC)GetAnyGLFuncAddress("glGetIntegerv");
     glGetStringi   = (PFNGLGETSTRINGIPROC)GetAnyGLFuncAddress("glGetStringi");
     glGetString	= (PFNGLGETSTRINGPROC)GetAnyGLFuncAddress("glGetString");
     glGetError	 = (PFNGLGETERRORPROC)GetAnyGLFuncAddress("glGetError");
     
-    GLint Version = getGLVersion();
+    GLint Version = ls_glVersion();
+    
     wglGetExtensionsStringARB = (PFNWGLGETEXTENSIONSSTRINGARBPROC)GetAnyGLFuncAddress("wglGetExtensionsStringARB");
     const char *extensions = wglGetExtensionsStringARB(DeviceContext);
     
@@ -458,6 +458,8 @@ void LoadGLFunc(HDC DeviceContext)
         GET_FN(glGenerateMipmap, PFNGLGENERATEMIPMAPPROC);
     }
 }
+
+
 #endif //LS_PLAT_WINDOWS
 
 #undef GL_FN
