@@ -6,7 +6,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+    
 	/*
 	** Copyright (c) 2013-2016 The Khronos Group Inc.
 	**
@@ -37,11 +37,9 @@ extern "C" {
 	**
 	** Khronos $Revision: 33340 $ on $Date: 2016-12-19 07:17:22 -0500 (Mon, 19 Dec 2016) $
 	*/
-
-#include "ls_OpenGL.h"
-
+    
 #define WGL_WGLEXT_VERSION 20161219
-
+    
 	/* Generated C header for:
 	* API: wgl
 	* Versions considered: .*
@@ -50,7 +48,7 @@ extern "C" {
 	* Additional extensions included: _nomatch_^
 	* Extensions removed: _nomatch_^
 	*/
-
+    
 #ifndef WGL_ARB_buffer_region
 #define WGL_ARB_buffer_region 1
 #define WGL_FRONT_COLOR_BUFFER_BIT_ARB    0x00000001
@@ -68,14 +66,14 @@ extern "C" {
 	BOOL WINAPI wglRestoreBufferRegionARB(HANDLE hRegion, int x, int y, int width, int height, int xSrc, int ySrc);
 #endif
 #endif /* WGL_ARB_buffer_region */
-
+    
 #ifndef WGL_ARB_context_flush_control
 #define WGL_ARB_context_flush_control 1
 #define WGL_CONTEXT_RELEASE_BEHAVIOR_ARB  0x2097
 #define WGL_CONTEXT_RELEASE_BEHAVIOR_NONE_ARB 0
 #define WGL_CONTEXT_RELEASE_BEHAVIOR_FLUSH_ARB 0x2098
 #endif /* WGL_ARB_context_flush_control */
-
+    
 #ifndef WGL_ARB_create_context
 #define WGL_ARB_create_context 1
 #define WGL_CONTEXT_DEBUG_BIT_ARB         0x00000001
@@ -90,7 +88,7 @@ extern "C" {
 	HGLRC WINAPI wglCreateContextAttribsARB(HDC hDC, HGLRC hShareContext, const int *attribList);
 #endif
 #endif /* WGL_ARB_create_context */
-
+    
 #ifndef WGL_ARB_create_context_profile
 #define WGL_ARB_create_context_profile 1
 #define WGL_CONTEXT_PROFILE_MASK_ARB      0x9126
@@ -98,7 +96,7 @@ extern "C" {
 #define WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
 #define ERROR_INVALID_PROFILE_ARB         0x2096
 #endif /* WGL_ARB_create_context_profile */
-
+    
 #ifndef WGL_ARB_create_context_robustness
 #define WGL_ARB_create_context_robustness 1
 #define WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB 0x00000004
@@ -106,7 +104,7 @@ extern "C" {
 #define WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB 0x8256
 #define WGL_NO_RESET_NOTIFICATION_ARB     0x8261
 #endif /* WGL_ARB_create_context_robustness */
-
+    
 #ifndef WGL_ARB_extensions_string
 #define WGL_ARB_extensions_string 1
 	typedef const char *(WINAPI * PFNWGLGETEXTENSIONSSTRINGARBPROC) (HDC hdc);
@@ -114,12 +112,12 @@ extern "C" {
 	const char *WINAPI wglGetExtensionsStringARB(HDC hdc);
 #endif
 #endif /* WGL_ARB_extensions_string */
-
+    
 #ifndef WGL_ARB_framebuffer_sRGB
 #define WGL_ARB_framebuffer_sRGB 1
 #define WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB  0x20A9
 #endif /* WGL_ARB_framebuffer_sRGB */
-
+    
 #ifndef WGL_ARB_make_current_read
 #define WGL_ARB_make_current_read 1
 #define ERROR_INVALID_PIXEL_TYPE_ARB      0x2043
@@ -131,13 +129,13 @@ extern "C" {
 	HDC WINAPI wglGetCurrentReadDCARB(void);
 #endif
 #endif /* WGL_ARB_make_current_read */
-
+    
 #ifndef WGL_ARB_multisample
 #define WGL_ARB_multisample 1
 #define WGL_SAMPLE_BUFFERS_ARB            0x2041
 #define WGL_SAMPLES_ARB                   0x2042
 #endif /* WGL_ARB_multisample */
-
+    
 #ifndef WGL_ARB_pbuffer
 #define WGL_ARB_pbuffer 1
 	DECLARE_HANDLE(HPBUFFERARB);
@@ -162,7 +160,7 @@ extern "C" {
 	BOOL WINAPI wglQueryPbufferARB(HPBUFFERARB hPbuffer, int iAttribute, int *piValue);
 #endif
 #endif /* WGL_ARB_pbuffer */
-
+    
 #ifndef WGL_ARB_pixel_format
 #define WGL_ARB_pixel_format 1
 #define WGL_NUMBER_PIXEL_FORMATS_ARB      0x2000
@@ -223,12 +221,12 @@ extern "C" {
 	BOOL WINAPI wglChoosePixelFormatARB(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats);
 #endif
 #endif /* WGL_ARB_pixel_format */
-
+    
 #ifndef WGL_ARB_pixel_format_float
 #define WGL_ARB_pixel_format_float 1
 #define WGL_TYPE_RGBA_FLOAT_ARB           0x21A0
 #endif /* WGL_ARB_pixel_format_float */
-
+    
 #ifndef WGL_ARB_render_texture
 #define WGL_ARB_render_texture 1
 #define WGL_BIND_TO_TEXTURE_RGB_ARB       0x2070
@@ -273,22 +271,22 @@ extern "C" {
 	BOOL WINAPI wglSetPbufferAttribARB(HPBUFFERARB hPbuffer, const int *piAttribList);
 #endif
 #endif /* WGL_ARB_render_texture */
-
+    
 #ifndef WGL_ARB_robustness_application_isolation
 #define WGL_ARB_robustness_application_isolation 1
 #define WGL_CONTEXT_RESET_ISOLATION_BIT_ARB 0x00000008
 #endif /* WGL_ARB_robustness_application_isolation */
-
+    
 #ifndef WGL_ARB_robustness_share_group_isolation
 #define WGL_ARB_robustness_share_group_isolation 1
 #endif /* WGL_ARB_robustness_share_group_isolation */
-
+    
 #ifndef WGL_3DFX_multisample
 #define WGL_3DFX_multisample 1
 #define WGL_SAMPLE_BUFFERS_3DFX           0x2060
 #define WGL_SAMPLES_3DFX                  0x2061
 #endif /* WGL_3DFX_multisample */
-
+    
 #ifndef WGL_3DL_stereo_control
 #define WGL_3DL_stereo_control 1
 #define WGL_STEREO_EMITTER_ENABLE_3DL     0x2055
@@ -300,7 +298,7 @@ extern "C" {
 	BOOL WINAPI wglSetStereoEmitterState3DL(HDC hDC, UINT uState);
 #endif
 #endif /* WGL_3DL_stereo_control */
-
+    
 #ifndef WGL_AMD_gpu_association
 #define WGL_AMD_gpu_association 1
 #define WGL_GPU_VENDOR_AMD                0x1F00
@@ -334,34 +332,34 @@ extern "C" {
 	VOID WINAPI wglBlitContextFramebufferAMD(HGLRC dstCtx, GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter);
 #endif
 #endif /* WGL_AMD_gpu_association */
-
+    
 #ifndef WGL_ATI_pixel_format_float
 #define WGL_ATI_pixel_format_float 1
 #define WGL_TYPE_RGBA_FLOAT_ATI           0x21A0
 #endif /* WGL_ATI_pixel_format_float */
-
+    
 #ifndef WGL_EXT_colorspace
 #define WGL_EXT_colorspace 1
 #define WGL_COLORSPACE_EXT                0x3087
 #define WGL_COLORSPACE_SRGB_EXT           0x3089
 #define WGL_COLORSPACE_LINEAR_EXT         0x308A
 #endif /* WGL_EXT_colorspace */
-
+    
 #ifndef WGL_EXT_create_context_es2_profile
 #define WGL_EXT_create_context_es2_profile 1
 #define WGL_CONTEXT_ES2_PROFILE_BIT_EXT   0x00000004
 #endif /* WGL_EXT_create_context_es2_profile */
-
+    
 #ifndef WGL_EXT_create_context_es_profile
 #define WGL_EXT_create_context_es_profile 1
 #define WGL_CONTEXT_ES_PROFILE_BIT_EXT    0x00000004
 #endif /* WGL_EXT_create_context_es_profile */
-
+    
 #ifndef WGL_EXT_depth_float
 #define WGL_EXT_depth_float 1
 #define WGL_DEPTH_FLOAT_EXT               0x2040
 #endif /* WGL_EXT_depth_float */
-
+    
 #ifndef WGL_EXT_display_color_table
 #define WGL_EXT_display_color_table 1
 	typedef GLboolean(WINAPI * PFNWGLCREATEDISPLAYCOLORTABLEEXTPROC) (GLushort id);
@@ -375,7 +373,7 @@ extern "C" {
 	VOID WINAPI wglDestroyDisplayColorTableEXT(GLushort id);
 #endif
 #endif /* WGL_EXT_display_color_table */
-
+    
 #ifndef WGL_EXT_extensions_string
 #define WGL_EXT_extensions_string 1
 	typedef const char *(WINAPI * PFNWGLGETEXTENSIONSSTRINGEXTPROC) (void);
@@ -383,12 +381,12 @@ extern "C" {
 	const char *WINAPI wglGetExtensionsStringEXT(void);
 #endif
 #endif /* WGL_EXT_extensions_string */
-
+    
 #ifndef WGL_EXT_framebuffer_sRGB
 #define WGL_EXT_framebuffer_sRGB 1
 #define WGL_FRAMEBUFFER_SRGB_CAPABLE_EXT  0x20A9
 #endif /* WGL_EXT_framebuffer_sRGB */
-
+    
 #ifndef WGL_EXT_make_current_read
 #define WGL_EXT_make_current_read 1
 #define ERROR_INVALID_PIXEL_TYPE_EXT      0x2043
@@ -399,13 +397,13 @@ extern "C" {
 	HDC WINAPI wglGetCurrentReadDCEXT(void);
 #endif
 #endif /* WGL_EXT_make_current_read */
-
+    
 #ifndef WGL_EXT_multisample
 #define WGL_EXT_multisample 1
 #define WGL_SAMPLE_BUFFERS_EXT            0x2041
 #define WGL_SAMPLES_EXT                   0x2042
 #endif /* WGL_EXT_multisample */
-
+    
 #ifndef WGL_EXT_pbuffer
 #define WGL_EXT_pbuffer 1
 	DECLARE_HANDLE(HPBUFFEREXT);
@@ -431,7 +429,7 @@ extern "C" {
 	BOOL WINAPI wglQueryPbufferEXT(HPBUFFEREXT hPbuffer, int iAttribute, int *piValue);
 #endif
 #endif /* WGL_EXT_pbuffer */
-
+    
 #ifndef WGL_EXT_pixel_format
 #define WGL_EXT_pixel_format 1
 #define WGL_NUMBER_PIXEL_FORMATS_EXT      0x2000
@@ -488,12 +486,12 @@ extern "C" {
 	BOOL WINAPI wglChoosePixelFormatEXT(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats);
 #endif
 #endif /* WGL_EXT_pixel_format */
-
+    
 #ifndef WGL_EXT_pixel_format_packed_float
 #define WGL_EXT_pixel_format_packed_float 1
 #define WGL_TYPE_RGBA_UNSIGNED_FLOAT_EXT  0x20A8
 #endif /* WGL_EXT_pixel_format_packed_float */
-
+    
 #ifndef WGL_EXT_swap_control
 #define WGL_EXT_swap_control 1
 	typedef BOOL(WINAPI * PFNWGLSWAPINTERVALEXTPROC) (int interval);
@@ -503,11 +501,11 @@ extern "C" {
 	int WINAPI wglGetSwapIntervalEXT(void);
 #endif
 #endif /* WGL_EXT_swap_control */
-
+    
 #ifndef WGL_EXT_swap_control_tear
 #define WGL_EXT_swap_control_tear 1
 #endif /* WGL_EXT_swap_control_tear */
-
+    
 #ifndef WGL_I3D_digital_video_control
 #define WGL_I3D_digital_video_control 1
 #define WGL_DIGITAL_VIDEO_CURSOR_ALPHA_FRAMEBUFFER_I3D 0x2050
@@ -521,7 +519,7 @@ extern "C" {
 	BOOL WINAPI wglSetDigitalVideoParametersI3D(HDC hDC, int iAttribute, const int *piValue);
 #endif
 #endif /* WGL_I3D_digital_video_control */
-
+    
 #ifndef WGL_I3D_gamma
 #define WGL_I3D_gamma 1
 #define WGL_GAMMA_TABLE_SIZE_I3D          0x204E
@@ -537,7 +535,7 @@ extern "C" {
 	BOOL WINAPI wglSetGammaTableI3D(HDC hDC, int iEntries, const USHORT *puRed, const USHORT *puGreen, const USHORT *puBlue);
 #endif
 #endif /* WGL_I3D_gamma */
-
+    
 #ifndef WGL_I3D_genlock
 #define WGL_I3D_genlock 1
 #define WGL_GENLOCK_SOURCE_MULTIVIEW_I3D  0x2044
@@ -576,7 +574,7 @@ extern "C" {
 	BOOL WINAPI wglQueryGenlockMaxSourceDelayI3D(HDC hDC, UINT *uMaxLineDelay, UINT *uMaxPixelDelay);
 #endif
 #endif /* WGL_I3D_genlock */
-
+    
 #ifndef WGL_I3D_image_buffer
 #define WGL_I3D_image_buffer 1
 #define WGL_IMAGE_BUFFER_MIN_ACCESS_I3D   0x00000001
@@ -592,7 +590,7 @@ extern "C" {
 	BOOL WINAPI wglReleaseImageBufferEventsI3D(HDC hDC, const LPVOID *pAddress, UINT count);
 #endif
 #endif /* WGL_I3D_image_buffer */
-
+    
 #ifndef WGL_I3D_swap_frame_lock
 #define WGL_I3D_swap_frame_lock 1
 	typedef BOOL(WINAPI * PFNWGLENABLEFRAMELOCKI3DPROC) (void);
@@ -606,7 +604,7 @@ extern "C" {
 	BOOL WINAPI wglQueryFrameLockMasterI3D(BOOL *pFlag);
 #endif
 #endif /* WGL_I3D_swap_frame_lock */
-
+    
 #ifndef WGL_I3D_swap_frame_usage
 #define WGL_I3D_swap_frame_usage 1
 	typedef BOOL(WINAPI * PFNWGLGETFRAMEUSAGEI3DPROC) (float *pUsage);
@@ -620,7 +618,7 @@ extern "C" {
 	BOOL WINAPI wglQueryFrameTrackingI3D(DWORD *pFrameCount, DWORD *pMissedFrames, float *pLastMissedUsage);
 #endif
 #endif /* WGL_I3D_swap_frame_usage */
-
+    
 #ifndef WGL_NV_DX_interop
 #define WGL_NV_DX_interop 1
 #define WGL_ACCESS_READ_ONLY_NV           0x00000000
@@ -645,11 +643,11 @@ extern "C" {
 	BOOL WINAPI wglDXUnlockObjectsNV(HANDLE hDevice, GLint count, HANDLE *hObjects);
 #endif
 #endif /* WGL_NV_DX_interop */
-
+    
 #ifndef WGL_NV_DX_interop2
 #define WGL_NV_DX_interop2 1
 #endif /* WGL_NV_DX_interop2 */
-
+    
 #ifndef WGL_NV_copy_image
 #define WGL_NV_copy_image 1
 	typedef BOOL(WINAPI * PFNWGLCOPYIMAGESUBDATANVPROC) (HGLRC hSrcRC, GLuint srcName, GLenum srcTarget, GLint srcLevel, GLint srcX, GLint srcY, GLint srcZ, HGLRC hDstRC, GLuint dstName, GLenum dstTarget, GLint dstLevel, GLint dstX, GLint dstY, GLint dstZ, GLsizei width, GLsizei height, GLsizei depth);
@@ -657,7 +655,7 @@ extern "C" {
 	BOOL WINAPI wglCopyImageSubDataNV(HGLRC hSrcRC, GLuint srcName, GLenum srcTarget, GLint srcLevel, GLint srcX, GLint srcY, GLint srcZ, HGLRC hDstRC, GLuint dstName, GLenum dstTarget, GLint dstLevel, GLint dstX, GLint dstY, GLint dstZ, GLsizei width, GLsizei height, GLsizei depth);
 #endif
 #endif /* WGL_NV_copy_image */
-
+    
 #ifndef WGL_NV_delay_before_swap
 #define WGL_NV_delay_before_swap 1
 	typedef BOOL(WINAPI * PFNWGLDELAYBEFORESWAPNVPROC) (HDC hDC, GLfloat seconds);
@@ -665,7 +663,7 @@ extern "C" {
 	BOOL WINAPI wglDelayBeforeSwapNV(HDC hDC, GLfloat seconds);
 #endif
 #endif /* WGL_NV_delay_before_swap */
-
+    
 #ifndef WGL_NV_float_buffer
 #define WGL_NV_float_buffer 1
 #define WGL_FLOAT_COMPONENTS_NV           0x20B0
@@ -678,7 +676,7 @@ extern "C" {
 #define WGL_TEXTURE_FLOAT_RGB_NV          0x20B7
 #define WGL_TEXTURE_FLOAT_RGBA_NV         0x20B8
 #endif /* WGL_NV_float_buffer */
-
+    
 #ifndef WGL_NV_gpu_affinity
 #define WGL_NV_gpu_affinity 1
 	DECLARE_HANDLE(HGPUNV);
@@ -705,13 +703,13 @@ extern "C" {
 	BOOL WINAPI wglDeleteDCNV(HDC hdc);
 #endif
 #endif /* WGL_NV_gpu_affinity */
-
+    
 #ifndef WGL_NV_multisample_coverage
 #define WGL_NV_multisample_coverage 1
 #define WGL_COVERAGE_SAMPLES_NV           0x2042
 #define WGL_COLOR_SAMPLES_NV              0x20B9
 #endif /* WGL_NV_multisample_coverage */
-
+    
 #ifndef WGL_NV_present_video
 #define WGL_NV_present_video 1
 	DECLARE_HANDLE(HVIDEOOUTPUTDEVICENV);
@@ -725,7 +723,7 @@ extern "C" {
 	BOOL WINAPI wglQueryCurrentContextNV(int iAttribute, int *piValue);
 #endif
 #endif /* WGL_NV_present_video */
-
+    
 #ifndef WGL_NV_render_depth_texture
 #define WGL_NV_render_depth_texture 1
 #define WGL_BIND_TO_TEXTURE_DEPTH_NV      0x20A3
@@ -734,14 +732,14 @@ extern "C" {
 #define WGL_TEXTURE_DEPTH_COMPONENT_NV    0x20A6
 #define WGL_DEPTH_COMPONENT_NV            0x20A7
 #endif /* WGL_NV_render_depth_texture */
-
+    
 #ifndef WGL_NV_render_texture_rectangle
 #define WGL_NV_render_texture_rectangle 1
 #define WGL_BIND_TO_TEXTURE_RECTANGLE_RGB_NV 0x20A0
 #define WGL_BIND_TO_TEXTURE_RECTANGLE_RGBA_NV 0x20A1
 #define WGL_TEXTURE_RECTANGLE_NV          0x20A2
 #endif /* WGL_NV_render_texture_rectangle */
-
+    
 #ifndef WGL_NV_swap_group
 #define WGL_NV_swap_group 1
 	typedef BOOL(WINAPI * PFNWGLJOINSWAPGROUPNVPROC) (HDC hDC, GLuint group);
@@ -759,7 +757,7 @@ extern "C" {
 	BOOL WINAPI wglResetFrameCountNV(HDC hDC);
 #endif
 #endif /* WGL_NV_swap_group */
-
+    
 #ifndef WGL_NV_vertex_array_range
 #define WGL_NV_vertex_array_range 1
 	typedef void *(WINAPI * PFNWGLALLOCATEMEMORYNVPROC) (GLsizei size, GLfloat readfreq, GLfloat writefreq, GLfloat priority);
@@ -769,7 +767,7 @@ extern "C" {
 	void WINAPI wglFreeMemoryNV(void *pointer);
 #endif
 #endif /* WGL_NV_vertex_array_range */
-
+    
 #ifndef WGL_NV_video_capture
 #define WGL_NV_video_capture 1
 	DECLARE_HANDLE(HVIDEOINPUTDEVICENV);
@@ -788,7 +786,7 @@ extern "C" {
 	BOOL WINAPI wglReleaseVideoCaptureDeviceNV(HDC hDc, HVIDEOINPUTDEVICENV hDevice);
 #endif
 #endif /* WGL_NV_video_capture */
-
+    
 #ifndef WGL_NV_video_output
 #define WGL_NV_video_output 1
 	DECLARE_HANDLE(HPVIDEODEV);
@@ -820,7 +818,7 @@ extern "C" {
 	BOOL WINAPI wglGetVideoInfoNV(HPVIDEODEV hpVideoDevice, unsigned long *pulCounterOutputPbuffer, unsigned long *pulCounterOutputVideo);
 #endif
 #endif /* WGL_NV_video_output */
-
+    
 #ifndef WGL_OML_sync_control
 #define WGL_OML_sync_control 1
 	typedef BOOL(WINAPI * PFNWGLGETSYNCVALUESOMLPROC) (HDC hdc, INT64 *ust, INT64 *msc, INT64 *sbc);
@@ -838,7 +836,7 @@ extern "C" {
 	BOOL WINAPI wglWaitForSbcOML(HDC hdc, INT64 target_sbc, INT64 *ust, INT64 *msc, INT64 *sbc);
 #endif
 #endif /* WGL_OML_sync_control */
-
+    
 #ifdef __cplusplus
 }
 #endif
