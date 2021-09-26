@@ -5,6 +5,9 @@
 
 #define internal static
 
+#define GL_FN(a, b) __declspec(selectany) a b;
+#define GET_FN(a, b) a = (b)GetAnyGLFuncAddress("a");
+
 extern "C"
 {
     
@@ -16,191 +19,189 @@ extern "C"
 	//	Extensions
 	//
     
-#pragma region Extension Fn Pointers
-    
     //WGL_ARB_extensions_string
-	__declspec(selectany) PFNWGLGETEXTENSIONSSTRINGARBPROC				wglGetExtensionsStringARB;
+	GL_FN(PFNWGLGETEXTENSIONSSTRINGARBPROC, wglGetExtensionsStringARB);
     
 	//WGL_ARB_pixel_format
-	__declspec(selectany) PFNWGLGETPIXELFORMATATTRIBIVARBPROC			wglGetPixelFormatAttribivARB;
-	__declspec(selectany) PFNWGLGETPIXELFORMATATTRIBFVARBPROC			wglGetPixelFormatAttribfvARB;
-	__declspec(selectany) PFNWGLCHOOSEPIXELFORMATARBPROC				wglChoosePixelFormatARB;
+	GL_FN(PFNWGLGETPIXELFORMATATTRIBIVARBPROC, wglGetPixelFormatAttribivARB);	;
+	GL_FN(PFNWGLGETPIXELFORMATATTRIBFVARBPROC, wglGetPixelFormatAttribfvARB);	;
+	GL_FN(PFNWGLCHOOSEPIXELFORMATARBPROC, wglChoosePixelFormatARB);
     
 	//WGL_EXT_swap_control
-	__declspec(selectany) PFNWGLSWAPINTERVALEXTPROC						wglSwapIntervalEXT;
-	__declspec(selectany) PFNWGLGETSWAPINTERVALEXTPROC					wglGetSwapIntervalEXT;
+	GL_FN(PFNWGLSWAPINTERVALEXTPROC, wglSwapIntervalEXT);
+	GL_FN(PFNWGLGETSWAPINTERVALEXTPROC, wglGetSwapIntervalEXT);
     
 	//WGL_ARB_pbuffer
-	__declspec(selectany) PFNWGLCREATEPBUFFERARBPROC					wglCreatePbufferARB;
-	__declspec(selectany) PFNWGLGETPBUFFERDCARBPROC						wglGetPbufferDCARB;
-	__declspec(selectany) PFNWGLRELEASEPBUFFERDCARBPROC					wglReleasePbufferDCARB;
-	__declspec(selectany) PFNWGLDESTROYPBUFFERARBPROC					wglDestroyPbufferARB;
-	__declspec(selectany) PFNWGLQUERYPBUFFERARBPROC						wglQueryPbufferARB;
+	GL_FN(PFNWGLCREATEPBUFFERARBPROC, wglCreatePbufferARB);
+	GL_FN(PFNWGLGETPBUFFERDCARBPROC, wglGetPbufferDCARB);
+	GL_FN(PFNWGLRELEASEPBUFFERDCARBPROC, wglReleasePbufferDCARB);	;
+	GL_FN(PFNWGLDESTROYPBUFFERARBPROC, wglDestroyPbufferARB);
+	GL_FN(PFNWGLQUERYPBUFFERARBPROC, wglQueryPbufferARB);
     
 	//WGL_ARB_render_texture
-	__declspec(selectany) PFNWGLBINDTEXIMAGEARBPROC						wglBindTexImageARB;
-	__declspec(selectany) PFNWGLRELEASETEXIMAGEARBPROC					wglReleaseTexImageARB;
-	__declspec(selectany) PFNWGLSETPBUFFERATTRIBARBPROC					wglSetPbufferAttribARB;
+	GL_FN(PFNWGLBINDTEXIMAGEARBPROC, wglBindTexImageARB);
+	GL_FN(PFNWGLRELEASETEXIMAGEARBPROC, wglReleaseTexImageARB);
+	GL_FN(PFNWGLSETPBUFFERATTRIBARBPROC, wglSetPbufferAttribARB);	;
     
 	//WGL_ARB_make_current_read
-	__declspec(selectany) PFNWGLMAKECONTEXTCURRENTARBPROC				wglMakeContextCurrentARB;
-	__declspec(selectany) PFNWGLGETCURRENTREADDCARBPROC					wglGetCurrentReadDCARB;
+	GL_FN(PFNWGLMAKECONTEXTCURRENTARBPROC, wglMakeContextCurrentARB);	;
+	GL_FN(PFNWGLGETCURRENTREADDCARBPROC, wglGetCurrentReadDCARB);	;
     
 	//WGL_EXT_extensions_string
-	__declspec(selectany) PFNWGLGETEXTENSIONSSTRINGEXTPROC				wglGetExtensionsStringEXT;
+	GL_FN(PFNWGLGETEXTENSIONSSTRINGEXTPROC, wglGetExtensionsStringEXT);	;
     
 	//WGL_ARB_buffer_region
-	__declspec(selectany) PFNWGLCREATEBUFFERREGIONARBPROC				wglCreateBufferRegionARB;
-	__declspec(selectany) PFNWGLDELETEBUFFERREGIONARBPROC				wglDeleteBufferRegionARB;
-	__declspec(selectany) PFNWGLSAVEBUFFERREGIONARBPROC					wglSaveBufferRegionARB;
-	__declspec(selectany) PFNWGLRESTOREBUFFERREGIONARBPROC				wglRestoreBufferRegionARB;
+	GL_FN(PFNWGLCREATEBUFFERREGIONARBPROC, wglCreateBufferRegionARB);	;
+	GL_FN(PFNWGLDELETEBUFFERREGIONARBPROC, wglDeleteBufferRegionARB);	;
+	GL_FN(PFNWGLSAVEBUFFERREGIONARBPROC, wglSaveBufferRegionARB);	;
+	GL_FN(PFNWGLRESTOREBUFFERREGIONARBPROC, wglRestoreBufferRegionARB);	;
     
 	//WGL_ATI_render_texture_rectangle NOTE: NOT FOUND IN MY wglExt.h FILE DOWNLOADED FROM OPENGL REFERENCE SITE!!!
     
 	//WGL_I3D_genlock
-	__declspec(selectany) PFNWGLENABLEGENLOCKI3DPROC					wglEnableGenlockI3D;
-	__declspec(selectany) PFNWGLDISABLEGENLOCKI3DPROC					wglDisableGenlockI3D;
-	__declspec(selectany) PFNWGLISENABLEDGENLOCKI3DPROC					wglIsEnabledGenlockI3D;
-	__declspec(selectany) PFNWGLGENLOCKSOURCEI3DPROC					wglGenlockSourceI3D;
-	__declspec(selectany) PFNWGLGETGENLOCKSOURCEI3DPROC					wglGetGenlockSourceI3D;
-	__declspec(selectany) PFNWGLGENLOCKSOURCEEDGEI3DPROC				wglGenlockSourceEdgeI3D;
-	__declspec(selectany) PFNWGLGETGENLOCKSOURCEEDGEI3DPROC				wglGetGenlockSourceEdgeI3D;
-	__declspec(selectany) PFNWGLGENLOCKSAMPLERATEI3DPROC				wglGenlockSampleRateI3D;
-	__declspec(selectany) PFNWGLGETGENLOCKSAMPLERATEI3DPROC				wglGetGenlockSampleRateI3D;
-	__declspec(selectany) PFNWGLGENLOCKSOURCEDELAYI3DPROC				wglGenlockSourceDelayI3D;
-	__declspec(selectany) PFNWGLGETGENLOCKSOURCEDELAYI3DPROC			wglGetGenlockSourceDelayI3D;
-	__declspec(selectany) PFNWGLQUERYGENLOCKMAXSOURCEDELAYI3DPROC		wglQueryGenlockMaxSourceDelayI3D;
+	GL_FN(PFNWGLENABLEGENLOCKI3DPROC, wglEnableGenlockI3D);
+	GL_FN(PFNWGLDISABLEGENLOCKI3DPROC, wglDisableGenlockI3D);
+	GL_FN(PFNWGLISENABLEDGENLOCKI3DPROC, wglIsEnabledGenlockI3D);	;
+	GL_FN(PFNWGLGENLOCKSOURCEI3DPROC, wglGenlockSourceI3D);
+	GL_FN(PFNWGLGETGENLOCKSOURCEI3DPROC, wglGetGenlockSourceI3D);	;
+	GL_FN(PFNWGLGENLOCKSOURCEEDGEI3DPROC, wglGenlockSourceEdgeI3D);
+	GL_FN(PFNWGLGETGENLOCKSOURCEEDGEI3DPROC, wglGetGenlockSourceEdgeI3D);	;
+	GL_FN(PFNWGLGENLOCKSAMPLERATEI3DPROC, wglGenlockSampleRateI3D);
+	GL_FN(PFNWGLGETGENLOCKSAMPLERATEI3DPROC, wglGetGenlockSampleRateI3D);	;
+	GL_FN(PFNWGLGENLOCKSOURCEDELAYI3DPROC, wglGenlockSourceDelayI3D);	;
+	GL_FN(PFNWGLGETGENLOCKSOURCEDELAYI3DPROC, wglGetGenlockSourceDelayI3D);	;
+	GL_FN(PFNWGLQUERYGENLOCKMAXSOURCEDELAYI3DPROC, wglQueryGenlockMaxSourceDelayI3D);	;
     
 	//WGL_NV_swap_group
-	__declspec(selectany) PFNWGLJOINSWAPGROUPNVPROC						wglJoinSwapGroupNV;
-	__declspec(selectany) PFNWGLBINDSWAPBARRIERNVPROC					wglBindSwapBarrierNV;
-	__declspec(selectany) PFNWGLQUERYSWAPGROUPNVPROC					wglQuerySwapGroupNV;
-	__declspec(selectany) PFNWGLQUERYMAXSWAPGROUPSNVPROC				wglQueryMaxSwapGroupsNV;
-	__declspec(selectany) PFNWGLQUERYFRAMECOUNTNVPROC					wglQueryFrameCountNV;
-	__declspec(selectany) PFNWGLRESETFRAMECOUNTNVPROC					wglResetFrameCountNV;
+	GL_FN(PFNWGLJOINSWAPGROUPNVPROC, wglJoinSwapGroupNV);
+	GL_FN(PFNWGLBINDSWAPBARRIERNVPROC, wglBindSwapBarrierNV);
+	GL_FN(PFNWGLQUERYSWAPGROUPNVPROC, wglQuerySwapGroupNV);
+	GL_FN(PFNWGLQUERYMAXSWAPGROUPSNVPROC, wglQueryMaxSwapGroupsNV);
+	GL_FN(PFNWGLQUERYFRAMECOUNTNVPROC, wglQueryFrameCountNV);
+	GL_FN(PFNWGLRESETFRAMECOUNTNVPROC, wglResetFrameCountNV);
     
 	//WGL_ARB_create_context
-	__declspec(selectany) PFNWGLCREATECONTEXTATTRIBSARBPROC				wglCreateContextAttribsARB;
+	GL_FN(PFNWGLCREATECONTEXTATTRIBSARBPROC, wglCreateContextAttribsARB);	;
     
 	//WGL_AMD_gpu_association
-	__declspec(selectany) PFNWGLGETGPUIDSAMDPROC						wglGetGPUIDsAMD;
-	__declspec(selectany) PFNWGLGETGPUINFOAMDPROC						wglGetGPUInfoAMD;
-	__declspec(selectany) PFNWGLGETCONTEXTGPUIDAMDPROC					wglGetContextGPUIDAMD;
-	__declspec(selectany) PFNWGLCREATEASSOCIATEDCONTEXTAMDPROC			wglCreateAssociatedContextAMD;
-	__declspec(selectany) PFNWGLCREATEASSOCIATEDCONTEXTATTRIBSAMDPROC	wglCreateAssociatedContextAttribsAMD;
-	__declspec(selectany) PFNWGLDELETEASSOCIATEDCONTEXTAMDPROC			wglDeleteAssociatedContextAMD;
-	__declspec(selectany) PFNWGLMAKEASSOCIATEDCONTEXTCURRENTAMDPROC		wglMakeAssociatedContextCurrentAMD;
-	__declspec(selectany) PFNWGLGETCURRENTASSOCIATEDCONTEXTAMDPROC		wglGetCurrentAssociatedContextAMD;
-	__declspec(selectany) PFNWGLBLITCONTEXTFRAMEBUFFERAMDPROC			wglBlitContextFramebufferAMD;
+	GL_FN(PFNWGLGETGPUIDSAMDPROC, wglGetGPUIDsAMD);
+	GL_FN(PFNWGLGETGPUINFOAMDPROC, wglGetGPUInfoAMD);
+	GL_FN(PFNWGLGETCONTEXTGPUIDAMDPROC, wglGetContextGPUIDAMD);
+	GL_FN(PFNWGLCREATEASSOCIATEDCONTEXTAMDPROC, wglCreateAssociatedContextAMD);	;
+	GL_FN(PFNWGLCREATEASSOCIATEDCONTEXTATTRIBSAMDPROC, wglCreateAssociatedContextAttribsAMD);
+	GL_FN(PFNWGLDELETEASSOCIATEDCONTEXTAMDPROC, wglDeleteAssociatedContextAMD);	;
+	GL_FN(PFNWGLMAKEASSOCIATEDCONTEXTCURRENTAMDPROC, wglMakeAssociatedContextCurrentAMD);
+	GL_FN(PFNWGLGETCURRENTASSOCIATEDCONTEXTAMDPROC, wglGetCurrentAssociatedContextAMD);
+	GL_FN(PFNWGLBLITCONTEXTFRAMEBUFFERAMDPROC, wglBlitContextFramebufferAMD);	;
     
 	//WGL_AMDX_gpu_association NOTE: ANOTHER ONE WITH NOTHING IN wglExt.h FILE!
     
 	//WGL_NV_DX_interop
-	__declspec(selectany) PFNWGLDXSETRESOURCESHAREHANDLENVPROC			wglDXSetResourceShareHandleNV;
-	__declspec(selectany) PFNWGLDXOPENDEVICENVPROC						wglDXOpenDeviceNV;
-	__declspec(selectany) PFNWGLDXCLOSEDEVICENVPROC						wglDXCloseDeviceNV;
-	__declspec(selectany) PFNWGLDXREGISTEROBJECTNVPROC					wglDXRegisterObjectNV;
-	__declspec(selectany) PFNWGLDXUNREGISTEROBJECTNVPROC				wglDXUnregisterObjectNV;
-	__declspec(selectany) PFNWGLDXOBJECTACCESSNVPROC					wglDXObjectAccessNV;
-	__declspec(selectany) PFNWGLDXLOCKOBJECTSNVPROC						wglDXLockObjectsNV;
-	__declspec(selectany) PFNWGLDXUNLOCKOBJECTSNVPROC					wglDXUnlockObjectsNV;
+	GL_FN(PFNWGLDXSETRESOURCESHAREHANDLENVPROC, wglDXSetResourceShareHandleNV);	;
+	GL_FN(PFNWGLDXOPENDEVICENVPROC, wglDXOpenDeviceNV);
+	GL_FN(PFNWGLDXCLOSEDEVICENVPROC, wglDXCloseDeviceNV);
+	GL_FN(PFNWGLDXREGISTEROBJECTNVPROC, wglDXRegisterObjectNV);
+	GL_FN(PFNWGLDXUNREGISTEROBJECTNVPROC, wglDXUnregisterObjectNV);
+	GL_FN(PFNWGLDXOBJECTACCESSNVPROC, wglDXObjectAccessNV);
+	GL_FN(PFNWGLDXLOCKOBJECTSNVPROC, wglDXLockObjectsNV);
+	GL_FN(PFNWGLDXUNLOCKOBJECTSNVPROC, wglDXUnlockObjectsNV);
     
-#pragma endregion
+    
     
 	//
 	//	GL Functions
 	//
     
 	// Debug/Init Functions
-	__declspec(selectany) PFNGLGETERRORPROC				     glGetError;
-	__declspec(selectany) PFNGLGETINTEGERVPROC				  glGetIntegerv;
-	__declspec(selectany) PFNGLGETSTRINGIPROC				   glGetStringi;
-	__declspec(selectany) PFNGLGETSTRINGPROC					glGetString;
+	GL_FN(PFNGLGETERRORPROC, glGetError);
+	GL_FN(PFNGLGETINTEGERVPROC, glGetIntegerv);
+	GL_FN(PFNGLGETSTRINGIPROC, glGetStringi);
+	GL_FN(PFNGLGETSTRINGPROC, glGetString);
     
-	__declspec(selectany) PFNGLGETSHADERIVPROC						glGetShaderiv;
-	__declspec(selectany) PFNGLGETSHADERINFOLOGPROC					glGetShaderInfoLog;
-	__declspec(selectany) PFNGLGETPROGRAMIVPROC						glGetProgramiv;
-	__declspec(selectany) PFNGLGETPROGRAMINFOLOGPROC				glGetProgramInfoLog;
+	GL_FN(PFNGLGETSHADERIVPROC, glGetShaderiv);
+	GL_FN(PFNGLGETSHADERINFOLOGPROC, glGetShaderInfoLog);
+	GL_FN(PFNGLGETPROGRAMIVPROC, glGetProgramiv);
+	GL_FN(PFNGLGETPROGRAMINFOLOGPROC, glGetProgramInfoLog);
     
-	__declspec(selectany) PFNGLENABLEPROC							glEnable;
-	__declspec(selectany) PFNGLFINISHPROC							glFinish;
+	GL_FN(PFNGLENABLEPROC, glEnable);
+	GL_FN(PFNGLFINISHPROC, glFinish);
     
 	// Blitting Functions
-	__declspec(selectany) PFNGLVIEWPORTPROC					glViewport;
-	__declspec(selectany) PFNGLCLEARCOLORPROC				  glClearColor;
-	__declspec(selectany) PFNGLCLEARPROC					   glClear;
-    __declspec(selectany) PFNGLCLEARDEPTHPROC                  glClearDepth;
-    __declspec(selectany) PFNGLDEPTHFUNCPROC                   glDepthFunc;
-	__declspec(selectany) PFNGLDRAWARRAYSPROC				  glDrawArrays;
-	__declspec(selectany) PFNGLDRAWELEMENTSPROC			    glDrawElements;
+	GL_FN(PFNGLVIEWPORTPROC, glViewport);
+	GL_FN(PFNGLCLEARCOLORPROC, glClearColor);
+	GL_FN(PFNGLCLEARPROC, glClear);
+    GL_FN(PFNGLCLEARDEPTHPROC, glClearDepth);
+    GL_FN(PFNGLDEPTHFUNCPROC, glDepthFunc);
+	GL_FN(PFNGLDRAWARRAYSPROC, glDrawArrays);
+	GL_FN(PFNGLDRAWELEMENTSPROC, glDrawElements);
     
 	// GPU Memory Managment
-	__declspec(selectany) PFNGLGENBUFFERSPROC				  glGenBuffers;
-    __declspec(selectany) PFNGLDELETEBUFFERSPROC               glDeleteBuffers;
-	__declspec(selectany) PFNGLGENVERTEXARRAYSPROC			 glGenVertexArrays;
-    __declspec(selectany) PFNGLDELETEVERTEXARRAYSPROC           glDeleteVertexArrays;
-	__declspec(selectany) PFNGLBINDBUFFERPROC				  glBindBuffer;
-	__declspec(selectany) PFNGLBINDVERTEXARRAYPROC		     glBindVertexArray;
-	__declspec(selectany) PFNGLBUFFERDATAPROC				  glBufferData;
-    __declspec(selectany) PFNGLPIXELSTOREIPROC	             glPixelStorei;
+	GL_FN(PFNGLGENBUFFERSPROC, glGenBuffers);
+    GL_FN(PFNGLDELETEBUFFERSPROC, glDeleteBuffers);
+	GL_FN(PFNGLGENVERTEXARRAYSPROC, glGenVertexArrays);
+    GL_FN(PFNGLDELETEVERTEXARRAYSPROC, glDeleteVertexArrays);
+	GL_FN(PFNGLBINDBUFFERPROC, glBindBuffer);
+	GL_FN(PFNGLBINDVERTEXARRAYPROC, glBindVertexArray);
+	GL_FN(PFNGLBUFFERDATAPROC, glBufferData);
+    GL_FN(PFNGLPIXELSTOREIPROC, glPixelStorei);
     
 	// Shader Functions
-	__declspec(selectany) PFNGLCREATESHADERPROC						glCreateShader;
-	__declspec(selectany) PFNGLCREATEPROGRAMPROC					glCreateProgram;
-	__declspec(selectany) PFNGLDELETESHADERPROC						glDeleteShader;
+	GL_FN(PFNGLCREATESHADERPROC, glCreateShader);
+	GL_FN(PFNGLCREATEPROGRAMPROC, glCreateProgram);
+	GL_FN(PFNGLDELETESHADERPROC, glDeleteShader);
     
-	__declspec(selectany) PFNGLSHADERSOURCEPROC						glShaderSource;
-	__declspec(selectany) PFNGLCOMPILESHADERPROC					glCompileShader;
-	__declspec(selectany) PFNGLATTACHSHADERPROC						glAttachShader;
-    __declspec(selectany) PFNGLBINDFRAGDATALOCATIONPROC      glBindFragDataLocation;
-	__declspec(selectany) PFNGLLINKPROGRAMPROC						glLinkProgram;
-	__declspec(selectany) PFNGLUSEPROGRAMPROC						glUseProgram;
+	GL_FN(PFNGLSHADERSOURCEPROC, glShaderSource);
+	GL_FN(PFNGLCOMPILESHADERPROC, glCompileShader);
+	GL_FN(PFNGLATTACHSHADERPROC, glAttachShader);
+    GL_FN(PFNGLBINDFRAGDATALOCATIONPROC, glBindFragDataLocation);
+	GL_FN(PFNGLLINKPROGRAMPROC, glLinkProgram);
+	GL_FN(PFNGLUSEPROGRAMPROC, glUseProgram);
     
-	__declspec(selectany) PFNGLGETUNIFORMFVPROC						glGetUniformfv;
-	__declspec(selectany) PFNGLGETUNIFORMIVPROC						glGetUniformiv;
-	__declspec(selectany) PFNGLGETUNIFORMUIVPROC					glGetUniformuiv;
-	__declspec(selectany) PFNGLGETUNIFORMLOCATIONPROC				glGetUniformLocation;
-	__declspec(selectany) PFNGLUNIFORM4FPROC						glUniform4f;
-	__declspec(selectany) PFNGLUNIFORM3FPROC						glUniform3f;
-	__declspec(selectany) PFNGLUNIFORM2FPROC						glUniform2f;
-	__declspec(selectany) PFNGLUNIFORM1FPROC						glUniform1f;
+	GL_FN(PFNGLGETUNIFORMFVPROC, glGetUniformfv);
+	GL_FN(PFNGLGETUNIFORMIVPROC, glGetUniformiv);
+	GL_FN(PFNGLGETUNIFORMUIVPROC, glGetUniformuiv);
+	GL_FN(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation);
+	GL_FN(PFNGLUNIFORM4FPROC, glUniform4f);
+	GL_FN(PFNGLUNIFORM3FPROC, glUniform3f);
+	GL_FN(PFNGLUNIFORM2FPROC, glUniform2f);
+	GL_FN(PFNGLUNIFORM1FPROC, glUniform1f);
     
-	__declspec(selectany) PFNGLUNIFORM4FVPROC						glUniform4fv;
-	__declspec(selectany) PFNGLUNIFORM3FVPROC						glUniform3fv;
-	__declspec(selectany) PFNGLUNIFORM2FVPROC						glUniform2fv;
-	__declspec(selectany) PFNGLUNIFORM1FVPROC						glUniform1fv;
+	GL_FN(PFNGLUNIFORM4FVPROC, glUniform4fv);
+	GL_FN(PFNGLUNIFORM3FVPROC, glUniform3fv);
+	GL_FN(PFNGLUNIFORM2FVPROC, glUniform2fv);
+	GL_FN(PFNGLUNIFORM1FVPROC, glUniform1fv);
     
-	__declspec(selectany) PFNGLUNIFORMMATRIX4FVPROC		  glUniformMatrix4fv;
-	__declspec(selectany) PFNGLUNIFORMMATRIX3FVPROC		  glUniformMatrix3fv;
-	__declspec(selectany) PFNGLUNIFORMMATRIX2FVPROC		  glUniformMatrix2fv;
+	GL_FN(PFNGLUNIFORMMATRIX4FVPROC, glUniformMatrix4fv);
+	GL_FN(PFNGLUNIFORMMATRIX3FVPROC, glUniformMatrix3fv);
+	GL_FN(PFNGLUNIFORMMATRIX2FVPROC, glUniformMatrix2fv);
     
-	__declspec(selectany) PFNGLUNIFORM4DPROC				 glUniform4d;
-	__declspec(selectany) PFNGLUNIFORM3DPROC				 glUniform3d;
-	__declspec(selectany) PFNGLUNIFORM2DPROC				 glUniform2d;
-	__declspec(selectany) PFNGLUNIFORM1DPROC				 glUniform1d;
+	GL_FN(PFNGLUNIFORM4DPROC, glUniform4d);
+	GL_FN(PFNGLUNIFORM3DPROC, glUniform3d);
+	GL_FN(PFNGLUNIFORM2DPROC, glUniform2d);
+	GL_FN(PFNGLUNIFORM1DPROC, glUniform1d);
     
-	__declspec(selectany) PFNGLUNIFORM4IPROC				 glUniform4i;
-	__declspec(selectany) PFNGLUNIFORM3IPROC				 glUniform3i;
-	__declspec(selectany) PFNGLUNIFORM2IPROC				 glUniform2i;
-	__declspec(selectany) PFNGLUNIFORM1IPROC				 glUniform1i;
+	GL_FN(PFNGLUNIFORM4IPROC, glUniform4i);
+	GL_FN(PFNGLUNIFORM3IPROC, glUniform3i);
+	GL_FN(PFNGLUNIFORM2IPROC, glUniform2i);
+	GL_FN(PFNGLUNIFORM1IPROC, glUniform1i);
     
-	__declspec(selectany) PFNGLTEXPARAMETERIPROC			 glTexParameteri;
-	__declspec(selectany) PFNGLTEXPARAMETERFVPROC			glTexParameterfv;
+	GL_FN(PFNGLTEXPARAMETERIPROC, glTexParameteri);
+	GL_FN(PFNGLTEXPARAMETERFVPROC, glTexParameterfv);
     
-	__declspec(selectany) PFNGLVERTEXATTRIBPOINTERPROC	   glVertexAttribPointer;
-	__declspec(selectany) PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
-    __declspec(selectany) PFNGLGETVERTEXATTRIBIUIVPROC       glGetVertexAttribIuiv;
+	GL_FN(PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer);
+	GL_FN(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray);
+    GL_FN(PFNGLGETVERTEXATTRIBIUIVPROC, glGetVertexAttribIuiv);
     
 	// Texture Functions
     
-	__declspec(selectany) PFNGLGENTEXTURESPROC					glGenTextures;
-	__declspec(selectany) PFNGLBINDTEXTUREPROC					glBindTexture;
-    __declspec(selectany) PFNGLOBJECTLABELPROC                    glObjectLabel;
-	__declspec(selectany) PFNGLTEXIMAGE2DPROC					 glTexImage2D;
-	__declspec(selectany) PFNGLACTIVETEXTUREPROC				  glActiveTexture;
-    __declspec(selectany) PFNGLGETATTRIBLOCATIONPROC              glGetAttribLocation;
+	GL_FN(PFNGLGENTEXTURESPROC, glGenTextures);
+	GL_FN(PFNGLBINDTEXTUREPROC, glBindTexture);
+    GL_FN(PFNGLOBJECTLABELPROC, glObjectLabel);
+	GL_FN(PFNGLTEXIMAGE2DPROC, glTexImage2D);
+	GL_FN(PFNGLACTIVETEXTUREPROC, glActiveTexture);
+    GL_FN(PFNGLGETATTRIBLOCATIONPROC, glGetAttribLocation);
     
-	__declspec(selectany) PFNGLGENERATEMIPMAPPROC					glGenerateMipmap;
+	GL_FN(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap);
     
     
     extern const GLubyte* APIENTRY gluErrorString( GLenum errorCode );
@@ -209,7 +210,7 @@ extern "C"
 	//					LOADING FUNCTIONS
 	///////////////////////////////////////////////////////////////////////////////////////////
     
-	internal void *GetAnyGLFuncAddress(const char *name)
+	void *GetAnyGLFuncAddress(const char *name)
 	{
 		void *p = (void *)wglGetProcAddress(name);
 		if ((p == 0) || (p == (void*)0x1) || (p == (void*)0x2) || (p == (void*)0x3) || (p == (void*)-1))
@@ -221,7 +222,7 @@ extern "C"
 		return p;
 	}
     
-	internal GLint getGLVersion()
+	GLint getGLVersion()
 	{
 		GLint Result = 0;
 		GLint Major = 0;
@@ -245,7 +246,7 @@ extern "C"
 		return Result;
 	}
     
-	internal void LoadGLFunc(HDC DeviceContext)
+	void LoadGLFunc(HDC DeviceContext)
 	{
 		glGetIntegerv  = (PFNGLGETINTEGERVPROC)GetAnyGLFuncAddress("glGetIntegerv");
 		glGetStringi   = (PFNGLGETSTRINGIPROC)GetAnyGLFuncAddress("glGetStringi");
@@ -257,171 +258,195 @@ extern "C"
 		const char *extensions = wglGetExtensionsStringARB(DeviceContext);
         
 		//@TODO: This is actually not enough to check if we have these extensions, gonna have to implement more extensive checks later.
-#pragma region Load Extension Fn Pointers
+        
 #ifdef WGL_ARB_pixel_format
-		wglGetPixelFormatAttribivARB			= (PFNWGLGETPIXELFORMATATTRIBIVARBPROC)GetAnyGLFuncAddress("wglGetPixelFormatAttribivARB");
-		wglGetPixelFormatAttribfvARB			= (PFNWGLGETPIXELFORMATATTRIBFVARBPROC)GetAnyGLFuncAddress("wglGetPixelFormatAttribfvARB");
-		wglChoosePixelFormatARB					= (PFNWGLCHOOSEPIXELFORMATARBPROC)GetAnyGLFuncAddress("wglChoosePixelFormatARB");
+        GET_FN(wglGetPixelFormatAttribivARB, PFNWGLGETPIXELFORMATATTRIBIVARBPROC);
+		GET_FN(wglGetPixelFormatAttribfvARB, PFNWGLGETPIXELFORMATATTRIBFVARBPROC);
+		GET_FN(wglChoosePixelFormatARB, PFNWGLCHOOSEPIXELFORMATARBPROC);
 #endif
+        
+        
 #ifdef WGL_EXT_swap_control
-		wglSwapIntervalEXT						= (PFNWGLSWAPINTERVALEXTPROC)GetAnyGLFuncAddress("wglSwapIntervalEXT");
-		wglGetSwapIntervalEXT					= (PFNWGLGETSWAPINTERVALEXTPROC)GetAnyGLFuncAddress("wglGetSwapIntervalEXT");
+		GET_FN(wglSwapIntervalEXT, PFNWGLSWAPINTERVALEXTPROC);
+		GET_FN(wglGetSwapIntervalEXT, PFNWGLGETSWAPINTERVALEXTPROC);
 #endif
+        
+        
 #ifdef WGL_ARB_pbuffer
-		wglCreatePbufferARB						= (PFNWGLCREATEPBUFFERARBPROC)GetAnyGLFuncAddress("wglCreatePbufferARB");
-		wglGetPbufferDCARB						= (PFNWGLGETPBUFFERDCARBPROC)GetAnyGLFuncAddress("wglGetPbufferDCARB");
-		wglReleasePbufferDCARB					= (PFNWGLRELEASEPBUFFERDCARBPROC)GetAnyGLFuncAddress("wglReleasePbufferDCARB");
-		wglDestroyPbufferARB					= (PFNWGLDESTROYPBUFFERARBPROC)GetAnyGLFuncAddress("wglDestroyPbufferARB");
-		wglQueryPbufferARB						= (PFNWGLQUERYPBUFFERARBPROC)GetAnyGLFuncAddress("wglQueryPbufferARB");
+		GET_FN(wglCreatePbufferARB, PFNWGLCREATEPBUFFERARBPROC);
+		GET_FN(wglGetPbufferDCARB, PFNWGLGETPBUFFERDCARBPROC);
+		GET_FN(wglReleasePbufferDCARB, PFNWGLRELEASEPBUFFERDCARBPROC);
+		GET_FN(wglDestroyPbufferARB, PFNWGLDESTROYPBUFFERARBPROC);
+		GET_FN(wglQueryPbufferARB, PFNWGLQUERYPBUFFERARBPROC);
 #endif
+        
+        
 #ifdef WGL_ARB_render_texture
-		wglBindTexImageARB						= (PFNWGLBINDTEXIMAGEARBPROC)GetAnyGLFuncAddress("wglBindTexImageARB");
-		wglReleaseTexImageARB					= (PFNWGLRELEASETEXIMAGEARBPROC)GetAnyGLFuncAddress("wglReleaseTexImageARB");
-		wglSetPbufferAttribARB					= (PFNWGLSETPBUFFERATTRIBARBPROC)GetAnyGLFuncAddress("wglSetPbufferAttribARB");
+		GET_FN(wglBindTexImageARB, PFNWGLBINDTEXIMAGEARBPROC);
+		GET_FN(wglReleaseTexImageARB, PFNWGLRELEASETEXIMAGEARBPROC);
+		GET_FN(wglSetPbufferAttribARB, PFNWGLSETPBUFFERATTRIBARBPROC);
 #endif
+        
+        
 #ifdef WGL_ARB_make_current_read
-		wglMakeContextCurrentARB				= (PFNWGLMAKECONTEXTCURRENTARBPROC)GetAnyGLFuncAddress("wglMakeContextCurrentARB");
-		wglGetCurrentReadDCARB					= (PFNWGLGETCURRENTREADDCARBPROC)GetAnyGLFuncAddress("wglGetCurrentReadDCARB");
+		GET_FN(wglMakeContextCurrentARB, PFNWGLMAKECONTEXTCURRENTARBPROC);
+		GET_FN(wglGetCurrentReadDCARB, PFNWGLGETCURRENTREADDCARBPROC);
 #endif
+        
+        
 #ifdef WGL_EXT_extensions_string
-		wglGetExtensionsStringEXT				= (PFNWGLGETEXTENSIONSSTRINGEXTPROC)GetAnyGLFuncAddress("wglGetExtensionsStringEXT");
+		GET_FN(wglGetExtensionsStringEXT, PFNWGLGETEXTENSIONSSTRINGEXTPROC);
 #endif
+        
+        
 #ifdef WGL_ARB_buffer_region
-		wglCreateBufferRegionARB				= (PFNWGLCREATEBUFFERREGIONARBPROC)GetAnyGLFuncAddress("wglCreateBufferRegionARB");
-		wglDeleteBufferRegionARB				= (PFNWGLDELETEBUFFERREGIONARBPROC)GetAnyGLFuncAddress("wglDeleteBufferRegionARB");
-		wglSaveBufferRegionARB					= (PFNWGLSAVEBUFFERREGIONARBPROC)GetAnyGLFuncAddress("wglSaveBufferRegionARB");
-		wglRestoreBufferRegionARB				= (PFNWGLRESTOREBUFFERREGIONARBPROC)GetAnyGLFuncAddress("wglRestoreBufferRegionARB");
+		GET_FN(wglCreateBufferRegionARB, PFNWGLCREATEBUFFERREGIONARBPROC);
+		GET_FN(wglDeleteBufferRegionARB, PFNWGLDELETEBUFFERREGIONARBPROC);
+		GET_FN(wglSaveBufferRegionARB, PFNWGLSAVEBUFFERREGIONARBPROC);
+		GET_FN(wglRestoreBufferRegionARB, PFNWGLRESTOREBUFFERREGIONARBPROC);
 #endif
+        
+        
 #ifdef WGL_I3D_genlock
-		wglEnableGenlockI3D						= (PFNWGLENABLEGENLOCKI3DPROC)GetAnyGLFuncAddress("wglEnableGenlockI3D");
-		wglDisableGenlockI3D					= (PFNWGLDISABLEGENLOCKI3DPROC)GetAnyGLFuncAddress("wglDisableGenlockI3D");
-		wglIsEnabledGenlockI3D					= (PFNWGLISENABLEDGENLOCKI3DPROC)GetAnyGLFuncAddress("wglIsEnabledGenlockI3D");
-		wglGenlockSourceI3D						= (PFNWGLGENLOCKSOURCEI3DPROC)GetAnyGLFuncAddress("wglGenlockSourceI3D");
-		wglGetGenlockSourceI3D					= (PFNWGLGETGENLOCKSOURCEI3DPROC)GetAnyGLFuncAddress("wglGetGenlockSourceI3D");
-		wglGenlockSourceEdgeI3D					= (PFNWGLGENLOCKSOURCEEDGEI3DPROC)GetAnyGLFuncAddress("wglGenlockSourceEdgeI3D");
-		wglGetGenlockSourceEdgeI3D				= (PFNWGLGETGENLOCKSOURCEEDGEI3DPROC)GetAnyGLFuncAddress("wglGetGenlockSourceEdgeI3D");
-		wglGenlockSampleRateI3D					= (PFNWGLGENLOCKSAMPLERATEI3DPROC)GetAnyGLFuncAddress("wglGenlockSampleRateI3D");
-		wglGetGenlockSampleRateI3D				= (PFNWGLGETGENLOCKSAMPLERATEI3DPROC)GetAnyGLFuncAddress("wglGetGenlockSampleRateI3D");
-		wglGenlockSourceDelayI3D				= (PFNWGLGENLOCKSOURCEDELAYI3DPROC)GetAnyGLFuncAddress("wglGenlockSourceDelayI3D");
-		wglGetGenlockSourceDelayI3D				= (PFNWGLGETGENLOCKSOURCEDELAYI3DPROC)GetAnyGLFuncAddress("wglGetGenlockSourceDelayI3D");
-		wglQueryGenlockMaxSourceDelayI3D		= (PFNWGLQUERYGENLOCKMAXSOURCEDELAYI3DPROC)GetAnyGLFuncAddress("wglQueryGenlockMaxSourceDelayI3D");
+		GET_FN(wglEnableGenlockI3D, PFNWGLENABLEGENLOCKI3DPROC);
+		GET_FN(wglDisableGenlockI3D, PFNWGLDISABLEGENLOCKI3DPROC);
+		GET_FN(wglIsEnabledGenlockI3D, PFNWGLISENABLEDGENLOCKI3DPROC);
+		GET_FN(wglGenlockSourceI3D, PFNWGLGENLOCKSOURCEI3DPROC);
+		GET_FN(wglGetGenlockSourceI3D, PFNWGLGETGENLOCKSOURCEI3DPROC);
+		GET_FN(wglGenlockSourceEdgeI3D, PFNWGLGENLOCKSOURCEEDGEI3DPROC);
+		GET_FN(wglGetGenlockSourceEdgeI3D, PFNWGLGETGENLOCKSOURCEEDGEI3DPROC);
+		GET_FN(wglGenlockSampleRateI3D, PFNWGLGENLOCKSAMPLERATEI3DPROC);
+		GET_FN(wglGetGenlockSampleRateI3D, PFNWGLGETGENLOCKSAMPLERATEI3DPROC);
+		GET_FN(wglGenlockSourceDelayI3D, PFNWGLGENLOCKSOURCEDELAYI3DPROC);
+		GET_FN(wglGetGenlockSourceDelayI3D, PFNWGLGETGENLOCKSOURCEDELAYI3DPROC);
+		GET_FN(wglQueryGenlockMaxSourceDelayI3D, PFNWGLQUERYGENLOCKMAXSOURCEDELAYI3DPROC);
 #endif
+        
+        
 #ifdef WGL_NV_swap_group
-		wglJoinSwapGroupNV						= (PFNWGLJOINSWAPGROUPNVPROC)GetAnyGLFuncAddress("wglJoinSwapGroupNV");
-		wglBindSwapBarrierNV					= (PFNWGLBINDSWAPBARRIERNVPROC)GetAnyGLFuncAddress("wglBindSwapBarrierNV");
-		wglQuerySwapGroupNV						= (PFNWGLQUERYSWAPGROUPNVPROC)GetAnyGLFuncAddress("wglQuerySwapGroupNV");
-		wglQueryMaxSwapGroupsNV					= (PFNWGLQUERYMAXSWAPGROUPSNVPROC)GetAnyGLFuncAddress("wglQueryMaxSwapGroupsNV");
-		wglQueryFrameCountNV					= (PFNWGLQUERYFRAMECOUNTNVPROC)GetAnyGLFuncAddress("wglQueryFrameCountNV");
-		wglResetFrameCountNV					= (PFNWGLRESETFRAMECOUNTNVPROC)GetAnyGLFuncAddress("wglResetFrameCountNV");
+		GET_FN(wglJoinSwapGroupNV, PFNWGLJOINSWAPGROUPNVPROC);
+		GET_FN(wglBindSwapBarrierNV, PFNWGLBINDSWAPBARRIERNVPROC);
+		GET_FN(wglQuerySwapGroupNV, PFNWGLQUERYSWAPGROUPNVPROC);
+		GET_FN(wglQueryMaxSwapGroupsNV, PFNWGLQUERYMAXSWAPGROUPSNVPROC);
+		GET_FN(wglQueryFrameCountNV, PFNWGLQUERYFRAMECOUNTNVPROC);
+		GET_FN(wglResetFrameCountNV, PFNWGLRESETFRAMECOUNTNVPROC);
 #endif
+        
+        
 #ifdef WGL_ARB_create_context
-		wglCreateContextAttribsARB				= (PFNWGLCREATECONTEXTATTRIBSARBPROC)GetAnyGLFuncAddress("wglCreateContextAttribsARB");
+		GET_FN(wglCreateContextAttribsARB, PFNWGLCREATECONTEXTATTRIBSARBPROC);
 #endif
+        
+        
 #ifdef WGL_AMD_gpu_association
-		wglGetGPUIDsAMD							= (PFNWGLGETGPUIDSAMDPROC)GetAnyGLFuncAddress("wglGetGPUIDsAMD");
-		wglGetGPUInfoAMD						= (PFNWGLGETGPUINFOAMDPROC)GetAnyGLFuncAddress("wglGetGPUInfoAMD");
-		wglGetContextGPUIDAMD					= (PFNWGLGETCONTEXTGPUIDAMDPROC)GetAnyGLFuncAddress("wglGetContextGPUIDAMD");
-		wglCreateAssociatedContextAMD			= (PFNWGLCREATEASSOCIATEDCONTEXTAMDPROC)GetAnyGLFuncAddress("wglCreateAssociatedContextAMD");
-		wglCreateAssociatedContextAttribsAMD	= (PFNWGLCREATEASSOCIATEDCONTEXTATTRIBSAMDPROC)GetAnyGLFuncAddress("wglCreateAssociatedContextAttribsAMD");
-		wglDeleteAssociatedContextAMD			= (PFNWGLDELETEASSOCIATEDCONTEXTAMDPROC)GetAnyGLFuncAddress("wglDeleteAssociatedContextAMD");
-		wglMakeAssociatedContextCurrentAMD		= (PFNWGLMAKEASSOCIATEDCONTEXTCURRENTAMDPROC)GetAnyGLFuncAddress("wglMakeAssociatedContextCurrentAMD");
-		wglGetCurrentAssociatedContextAMD		= (PFNWGLGETCURRENTASSOCIATEDCONTEXTAMDPROC)GetAnyGLFuncAddress("wglGetCurrentAssociatedContextAMD");
-		wglBlitContextFramebufferAMD			= (PFNWGLBLITCONTEXTFRAMEBUFFERAMDPROC)GetAnyGLFuncAddress("wglBlitContextFramebufferAMD");
+		GET_FN(wglGetGPUIDsAMD, PFNWGLGETGPUIDSAMDPROC);
+		GET_FN(wglGetGPUInfoAMD, PFNWGLGETGPUINFOAMDPROC);
+		GET_FN(wglGetContextGPUIDAMD, PFNWGLGETCONTEXTGPUIDAMDPROC);
+		GET_FN(wglCreateAssociatedContextAMD, PFNWGLCREATEASSOCIATEDCONTEXTAMDPROC);
+		GET_FN(wglCreateAssociatedContextAttribsAMD, PFNWGLCREATEASSOCIATEDCONTEXTATTRIBSAMDPROC);
+		GET_FN(wglDeleteAssociatedContextAMD, PFNWGLDELETEASSOCIATEDCONTEXTAMDPROC);
+		GET_FN(wglMakeAssociatedContextCurrentAMD, PFNWGLMAKEASSOCIATEDCONTEXTCURRENTAMDPROC);
+		GET_FN(wglGetCurrentAssociatedContextAMD, PFNWGLGETCURRENTASSOCIATEDCONTEXTAMDPROC);
+		GET_FN(wglBlitContextFramebufferAMD, PFNWGLBLITCONTEXTFRAMEBUFFERAMDPROC);
 #endif
+        
 #ifdef WGL_NV_DX_interop
-		wglDXSetResourceShareHandleNV			= (PFNWGLDXSETRESOURCESHAREHANDLENVPROC)GetAnyGLFuncAddress("wglDXSetResourceShareHandleNV");
-		wglDXOpenDeviceNV						= (PFNWGLDXOPENDEVICENVPROC)GetAnyGLFuncAddress("wglDXOpenDeviceNV");
-		wglDXCloseDeviceNV						= (PFNWGLDXCLOSEDEVICENVPROC)GetAnyGLFuncAddress("wglDXCloseDeviceNV");
-		wglDXRegisterObjectNV					= (PFNWGLDXREGISTEROBJECTNVPROC)GetAnyGLFuncAddress("wglDXRegisterObjectNV");
-		wglDXUnregisterObjectNV					= (PFNWGLDXUNREGISTEROBJECTNVPROC)GetAnyGLFuncAddress("wglDXUnregisterObjectNV");
-		wglDXObjectAccessNV						= (PFNWGLDXOBJECTACCESSNVPROC)GetAnyGLFuncAddress("wglDXObjectAccessNV");
-		wglDXLockObjectsNV						= (PFNWGLDXLOCKOBJECTSNVPROC)GetAnyGLFuncAddress("wglDXLockObjectsNV");
-		wglDXUnlockObjectsNV					= (PFNWGLDXUNLOCKOBJECTSNVPROC)GetAnyGLFuncAddress("wglDXUnlockObjectsNV");
+		GET_FN(wglDXSetResourceShareHandleNV, PFNWGLDXSETRESOURCESHAREHANDLENVPROC);
+		GET_FN(wglDXOpenDeviceNV, PFNWGLDXOPENDEVICENVPROC);
+		GET_FN(wglDXCloseDeviceNV, PFNWGLDXCLOSEDEVICENVPROC);
+		GET_FN(wglDXRegisterObjectNV, PFNWGLDXREGISTEROBJECTNVPROC);
+		GET_FN(wglDXUnregisterObjectNV, PFNWGLDXUNREGISTEROBJECTNVPROC);
+		GET_FN(wglDXObjectAccessNV, PFNWGLDXOBJECTACCESSNVPROC);
+		GET_FN(wglDXLockObjectsNV, PFNWGLDXLOCKOBJECTSNVPROC);
+		GET_FN(wglDXUnlockObjectsNV, PFNWGLDXUNLOCKOBJECTSNVPROC);
 #endif
-#pragma endregion
+        
         
 		if (Version >= 33)
 		{
-			glGetShaderiv = (PFNGLGETSHADERIVPROC)GetAnyGLFuncAddress("glGetShaderiv");
-			glGetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC)GetAnyGLFuncAddress("glGetShaderInfoLog");
-			glGetProgramiv = (PFNGLGETPROGRAMIVPROC)GetAnyGLFuncAddress("glGetProgramiv");
-			glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)GetAnyGLFuncAddress("glGetProgramInfoLog");
+			GET_FN(glGetShaderiv, PFNGLGETSHADERIVPROC);
+			GET_FN(glGetShaderInfoLog, PFNGLGETSHADERINFOLOGPROC);
+			GET_FN(glGetProgramiv, PFNGLGETPROGRAMIVPROC);
+			GET_FN(glGetProgramInfoLog, PFNGLGETPROGRAMINFOLOGPROC);
             
-			glEnable = (PFNGLENABLEPROC)GetAnyGLFuncAddress("glEnable");
-			glFinish = (PFNGLFINISHPROC)GetAnyGLFuncAddress("glFinish");
+			GET_FN(glEnable, PFNGLENABLEPROC);
+			GET_FN(glFinish, PFNGLFINISHPROC);
             
-			glViewport = (PFNGLVIEWPORTPROC)GetAnyGLFuncAddress("glViewport");
-			glClearColor = (PFNGLCLEARCOLORPROC)GetAnyGLFuncAddress("glClearColor");
-			glClear = (PFNGLCLEARPROC)GetAnyGLFuncAddress("glClear");
-            glClearDepth = (PFNGLCLEARDEPTHPROC)GetAnyGLFuncAddress("glClearDepth");
-            glDepthFunc = (PFNGLDEPTHFUNCPROC)GetAnyGLFuncAddress("glDepthFunc");
-			glDrawArrays = (PFNGLDRAWARRAYSPROC)GetAnyGLFuncAddress("glDrawArrays");
-			glDrawElements = (PFNGLDRAWELEMENTSPROC)GetAnyGLFuncAddress("glDrawElements");
+			GET_FN(glViewport, PFNGLVIEWPORTPROC);
+			GET_FN(glClearColor, PFNGLCLEARCOLORPROC);
+			GET_FN(glClear, PFNGLCLEARPROC);
+            GET_FN(glClearDepth, PFNGLCLEARDEPTHPROC);
+            GET_FN(glDepthFunc, PFNGLDEPTHFUNCPROC);
+			GET_FN(glDrawArrays, PFNGLDRAWARRAYSPROC);
+			GET_FN(glDrawElements, PFNGLDRAWELEMENTSPROC);
             
-			glGenBuffers = (PFNGLGENBUFFERSPROC)GetAnyGLFuncAddress("glGenBuffers");
-            glDeleteBuffers = (PFNGLDELETEBUFFERSPROC)GetAnyGLFuncAddress("glDeleteBuffers");
-			glGenVertexArrays =(PFNGLGENVERTEXARRAYSPROC)GetAnyGLFuncAddress("glGenVertexArrays");
-            glDeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC)GetAnyGLFuncAddress("glDeleteVertexArrays");
-			glBindBuffer = (PFNGLBINDBUFFERPROC)GetAnyGLFuncAddress("glBindBuffer");
-			glBindVertexArray =(PFNGLBINDVERTEXARRAYPROC)GetAnyGLFuncAddress("glBindVertexArray");
-			glBufferData = (PFNGLBUFFERDATAPROC)GetAnyGLFuncAddress("glBufferData");
-            glPixelStorei = (PFNGLPIXELSTOREIPROC)GetAnyGLFuncAddress("glPixelStorei");
+			GET_FN(glGenBuffers, PFNGLGENBUFFERSPROC);
+            GET_FN(glDeleteBuffers, PFNGLDELETEBUFFERSPROC);
+			GET_FN(glGenVertexArrays,PFNGLGENVERTEXARRAYSPROC);
+            GET_FN(glDeleteVertexArrays, PFNGLDELETEVERTEXARRAYSPROC);
+			GET_FN(glBindBuffer, PFNGLBINDBUFFERPROC);
+			GET_FN(glBindVertexArray,PFNGLBINDVERTEXARRAYPROC);
+			GET_FN(glBufferData, PFNGLBUFFERDATAPROC);
+            GET_FN(glPixelStorei, PFNGLPIXELSTOREIPROC);
             
-			glCreateShader = (PFNGLCREATESHADERPROC)GetAnyGLFuncAddress("glCreateShader");
-			glCreateProgram = (PFNGLCREATEPROGRAMPROC)GetAnyGLFuncAddress("glCreateProgram");
-			glDeleteShader = (PFNGLDELETESHADERPROC)GetAnyGLFuncAddress("glDeleteShader");
+			GET_FN(glCreateShader, PFNGLCREATESHADERPROC);
+			GET_FN(glCreateProgram, PFNGLCREATEPROGRAMPROC);
+			GET_FN(glDeleteShader, PFNGLDELETESHADERPROC);
             
-			glShaderSource						= (PFNGLSHADERSOURCEPROC)GetAnyGLFuncAddress("glShaderSource");
-			glCompileShader						= (PFNGLCOMPILESHADERPROC)GetAnyGLFuncAddress("glCompileShader");
-			glAttachShader						= (PFNGLATTACHSHADERPROC)GetAnyGLFuncAddress("glAttachShader");
-            glBindFragDataLocation                = (PFNGLBINDFRAGDATALOCATIONPROC)GetAnyGLFuncAddress("glBindFragDataLocation");
-			glLinkProgram						= (PFNGLLINKPROGRAMPROC)GetAnyGLFuncAddress("glLinkProgram");
-			glUseProgram						= (PFNGLUSEPROGRAMPROC)GetAnyGLFuncAddress("glUseProgram");
+			GET_FN(glShaderSource, PFNGLSHADERSOURCEPROC);
+			GET_FN(glCompileShader, PFNGLCOMPILESHADERPROC);
+			GET_FN(glAttachShader, PFNGLATTACHSHADERPROC);
+            GET_FN(glBindFragDataLocation, PFNGLBINDFRAGDATALOCATIONPROC);
+			GET_FN(glLinkProgram, PFNGLLINKPROGRAMPROC);
+			GET_FN(glUseProgram, PFNGLUSEPROGRAMPROC);
             
-			glGetUniformfv						= (PFNGLGETUNIFORMFVPROC)GetAnyGLFuncAddress("glGetUniformfv");
-			glGetUniformiv						= (PFNGLGETUNIFORMIVPROC)GetAnyGLFuncAddress("glGetUniformiv");
-			glGetUniformuiv						= (PFNGLGETUNIFORMUIVPROC)GetAnyGLFuncAddress("glGetUniformuiv");
-			glGetUniformLocation				= (PFNGLGETUNIFORMLOCATIONPROC)GetAnyGLFuncAddress("glGetUniformLocation");
-			glUniform4f							= (PFNGLUNIFORM4FPROC)GetAnyGLFuncAddress("glUniform4f");
-			glUniform3f							= (PFNGLUNIFORM3FPROC)GetAnyGLFuncAddress("glUniform3f");
-			glUniform2f							= (PFNGLUNIFORM2FPROC)GetAnyGLFuncAddress("glUniform2f");
-			glUniform1f							= (PFNGLUNIFORM1FPROC)GetAnyGLFuncAddress("glUniform1f");
+			GET_FN(glGetUniformfv, PFNGLGETUNIFORMFVPROC);
+			GET_FN(glGetUniformiv, PFNGLGETUNIFORMIVPROC);
+			GET_FN(glGetUniformuiv, PFNGLGETUNIFORMUIVPROC);
+			GET_FN(glGetUniformLocation, PFNGLGETUNIFORMLOCATIONPROC);
+			GET_FN(glUniform4f, PFNGLUNIFORM4FPROC);
+			GET_FN(glUniform3f, PFNGLUNIFORM3FPROC);
+			GET_FN(glUniform2f, PFNGLUNIFORM2FPROC);
+			GET_FN(glUniform1f, PFNGLUNIFORM1FPROC);
             
-			glUniform4fv						= (PFNGLUNIFORM4FVPROC)GetAnyGLFuncAddress("glUniform4fv");
-			glUniform3fv						= (PFNGLUNIFORM3FVPROC)GetAnyGLFuncAddress("glUniform3fv");
-			glUniform2fv						= (PFNGLUNIFORM2FVPROC)GetAnyGLFuncAddress("glUniform2fv");
-			glUniform1fv						= (PFNGLUNIFORM1FVPROC)GetAnyGLFuncAddress("glUniform1fv");
+			GET_FN(glUniform4fv, PFNGLUNIFORM4FVPROC);
+			GET_FN(glUniform3fv, PFNGLUNIFORM3FVPROC);
+			GET_FN(glUniform2fv, PFNGLUNIFORM2FVPROC);
+			GET_FN(glUniform1fv, PFNGLUNIFORM1FVPROC);
             
-			glUniformMatrix4fv					= (PFNGLUNIFORMMATRIX4FVPROC)GetAnyGLFuncAddress("glUniformMatrix4fv");
-			glUniformMatrix3fv					= (PFNGLUNIFORMMATRIX3FVPROC)GetAnyGLFuncAddress("glUniformMatrix3fv");
-			glUniformMatrix2fv					= (PFNGLUNIFORMMATRIX2FVPROC)GetAnyGLFuncAddress("glUniformMatrix2fv");
+			GET_FN(glUniformMatrix4fv, PFNGLUNIFORMMATRIX4FVPROC);
+			GET_FN(glUniformMatrix3fv, PFNGLUNIFORMMATRIX3FVPROC);
+			GET_FN(glUniformMatrix2fv, PFNGLUNIFORMMATRIX2FVPROC);
             
-			glUniform4d							= (PFNGLUNIFORM4DPROC)GetAnyGLFuncAddress("glUniform4d");
-			glUniform3d							= (PFNGLUNIFORM3DPROC)GetAnyGLFuncAddress("glUniform3d");
-			glUniform2d							= (PFNGLUNIFORM2DPROC)GetAnyGLFuncAddress("glUniform2d");
-			glUniform1d							= (PFNGLUNIFORM1DPROC)GetAnyGLFuncAddress("glUniform1d");
+			GET_FN(glUniform4d, PFNGLUNIFORM4DPROC);
+			GET_FN(glUniform3d, PFNGLUNIFORM3DPROC);
+			GET_FN(glUniform2d, PFNGLUNIFORM2DPROC);
+			GET_FN(glUniform1d, PFNGLUNIFORM1DPROC);
             
-			glUniform4i							= (PFNGLUNIFORM4IPROC)GetAnyGLFuncAddress("glUniform4i");
-			glUniform3i							= (PFNGLUNIFORM3IPROC)GetAnyGLFuncAddress("glUniform3i");
-			glUniform2i							= (PFNGLUNIFORM2IPROC)GetAnyGLFuncAddress("glUniform2i");
-			glUniform1i							= (PFNGLUNIFORM1IPROC)GetAnyGLFuncAddress("glUniform1i");
+			GET_FN(glUniform4i, PFNGLUNIFORM4IPROC);
+			GET_FN(glUniform3i, PFNGLUNIFORM3IPROC);
+			GET_FN(glUniform2i, PFNGLUNIFORM2IPROC);
+			GET_FN(glUniform1i, PFNGLUNIFORM1IPROC);
             
-			glTexParameteri						= (PFNGLTEXPARAMETERIPROC)GetAnyGLFuncAddress("glTexParameteri");
-			glTexParameterfv					= (PFNGLTEXPARAMETERFVPROC)GetAnyGLFuncAddress("glTexParameterfv");
+			GET_FN(glTexParameteri, PFNGLTEXPARAMETERIPROC);
+			GET_FN(glTexParameterfv, PFNGLTEXPARAMETERFVPROC);
             
-			glVertexAttribPointer				= (PFNGLVERTEXATTRIBPOINTERPROC)GetAnyGLFuncAddress("glVertexAttribPointer");
-			glEnableVertexAttribArray			= (PFNGLENABLEVERTEXATTRIBARRAYPROC)GetAnyGLFuncAddress("glEnableVertexAttribArray");
-            glGetVertexAttribIuiv = (PFNGLGETVERTEXATTRIBIUIVPROC)GetAnyGLFuncAddress("glGetVertexAttribIuiv");
+			GET_FN(glVertexAttribPointer, PFNGLVERTEXATTRIBPOINTERPROC);
+			GET_FN(glEnableVertexAttribArray, PFNGLENABLEVERTEXATTRIBARRAYPROC);
+            GET_FN(glGetVertexAttribIuiv, PFNGLGETVERTEXATTRIBIUIVPROC);
             
-			glGenTextures = (PFNGLGENTEXTURESPROC)GetAnyGLFuncAddress("glGenTextures");
-			glBindTexture = (PFNGLBINDTEXTUREPROC)GetAnyGLFuncAddress("glBindTexture");
-            glObjectLabel = (PFNGLOBJECTLABELPROC)GetAnyGLFuncAddress("glObjectLabel");
-			glTexImage2D						= (PFNGLTEXIMAGE2DPROC)GetAnyGLFuncAddress("glTexImage2D");
-			glActiveTexture						= (PFNGLACTIVETEXTUREPROC)GetAnyGLFuncAddress("glActiveTexture");
+			GET_FN(glGenTextures, PFNGLGENTEXTURESPROC);
+			GET_FN(glBindTexture, PFNGLBINDTEXTUREPROC);
+            GET_FN(glObjectLabel, PFNGLOBJECTLABELPROC);
+			GET_FN(glTexImage2D, PFNGLTEXIMAGE2DPROC);
+			GET_FN(glActiveTexture, PFNGLACTIVETEXTUREPROC);
             
-            glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)GetAnyGLFuncAddress("glGetAttribLocation");
+            GET_FN(glGetAttribLocation, PFNGLGETATTRIBLOCATIONPROC);
             
-			glGenerateMipmap					= (PFNGLGENERATEMIPMAPPROC)GetAnyGLFuncAddress("glGenerateMipmap");
+			GET_FN(glGenerateMipmap, PFNGLGENERATEMIPMAPPROC);
 		}
 	}
 }
+
+#undef GL_FN(a, b)
+#undef GET_FN(a, b)
