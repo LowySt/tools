@@ -4227,6 +4227,39 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         BOOL     GetTextExtentPoint32A(HDC hdc, LPCSTR lpString, int c, LPSIZE psizl);
         
         
+        // -------------------//
+        //       OPENGL       //
+        // -------------------//
+        
+        typedef unsigned int   GLenum;
+        typedef unsigned char  GLboolean;
+        typedef unsigned int   GLbitfield;
+        typedef signed char    GLbyte;
+        typedef short          GLshort;
+        typedef int            GLint;
+        typedef int            GLsizei;
+        typedef unsigned char  GLubyte;
+        typedef unsigned short GLushort;
+        typedef unsigned int   GLuint;
+        typedef float          GLfloat;
+        typedef float          GLclampf;
+        typedef double         GLdouble;
+        typedef double         GLclampd;
+        typedef void           GLvoid;
+        
+        WINGDIAPI BOOL  WINAPI wglCopyContext(HGLRC, HGLRC, UINT);
+        WINGDIAPI HGLRC WINAPI wglCreateContext(HDC);
+        WINGDIAPI HGLRC WINAPI wglCreateLayerContext(HDC, int);
+        WINGDIAPI BOOL  WINAPI wglDeleteContext(HGLRC);
+        WINGDIAPI HGLRC WINAPI wglGetCurrentContext(VOID);
+        WINGDIAPI HDC   WINAPI wglGetCurrentDC(VOID);
+        WINGDIAPI PROC  WINAPI wglGetProcAddress(LPCSTR);
+        WINGDIAPI BOOL  WINAPI wglMakeCurrent(HDC, HGLRC);
+        WINGDIAPI BOOL  WINAPI wglShareLists(HGLRC, HGLRC);
+        WINGDIAPI BOOL  WINAPI wglUseFontBitmapsA(HDC, DWORD, DWORD, DWORD);
+        
+        
+        
         // Now... why the fuck would the ComboBox interface be done with messages
         // If everything else uses functions? Why the actual fuck...
 #define SNDMSG SendMessageA
