@@ -6,7 +6,11 @@
 #include "OpenGL\glCoreARB.h"
 #include "OpenGL\wglExt.h"
 
+#ifdef __GNUG__
+#define GL_FN(a, b) a b;
+#else
 #define GL_FN(a, b) __declspec(selectany) a b;
+#endif
 #define GET_FN(a, b) a = (b)GetAnyGLFuncAddress(#a);
 
 extern "C"
