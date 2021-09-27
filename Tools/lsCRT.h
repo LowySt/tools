@@ -374,13 +374,12 @@ ls_dangerousNotToBeCalledInitFunctionHere();
 
 #endif
 
+#ifdef LS_PLAT_WINDOWS
+
+#include <intrin.h>
 #include <immintrin.h>
 #include <emmintrin.h>
 
-#ifdef LS_PLAT_WINDOWS
-#ifndef __GNUG__
-#include <intrin.h>
-#endif
 #endif
 
 #ifdef LS_PLAT_LINUX
@@ -1322,29 +1321,6 @@ void ls_memcpy(void *src, void *dest, size_t size)
     u8 *At = (u8 *)src;
     u8 *To = (u8 *)dest;
     
-#if 0
-    s32 direction = 1;
-    
-    //SIMD PATH
-    if(((At + size) >= To) && (At + size < To + size)) //NOTE: memory overwrites itself, so we write backwards.
-    {
-        At = (u8 *)src + size-16;
-        To = (u8 *)dest + size-16;
-        direction = -1;
-    }
-    
-    //BYTE PATH
-    //TODO: This is busted for non-byte moves (Like moving a u32 pointer)
-    //NOTE: Copy-pastad to avoid an extra check in the simd path when setting To
-    if(((At + size) >= To) && (At + size < To + size)) //NOTE: memory overwrites itself, so we write backwards.
-    {
-        At = (u8 *)src + size-1;
-        To = (u8 *)dest + size-1;
-        direction = -1;
-    }
-    
-#endif
-    
     //NOTE: SIMD path
     if(size > 32)
     {
@@ -1356,7 +1332,7 @@ void ls_memcpy(void *src, void *dest, size_t size)
         
         while(simdSize)
         {
-            _mm_storeu_si128(simdTo, *simdAt);
+            _mm_storeu_si128(simdTo, _mm_loadu_si128(simdAt));
             
             At += 16;
             To += 16;
