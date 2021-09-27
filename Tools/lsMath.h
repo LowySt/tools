@@ -306,37 +306,26 @@ f32 ls_rad(f32 x)
     return ((x*PI) / 180.0f);
 }
 
-#ifdef __GNUG__
 f64 ls_sqrt(f64 x)
 {
-    return 0.0f;
+    __m128d Result = _mm_set1_pd(x);
+    Result = _mm_sqrt_pd(Result);
+    return _mm_cvtsd_f64(Result);
 }
-#else
-f64 ls_sqrt(f64 x)
-{
-#ifdef LS_PLAT_WINDOWS
-    __m128d Result = _mm_set_pd1(x);
-    Result = _mm_invsqrt_pd(Result);
-    
-    //NOTE: Not using reciprocal builtin because
-    // I don't know how 12 bits of precision are here...
-    return ((f64)1.0f / Result.m128d_f64[0]);
-#endif
-    
-#ifdef LS_PLAT_LINUX
-    f32 Result = __builtin_sqrtf(x);
-    return Result;
-#endif
-}
-#endif
 
 f64 ls_cbrt(f64 x)
 {
+#ifdef __GNUG__
+    return 0.0;
+#else
+    
 #ifdef LS_PLAT_WINDOWS
     __m128d Result = _mm_set_pd1(x);
     Result = _mm_cbrt_pd(Result);
     
-    return Result.m128d_f64[0];
+    return _mm_cvtsd_f64(Result);
+#endif
+    
 #endif
     
 #ifdef LS_PLAT_LINUX
@@ -455,38 +444,62 @@ b32 ls_isF64Normal(f64 v)
 
 f64 ls_sin(f64 radians)
 {
+#ifdef __GNUG__
+    return 0.0;
+#else
+    
     __m128d rad128 = _mm_set_pd1(radians);
     __m128d sinVal = _mm_sin_pd(rad128);
     
     return sinVal.m128d_f64[0];
+#endif
 }
 
 f64 ls_asin(f64 x)
 {
+#ifdef __GNUG__
+    return 0.0;
+#else
+    
     __m128d xVal = _mm_set_pd1(x);
     __m128d asinVal = _mm_asin_pd(xVal);
     
     return asinVal.m128d_f64[0];
+#endif
 }
 
 f64 ls_cos(f64 rad)
 {
+#ifdef __GNUG__
+    return 0.0;
+#else
+    
     __m128d rad128 = _mm_set_pd1(rad);
     __m128d cosVal = _mm_cos_pd(rad128);
     
     return cosVal.m128d_f64[0];
+#endif
 }
 
 f64 ls_acos(f64 x)
 {
+#ifdef __GNUG__
+    return 0.0;
+#else
+    
     __m128d xVal = _mm_set_pd1(x);
     __m128d acosVal = _mm_acos_pd(xVal);
     
     return acosVal.m128d_f64[0];
+#endif
 }
 
 void ls_sincos(f64 rad, f64 *sin, f64 *cos)
 {
+#ifdef __GNUG__
+    return;
+#else
+    
     f64 cosRet[2] = {};
     
     __m128d rad128 = _mm_set_pd1(rad);
@@ -494,31 +507,46 @@ void ls_sincos(f64 rad, f64 *sin, f64 *cos)
     
     *sin = sinVal.m128d_f64[0];
     *cos = cosRet[0];
+#endif
 }
 
 f64 ls_tan(f64 rad)
 {
+#ifdef __GNUG__
+    return 0.0;
+#else
     __m128d rad128 = _mm_set_pd1(rad);
     __m128d tanVal = _mm_tan_pd(rad128);
     
     return tanVal.m128d_f64[0];
+#endif
 }
 
 f64 ls_atan(f64 x)
 {
+#ifdef __GNUG__
+    return 0.0;
+#else
+    
     __m128d xVal = _mm_set_pd1(x);
     __m128d atanVal = _mm_atan_pd(xVal);
     
     return atanVal.m128d_f64[0];
+#endif
 }
 
 f64 ls_atan2(f64 a, f64 b)
 {
+#ifdef __GNUG__
+    return 0.0;
+#else
+    
     __m128d aVal = _mm_set_pd1(a);
     __m128d bVal = _mm_set_pd1(b);
     __m128d atanVal = _mm_atan2_pd(aVal, bVal);
     
     return atanVal.m128d_f64[0];
+#endif
 }
 
 /////////////
