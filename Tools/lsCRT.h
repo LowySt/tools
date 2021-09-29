@@ -237,7 +237,7 @@ extern "C"
     u16 ByteSwap16(u16 value);
     u32 ByteSwap32(u32 value);
     u64 ByteSwap64(u64 value);
-    f32 Ceil(f32 v);
+    f64 Ceil(f64 v);
 }
 
 #define ARRAY_IDX_NOT_FOUND (u32)-1
@@ -1643,24 +1643,14 @@ u64 ByteSwap64(u64 value)
 #endif
 }
 
-f32 Ceil(f32 v)
+f64 Ceil(f64 v)
 {
+    __m128d Result = _mm_set_pd1(v);
+    Result = _mm_ceil_pd(Result);
     
-#ifdef LS_PLAT_WINDOWS
-#ifdef __GNUG__
-    //Shit
-    return (int)(v+1);
-#else
-    __m128 Result = _mm_set_ps1(v);
-    Result = _mm_ceil_ps(Result);
+    f64 res = _mm_cvtsd_f64(Result);
     
-    return (Result.m128_f32[0]);
-#endif
-#endif
-    
-#ifdef LS_PLAT_LINUX
-    return 0.0f;
-#endif
+    return res;
 }
 
 #endif
