@@ -310,7 +310,8 @@ void ls_strFreeArr(string *s, u32 arrSize)
 //      for example in printf it seemed to work not that good...
 string ls_strConstant(char *p)
 {
-    string s = {p, sizeof(p)/sizeof(p[0])-1, sizeof(p)/sizeof(p[0])-1};
+    u32 len = ls_len(p);
+    string s = {p, len, len};
     return s;
 }
 
