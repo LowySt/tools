@@ -398,6 +398,8 @@ void ls_bufferAddUnistring(buffer *buff, unistring v)
     AssertMsg(buff, "Buffer pointer is NULL\n");
     AssertMsg(buff->data, "Buffer data is not allocated\n");
     
+    if(v.len == 0) { ls_bufferAddDWord(buff, 0); return; }
+    
     u32 lenInBytes = v.len*sizeof(u32);
     u32 totalLen   = lenInBytes + sizeof(u32); //Adding the lenght of len itself.
     
@@ -435,8 +437,9 @@ unistring ls_bufferReadUnistring(buffer *buff)
     AssertMsg(buff->data, "Buffer data is not allocated\n");
     
     u32 strLen     = ls_bufferReadDWord(buff);
-    u32 lenInBytes = strLen * sizeof(u32);
+    if(strLen == 0) { return unistring({NULL, 0, 0}); }
     
+    u32 lenInBytes = strLen * sizeof(u32);
     unistring s    = ls_unistrAlloc(strLen);
     
     u8 *At = (u8 *)buff->data + buff->cursor;
