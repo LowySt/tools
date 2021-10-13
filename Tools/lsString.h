@@ -1338,13 +1338,15 @@ void ls_unistrSet(unistring *toSet, unistring source)
 {
     AssertMsg(toSet, "String to be set pointer is null\n");
     
-    if(source.len == 0) { return; }
-    
     if(!toSet->data)
     { 
-        toSet->data = (u32 *)ls_alloc(source.len*sizeof(u32));
-        toSet->size = source.len;
+        u32 allocSize = 16 + source.len*sizeof(u32);
+        
+        toSet->data = (u32 *)ls_alloc(allocSize);
+        toSet->size = allocSize;
     }
+    
+    if(source.len == 0) { toSet->len = 0; return; }
     
     if(toSet->size < source.len)
     {
