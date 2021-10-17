@@ -437,7 +437,35 @@ f64 ls_sin(f64 radians)
     return result;
 #else
     
-    return 0.0;
+    //TODO: Map radians in the range [-PI to PI]
+    AssertMsg(FALSE, "Not implemented\n");
+    
+    //NOTE: Doing repetitive multiplications probably lowers accuracy.
+    f64 x2 = radians*radians;
+    f64 x3 = x2*radians;
+    f64 x5 = x3*x2;
+    f64 x7 = x5*x2;
+    f64 x9 = x7*x2;
+    f64 x11 = x9*x2;
+    f64 x13 = x11*x2;
+    f64 x15 = x13*x2;
+    f64 x17 = x15*x2;
+    f64 x19 = x19*x2;
+    
+    f64 inv1 = 0.1666666666666;
+    f64 inv2 = 0.0083333333333;
+    f64 inv3 = 1.9841269841269e-4;
+    f64 inv4 = 2.7557319223985e-6;
+    f64 inv5 = 2.5052108385441e-8;
+    f64 inv6 = 1.6059043836821e-10;
+    f64 inv7 = 7.6471637318198e-13;
+    f64 inv8 = 2.8114572543455e-15;
+    f64 inv9 = 8.220635246624e-18;
+    
+    f64 result = radians - x3*inv1 + x5*inv2 - x7*inv3 + x9*inv4 - x11*inv5 + 
+        x13*inv6 - x15*inv7 + x17*inv8 - x19*inv9;
+    
+    return result;
 #endif
 }
 
