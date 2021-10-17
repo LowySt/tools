@@ -3,6 +3,8 @@
 
 #include "lsCRT.h"
 
+//TODO: I don't like the annoying redundancy/naming of count & used.
+//      It is necessary for non-classical stack ops, but it could be better
 struct stack
 {
     void *top;
@@ -115,6 +117,9 @@ stack ls_stackInit(u32 elementSize, u32 initialCapacity)
 
 void ls_stackPush(stack *s, void *data)
 {
+    AssertMsg(s, "Stack pointer is null");
+    AssertMsg(data, "Input Data pointer is null");
+    
     if(s->used == s->capacity)
     { ls_stackResize(s); }
     
