@@ -257,6 +257,12 @@ struct Array
         return data[index];
     }
     
+    T* getPointer(u32 index)
+    {
+        AssertMsg(index < count, "Index out of bounds in Array<>\n"); //NOTE: Should this be a crash or an error?
+        return data + index;
+    }
+    
     void copy(Array<T> *a)
     {
         if(data) { ls_free(data); }
