@@ -438,7 +438,7 @@ f64 ls_sin(f64 radians)
 #else
     
     //TODO: Map radians in the range [-PI to PI]
-    AssertMsg(FALSE, "Not implemented\n");
+    AssertMsg(FALSE, "Not implemented in this compiler\n");
     
     //NOTE: Doing repetitive multiplications probably lowers accuracy.
     f64 x2 = radians*radians;
