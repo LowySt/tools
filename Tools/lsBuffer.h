@@ -30,6 +30,7 @@ extern "C"
     void   ls_bufferAddByte(buffer *buff, u8 v);
     void   ls_bufferAddWord(buffer *buff, u16 v);
     void   ls_bufferAddDWord(buffer *buff, u32 v);
+    void   ls_bufferAddFloat(buffer *buff, f32 v);
     void   ls_bufferAddQWord(buffer *buff, u64 v);
     void   ls_bufferAddData(buffer *buff, void *data, u32 len); //TODO: Bad design. Allocated data must know size.
     void   ls_bufferAddDataClean(buffer *buff, void *data, u32 len);
@@ -37,17 +38,20 @@ extern "C"
     u8     ls_bufferPeekByte(buffer *buff);
     u16    ls_bufferPeekWord(buffer *buff);
     u32    ls_bufferPeekDWord(buffer *buff);
+    f32    ls_bufferPeekFloat(buffer *buff);
     u64    ls_bufferPeekQWord(buffer *buff);
     
     u8     ls_bufferReadByte(buffer *buff);
     u16    ls_bufferReadWord(buffer *buff);
     u32    ls_bufferReadDWord(buffer *buff);
+    f32    ls_bufferReadFloat(buffer *buff);
     u64    ls_bufferReadQWord(buffer *buff);
     u32    ls_bufferReadData(buffer *buff, void *out);
     
     u8     ls_bufferPullByte(buffer *buff);
     u16    ls_bufferPullWord(buffer *buff);
     u32    ls_bufferPullDWord(buffer *buff);
+    f32    ls_bufferPullFloat(buffer *buff);
     u64    ls_bufferPullQWord(buffer *buff);
     //TODONOTE: To be able to pull strings we need to change the implementation of AddString
     //      to add the string len both before and after the string data, so that the len can be known
@@ -152,7 +156,7 @@ inline void ls_bufferAdvanceCursor(buffer *buff, u64 amount)
 
 void ls_bufferChangeByte(buffer *buff, u8 v)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u8 *At = (u8 *)buff->data + buff->cursor;
     *At = v;
@@ -160,7 +164,7 @@ void ls_bufferChangeByte(buffer *buff, u8 v)
 
 void ls_bufferChangeWord(buffer *buff, u16 v)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u16 *At = (u16 *)((u8 *)buff->data + buff->cursor);
     *At = v;
@@ -168,7 +172,7 @@ void ls_bufferChangeWord(buffer *buff, u16 v)
 
 void ls_bufferChangeDWord(buffer *buff, u32 v)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u32 *At = (u32 *)((u8 *)buff->data + buff->cursor);
     *At = v;
@@ -176,7 +180,7 @@ void ls_bufferChangeDWord(buffer *buff, u32 v)
 
 void ls_bufferChangeQWord(buffer *buff, u64 v)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u64 *At = (u64 *)((u8 *)buff->data + buff->cursor);
     *At = v;
@@ -184,7 +188,7 @@ void ls_bufferChangeQWord(buffer *buff, u64 v)
 
 void ls_bufferAddByte(buffer *buff, u8 v)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     if(buff->cursor + 1 > buff->size)
     { ls_bufferGrow(buff, 4096); }
@@ -196,7 +200,7 @@ void ls_bufferAddByte(buffer *buff, u8 v)
 
 void ls_bufferAddWord(buffer *buff, u16 v)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     if(buff->cursor + 2 > buff->size)
     { ls_bufferGrow(buff, 4096); }
@@ -208,7 +212,7 @@ void ls_bufferAddWord(buffer *buff, u16 v)
 
 void ls_bufferAddDWord(buffer *buff, u32 v)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     if(buff->cursor + 4 > buff->size)
     { ls_bufferGrow(buff, 4096); }
@@ -218,9 +222,21 @@ void ls_bufferAddDWord(buffer *buff, u32 v)
     buff->cursor += 4;
 }
 
+void ls_bufferAddFloat(buffer *buff, f32 v)
+{
+    AssertMsg(buff->data, "Buffer data is null\n");
+    
+    if(buff->cursor + 4 > buff->size)
+    { ls_bufferGrow(buff, 4096); }
+    
+    f32 *At = (f32 *)((u8 *)buff->data + buff->cursor);
+    *At = v;
+    buff->cursor += 4;
+}
+
 void ls_bufferAddQWord(buffer *buff, u64 v)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     if(buff->cursor + 8 > buff->size)
     { ls_bufferGrow(buff, 4096); }
@@ -232,7 +248,7 @@ void ls_bufferAddQWord(buffer *buff, u64 v)
 
 void ls_bufferAddData(buffer *buff, void *data, u32 len)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     ls_bufferAddDWord(buff, len);
     
@@ -246,7 +262,7 @@ void ls_bufferAddData(buffer *buff, void *data, u32 len)
 
 void ls_bufferAddDataClean(buffer *buff, void *data, u32 len)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     if(buff->cursor + len > buff->size)
     { ls_bufferGrow(buff, len + 4096); }
@@ -258,7 +274,7 @@ void ls_bufferAddDataClean(buffer *buff, void *data, u32 len)
 
 u8 ls_bufferPeekByte(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u8 v = *((u8 *)buff->data + buff->cursor);
     return v;
@@ -266,7 +282,7 @@ u8 ls_bufferPeekByte(buffer *buff)
 
 u16 ls_bufferPeekWord(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u16 v = *(u16 *)((u8 *)buff->data + buff->cursor);
     return v;
@@ -274,15 +290,23 @@ u16 ls_bufferPeekWord(buffer *buff)
 
 u32 ls_bufferPeekDWord(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u32 v = *(u32 *)((u8 *)buff->data + buff->cursor);
     return v;
 }
 
+f32 ls_bufferPeekFloat(buffer *buff)
+{
+    AssertMsg(buff->data, "Buffer data is null\n");
+    
+    f32 v = *(f32 *)((u8 *)buff->data + buff->cursor);
+    return v;
+}
+
 u64 ls_bufferPeekQWord(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u64 v = *(u64 *)((u8 *)buff->data + buff->cursor);
     return v;
@@ -290,7 +314,7 @@ u64 ls_bufferPeekQWord(buffer *buff)
 
 u8 ls_bufferReadByte(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u8 v = *((u8 *)buff->data + buff->cursor);
     buff->cursor += 1;
@@ -299,7 +323,7 @@ u8 ls_bufferReadByte(buffer *buff)
 
 u16 ls_bufferReadWord(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u16 v = *(u16 *)((u8 *)buff->data + buff->cursor);
     buff->cursor += 2;
@@ -308,16 +332,25 @@ u16 ls_bufferReadWord(buffer *buff)
 
 u32 ls_bufferReadDWord(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u32 v = *(u32 *)((u8 *)buff->data + buff->cursor);
     buff->cursor += 4;
     return v;
 }
 
+f32 ls_bufferReadFloat(buffer *buff)
+{
+    AssertMsg(buff->data, "Buffer data is null\n");
+    
+    f32 v = *(f32 *)((u8 *)buff->data + buff->cursor);
+    buff->cursor += 4;
+    return v;
+}
+
 u64 ls_bufferReadQWord(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     u64 v = *(u64 *)((u8 *)buff->data + buff->cursor);
     buff->cursor += 8;
@@ -326,8 +359,8 @@ u64 ls_bufferReadQWord(buffer *buff)
 
 u32 ls_bufferReadData(buffer *buff, void *out)
 {
-    Assert(buff->data);
-    Assert(out);
+    AssertMsg(buff->data, "Buffer data is null\n");
+    AssertMsg(out, "Output buffer is null\n");
     
     u32 numBytes = ls_bufferReadDWord(buff);
     
@@ -340,7 +373,7 @@ u32 ls_bufferReadData(buffer *buff, void *out)
 
 u8 ls_bufferPullByte(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     buff->cursor -= 1;
     u8 v = *((u8 *)buff->data + buff->cursor);
@@ -349,7 +382,7 @@ u8 ls_bufferPullByte(buffer *buff)
 
 u16 ls_bufferPullWord(buffer *buff)
 {
-    Assert(buff->data);
+    AssertMsg(buff->data, "Buffer data is null\n");
     
     buff->cursor -= 2;
     u16 v = *(u16 *)((u8 *)buff->data + buff->cursor);
@@ -363,6 +396,16 @@ u32 ls_bufferPullDWord(buffer *buff)
     
     buff->cursor -= 4;
     u32 v = *(u32 *)((u8 *)buff->data + buff->cursor);
+    return v;
+}
+
+f32 ls_bufferPullFloat(buffer *buff)
+{
+    AssertMsg(buff, "Buffer pointer is NULL\n");
+    AssertMsg(buff->data, "Buffer data is not allocated\n");
+    
+    buff->cursor -= 4;
+    f32 v = *(f32 *)((u8 *)buff->data + buff->cursor);
     return v;
 }
 
