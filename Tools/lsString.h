@@ -1340,9 +1340,9 @@ void ls_unistrSet(unistring *toSet, unistring source)
     
     if(!toSet->data)
     { 
-        u32 allocSize = 16 + source.len*sizeof(u32);
+        u32 allocSize = (16 + source.len);
         
-        toSet->data = (u32 *)ls_alloc(allocSize);
+        toSet->data = (u32 *)ls_alloc(allocSize*sizeof(u32));
         toSet->size = allocSize;
     }
     
