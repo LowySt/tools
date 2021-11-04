@@ -869,6 +869,11 @@ SYNCHRONIZE)
             WORD wMilliseconds;
         } SYSTEMTIME, *PSYSTEMTIME, *LPSYSTEMTIME;
         
+        typedef struct timecaps_tag {
+            UINT wPeriodMin;
+            UINT wPeriodMax;
+        } TIMECAPS, *PTIMECAPS, *NPTIMECAPS, *LPTIMECAPS;
+        
         typedef struct _FILETIME {
             DWORD dwLowDateTime;
             DWORD dwHighDateTime;
@@ -2227,9 +2232,11 @@ WS_SYSMENU)
         VOID       GetSystemTimeAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
         BOOL       FileTimeToSystemTime(CONST FILETIME * lpFileTime, LPSYSTEMTIME lpSystemTime);
         MMRESULT   timeBeginPeriod(UINT uPeriod);
+        MMRESULT   timeEndPeriod(UINT uPeriod);
         BOOL       QueryPerformanceCounter(LARGE_INTEGER * lpPerformanceCount);
         BOOL       QueryPerformanceFrequency(LARGE_INTEGER * lpFrequency);
         
+        MMRESULT   timeGetDevCaps(LPTIMECAPS ptc, UINT cbtc);
         VOID       Sleep(DWORD dwMilliseconds);
         DWORD      SleepEx(DWORD dwMilliseconds, BOOL bAlertable);
         
