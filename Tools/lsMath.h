@@ -226,8 +226,8 @@ f64 ls_fabs(f64 x)
 
 f64 ls_mathClamp(f64 currValue, f64 maxValue, f64 minValue)
 {
-    if(currValue < minValue) { return minValue; }
-    if(currValue > maxValue) { return maxValue; }
+    if(currValue <= minValue) { return minValue; }
+    if(currValue >= maxValue) { return maxValue; }
     
     return currValue;
 }
