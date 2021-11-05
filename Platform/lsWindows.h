@@ -112,7 +112,7 @@ struct MemoryList
     MemoryList *next;
     MemoryList *prev;
     
-    u32 relativePtr;
+    u32 relativePtr; 
     u32 sliceSize;
 };
 
@@ -151,6 +151,7 @@ struct MemoryArena
     u32 currArenaId;
     
     u32 totalBytesBusy;
+    u32 totalBytesVirtualAlloc; //NOTETODO: This is ignoring the Arena System!!!
     
     /*Arenas System*/
     InternalArena arenas[MAX_ARENA_NUM];
@@ -304,21 +305,32 @@ void windows_InitMemory(size_t size)
     //NOTE: Either make a block pageSize (to subdivide) or if more is requested
     // just give a block exactly as big as requested, and it's all yours.
     u64 allocationSize = pageSize;
+    
+    //NOTE: Max Slices is hardcoded to be a pretty small number for large allocations @MaxSlicesComment
+    //      Because I've found that often these allocations are things we want to keep around
+    //      Like Asset Files being loaded from disk. These will never be sliced, and will never be freed.
+    u32 maxSlices = ((allocationSize - sizeof(MemoryBlock)) / 128);
     if(size > (pageSize - sizeof(MemoryBlock)))
-    { allocationSize = size + sizeof(MemoryBlock); }
+    { 
+        allocationSize = size + sizeof(MemoryBlock);
+        maxSlices = 1;
+    }
     
     void *mem = VirtualAlloc(NULL, allocationSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     
-    Assert(mem); //NOTE: Block Allocation Failed.
+    //NOTETODO: Useful for debugging, could be wrapped in a _DEBUG #ifdef @DebugOnlyData
+    Memory.totalBytesVirtualAlloc += allocationSize;
+    
+    AssertMsg(mem, "VirtualAlloc of block failed\n");
     
     MemoryBlock header = {};
     header.next = NULL;
     header.prev = NULL;
     
+    //NOTE: Block size of a page will be reported as 4040 instead of 4096 because of this.
     header.blockSize = (allocationSize - sizeof(MemoryBlock));
     header.curSlices = 1;
     
-    u32 maxSlices = (header.blockSize / 128);
     header.maxSlices = maxSlices;
     
     header.busy = (MemoryList *)VirtualAlloc(NULL, maxSlices*sizeof(MemoryList),
@@ -329,8 +341,11 @@ void windows_InitMemory(size_t size)
                                              MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     header.fTail = header.free;
     
-    Assert(header.busy); //NOTE: Array Allocation Failed.
-    Assert(header.free); //NOTE: Array Allocation Failed.
+    //NOTETODO: @DebugOnlyData
+    Memory.totalBytesVirtualAlloc += maxSlices*sizeof(MemoryList)*2;
+    
+    AssertMsg(header.busy, "VirtualAlloc of busy list failed\n");
+    AssertMsg(header.free, "VirtualAlloc of free list failed\n");
     
     //NOTE: Is u64 -> u32 allocation size a problem? Shouldn't be. Why is allocation Size u64?
     header.free[0] = { 0, 0, sizeof(MemoryBlock), (u32)(allocationSize - sizeof(MemoryBlock))};
@@ -351,12 +366,24 @@ MemoryBlock *windows_memAddBlock(size_t size)
     DWORD pageSize = sysInfo.dwPageSize;
     
     u64 allocationSize = pageSize;
+    
+    //NOTE: @MaxSlicesComment
+    u32 maxSlices = ((allocationSize - sizeof(MemoryBlock)) / 128);
+    if(size > (pageSize - sizeof(MemoryBlock)))
+    { 
+        allocationSize = size + sizeof(MemoryBlock);
+        maxSlices = 1;
+    }
+    
     if(size > (pageSize - sizeof(MemoryBlock)))
     { allocationSize = size + sizeof(MemoryBlock); }
     
     void *mem = VirtualAlloc(NULL, allocationSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     
-    Assert(mem); //NOTE: Block Allocation Failed.
+    //NOTETODO: @DebugOnlyData
+    Memory.totalBytesVirtualAlloc += allocationSize;
+    
+    AssertMsg(mem, "VirtualAlloc of block failed\n");
     
     MemoryBlock *last = Memory.last;
     
@@ -370,7 +397,6 @@ MemoryBlock *windows_memAddBlock(size_t size)
     header.blockSize = (allocationSize - sizeof(MemoryBlock));
     header.curSlices = 1;
     
-    u32 maxSlices = (header.blockSize / 128);
     header.maxSlices = maxSlices;
     
     header.busy = (MemoryList *)VirtualAlloc(NULL, maxSlices*sizeof(MemoryList),
@@ -381,8 +407,11 @@ MemoryBlock *windows_memAddBlock(size_t size)
                                              MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     header.fTail = header.free;
     
-    Assert(header.busy); //NOTE: Array Allocation Failed.
-    Assert(header.free); //NOTE: Array Allocation Failed.
+    //NOTETODO: @DebugOnlyData
+    Memory.totalBytesVirtualAlloc += maxSlices*sizeof(MemoryList)*2;
+    
+    AssertMsg(header.busy, "VirtualAlloc of busy list failed\n");
+    AssertMsg(header.free, "VirtualAlloc of free list failed\n");
     
     //NOTE: Is u64 -> u32 allocation size a problem? Shouldn't be. Why is allocation Size u64?
     header.free[0] = { 0, 0, sizeof(MemoryBlock), (u32)(allocationSize - sizeof(MemoryBlock))};
