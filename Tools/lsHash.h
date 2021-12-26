@@ -1,7 +1,7 @@
 #ifndef LS_HASH_H
 #define LS_HASH_H
 
-#include "tools\lsCRT.h"
+#include "lsCRT.h"
 
 struct MD5_128
 {
@@ -45,7 +45,7 @@ extern "C"
     void       ls_hashTRemove(HashTable *h, void *key);
     
     hashEntry *ls_hashTVal(HashTable *h, void *key);
-        
+    
     /*---------------------*/
     /*  HASHING FUNCTIONS  */
     /*---------------------*/
@@ -201,6 +201,7 @@ u32 MD5_H(u32 S0, u32 S1, u32 S2)
 u32 MD5_I(u32 S0, u32 S1, u32 S2)
 { return (S1 ^ (S0 | ~S2)); }
 
+#if 0
 MD5_128 ls_MD5(string &v)
 {
     MD5_128 Result = {};
@@ -315,25 +316,25 @@ MD5_128 ls_MD5(string &v)
 #define ROTATE_LEFT(x, n) (((x) << (n)) | ((x) >> (32-(n))))
     
 #define FF(a, b, c, d, x, s, ac) { \
-        (a) += F ((b), (c), (d)) + (x) + (u32)(ac); \
-        (a) = ROTATE_LEFT ((a), (s)); \
-        (a) += (b); \
-    }
+(a) += F ((b), (c), (d)) + (x) + (u32)(ac); \
+(a) = ROTATE_LEFT ((a), (s)); \
+(a) += (b); \
+}
 #define GG(a, b, c, d, x, s, ac) { \
-        (a) += G ((b), (c), (d)) + (x) + (u32)(ac); \
-        (a) = ROTATE_LEFT ((a), (s)); \
-        (a) += (b); \
-    }
+(a) += G ((b), (c), (d)) + (x) + (u32)(ac); \
+(a) = ROTATE_LEFT ((a), (s)); \
+(a) += (b); \
+}
 #define HH(a, b, c, d, x, s, ac) { \
-        (a) += H ((b), (c), (d)) + (x) + (u32)(ac); \
-        (a) = ROTATE_LEFT ((a), (s)); \
-        (a) += (b); \
-    }
+(a) += H ((b), (c), (d)) + (x) + (u32)(ac); \
+(a) = ROTATE_LEFT ((a), (s)); \
+(a) += (b); \
+}
 #define II(a, b, c, d, x, s, ac) { \
-        (a) += I ((b), (c), (d)) + (x) + (u32)(ac); \
-        (a) = ROTATE_LEFT ((a), (s)); \
-        (a) += (b); \
-    }
+(a) += I ((b), (c), (d)) + (x) + (u32)(ac); \
+(a) = ROTATE_LEFT ((a), (s)); \
+(a) += (b); \
+}
     for(u32 i = 0; i < numBlocks; i++)
     {
         u32 chunk[16];
@@ -641,5 +642,6 @@ hashEntry *ls_hashTVal(HashTable *h, void *key)
     
     return Result;
 }
+#endif
 
 #endif
