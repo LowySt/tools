@@ -2218,6 +2218,9 @@ WS_SYSMENU)
         HANDLE     CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes,
                                 SIZE_T dwStackSize, LPTHREAD_START_ROUTINE lpStartAddress,
                                 LPVOID lpParameter, DWORD dwCreationFlags, LPDWORD lpThreadId);
+        DWORD      WaitForSingleObject(HANDLE hHandle, DWORD  dwMilliseconds);
+        DWORD      WaitForMultipleObjects(DWORD nCount, const HANDLE *lpHandles, BOOL bWaitAll, DWORD dwMilliseconds);
+        
         HRESULT    SetThreadDescription(HANDLE hThread, PCWSTR lpThreadDescription);
         
         VOID       GetSystemTime(LPSYSTEMTIME lpSystemTime);
