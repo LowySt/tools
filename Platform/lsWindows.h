@@ -31,7 +31,7 @@ typedef void GLvoid;
 struct WindowInfo;
 
 extern "C" s32    ls_printf(const char *fmt, ...);
-extern "C" s32    ls_sprintf(char *dest, const char *fmt, ...);
+extern "C" s32    ls_sprintf(char *dest, u32 buffSize, const char *fmt, ...);
 extern "C" void   ls_memcpy(void *src, void *dest, size_t size);
 extern "C" void   ls_zeroMem(void *mem, size_t size);
 
@@ -285,7 +285,7 @@ u64 windows_WriteConsole(char *buff, u32 bytesToWrite)
 void windows_assert(const char *msg, const char *file, s32 line)
 {
 	char buff[512] = { 0 };
-	s32 written = ls_sprintf(buff, "In file %s, line %d, Assert %s fired\n", file, line, msg);
+	s32 written = ls_sprintf(buff, 512, "In file %s, line %d, Assert %s fired\n", file, line, msg);
 	windows_WriteConsole(buff, (u32)written);
 }
 
