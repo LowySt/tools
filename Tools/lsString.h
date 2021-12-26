@@ -50,6 +50,7 @@ string  ls_strInit(char *s);
 
 //NOTE: In this case the char * string lives on the STACK!
 string  ls_strConstant(char *p);
+string  ls_strConstant(char *p, u32 len);
 string  ls_strConstChar(char *c);
 
 void    ls_strClear(string *s);
@@ -320,6 +321,12 @@ void ls_strFreeArr(string *s, u32 arrSize)
 string ls_strConstant(char *p)
 {
     u32 len = ls_len(p);
+    string s = {p, len, len};
+    return s;
+}
+
+string  ls_strConstant(char *p, u32 len)
+{
     string s = {p, len, len};
     return s;
 }
@@ -2238,6 +2245,8 @@ view ls_viewNextDelimiter(view v, char c)
     
     u32 wordLen = 0;
     char *At = v.next;
+    
+    //NOTETODO: add found, and return original if not found? Or return error?
     while(wordLen < v.len)
     {
         if(*At == c)
@@ -2247,7 +2256,7 @@ view ls_viewNextDelimiter(view v, char c)
         At++;
     }
     
-    Assert(wordLen <= v.len);
+    AssertMsg(wordLen <= v.len, "Delimeter not found\n");
     
     //NOTE: We don't keep the delimiter in the word
     //      But we skip it in the .next
