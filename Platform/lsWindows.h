@@ -293,7 +293,7 @@ void windows_assert(const char *msg, const char *file, s32 line)
 // --- MEMORY SYSTEM --- //
 // --------------------- //
 
-MemoryArena Memory = {};
+thread_local MemoryArena Memory = {};
 
 void windows_InitMemory(size_t size)
 {
@@ -440,7 +440,7 @@ void windows_addToBusy(MemoryBlock *b, MemoryList *slice)
 
 void *windows_sliceBlockIfNeeded(MemoryBlock *b, MemoryList *slice, size_t size)
 {
-    Assert(slice->sliceSize >= size);
+    AssertMsg(slice->sliceSize >= size, "The passed slice can't contain the requested memory.\n");
     
     void *Result = (void *)((u8 *)b + slice->relativePtr);
     
@@ -499,14 +499,18 @@ void *windows_memAlloc(size_t size)
         //if(curr->curSlices == curr->maxSlices) {};
         //TODO: Add Merging
         
-        //NOTE:TODO: 24/08/2020 Gotten into a bug, I think that maxSlices
+        //NOTETODO: 24/08/2020 Gotten into a bug, I think that maxSlices
         // Shouldn't be ignored, as it is right now???
         // So gonna skip any block that has reached curSlices == maxSlices
+        //
+        //NOTETODO: 26/12/2021 If a block has reached maxSlices, but there are free slices
+        // it won't use them. Kinda stupid design. It should look to see if there are free
+        // slices, rather than just if the block has been sliced max number of times!!
         if(curr->curSlices == curr->maxSlices) { curr = curr->next; continue; }
         
         
         MemoryList *free = curr->free;
-        Assert(free != 0x0);
+        Assert(free != 0x0); //NOTE: What? Why can't free be == 0 here????
         
         do
         {
