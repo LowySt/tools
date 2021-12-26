@@ -23,6 +23,9 @@ extern "C"
     stack *ls_stackAllocPtr(u32 elementSize);
     void   ls_stackFreePtr(stack *s);
     void   ls_stackFree(stack s);
+    stack  ls_stackCopy(stack source);
+    void   ls_stackCopy_t(stack source, stack *dest);
+    
     
     stack  ls_stackInit(u32 elementSize, u32 initialCapacity);
     
@@ -90,6 +93,56 @@ stack ls_stackAlloc(u32 elementSize)
     Result.count    = 0;
     
     return Result;
+}
+
+stack ls_stackCopy(stack source)
+{
+    AssertMsg(source.data, "Source stack data is not allocated");
+    
+    stack Result = ls_stackInit(source.elementSize, source.count);
+    
+    u32 memSize = source.elementSize * source.count;
+    
+    Result.top   = (u8*)Result.data + (source.elementSize * (source.count-1));
+    Result.used  = source.used;
+    Result.count = source.count;
+    
+    ls_memcpy(source.data, Result.data, memSize);
+    
+    return Result;
+}
+
+void ls_stackCopy_t(stack source, stack *dest)
+{
+    AssertMsg(source.data, "Source stack data is not allocated\n");
+    AssertMsg(dest, "Dest pointer is null\n");
+    AssertMsg(source.elementSize == dest->elementSize, "Element sizes in source and dest don't match\n");
+    
+    u32 memSize = source.elementSize * source.count;
+    
+    if(dest->data == NULL)
+    {
+        *dest = ls_stackInit(source.elementSize, source.count);
+        
+        dest->top   = (u8*)dest->data + (source.elementSize * (source.count-1));
+        dest->used  = source.used;
+        dest->count = source.count;
+    }
+    
+    if(dest->capacity < source.count)
+    {
+        dest->data = ls_realloc(dest->data, dest->capacity*dest->elementSize, memSize);
+        
+        dest->elementSize = source.elementSize;
+        dest->capacity    = source.count;
+    }
+    
+    ls_memcpy(source.data, dest->data, memSize);
+    
+    dest->bot         = dest->data;
+    dest->top         = (u8*)dest->data + (source.elementSize * (source.count-1));
+    dest->used        = source.used;
+    dest->count       = source.count;
 }
 
 void ls_stackFreePtr(stack *s)
