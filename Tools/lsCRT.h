@@ -8,8 +8,9 @@
 #define CAT3(a,b,c) CAT2(a,CAT2(b,c))
 
 #define AssertMsg(condition, msg) if(!(condition)) { \
-char *outString = CAT3("[ASSERT]", __FUNCTION__, ": "msg); \
+char *outString = CAT3("[ASSERT]", __FUNCTION__, ": "); \
 windows_WriteConsole(outString, ls_len(outString)); \
+windows_WriteConsole(msg, ls_len(msg)); \
 DebugBreak(); }
 
 #define Assert(condition) if(!(condition)){DebugBreak();}
@@ -161,8 +162,8 @@ extern "C"
     s32     ls_strncmp(char *a, char *b, u32 n);
     
     //TODO: Add precision Modifiers to Floating Point Printing
-    s32     ls_vsprintf(char *dest, const char *fmt, va_list argList);
-    s32 	ls_sprintf(char *dest, const char *format, ...);
+    s32     ls_vsprintf(char *dest, u32 buffSize, const char *fmt, va_list argList);
+    s32 	ls_sprintf(char *dest, u32 buffSize, const char *format, ...);
     s32     ls_vprintf(const char *fmt, va_list argList);
     s32 	ls_printf(const char *format, ...);
     char    ls_getc();
@@ -786,6 +787,8 @@ s32 ls_strncmp(char *a, char *b, u32 n)
 u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite);
 u64 ls_readConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite);
 
+//TODO: Instead of Buffer Overrun return written characters and gracefully exit? 
+//      I'd like to signal errors better, but C++ sucks and I can't have multiple return values :(
 s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_list argList)
 {
     char *buff = dest;
@@ -958,14 +961,9 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
     return i;
 }
 
-s32 ls_vsprintf(char *dest, const char *format, va_list argList)
+s32 ls_vsprintf(char *dest, u32 buffSize, const char *format, va_list argList)
 {
-    const u32 buffSize = KB(1);
-    char buff[buffSize] = {};
-    
-    //NOTE:TODO: Is there any way to remove the double memcpy??
-    s32 charactersWritten = ls_formatStringInternal_(format, buff, buffSize, argList);
-    ls_memcpy(buff, dest, charactersWritten);
+    s32 charactersWritten = ls_formatStringInternal_(format, dest, buffSize, argList);
     
     return charactersWritten - 1; //Remove NULL terminator
 }
@@ -974,12 +972,12 @@ s32 ls_vsprintf(char *dest, const char *format, va_list argList)
 * Returns the numbers of chars written without counting
 * the null terminator (which is appended anyway)
 */
-s32 ls_sprintf(char *dest, const char *format, ...)
+s32 ls_sprintf(char *dest, u32 buffSize, const char *format, ...)
 {
     va_list argList;
     va_start(argList, format);
     
-    s32 ret = ls_vsprintf(dest, format, argList);
+    s32 ret = ls_vsprintf(dest, buffSize, format, argList);
     
     va_end(argList);
     
