@@ -34,6 +34,8 @@ extern "C" s32    ls_printf(const char *fmt, ...);
 extern "C" s32    ls_sprintf(char *dest, u32 buffSize, const char *fmt, ...);
 extern "C" void   ls_memcpy(void *src, void *dest, size_t size);
 extern "C" void   ls_zeroMem(void *mem, size_t size);
+extern "C" void   ___ls_printStackTraceAssert();
+
 
 struct windowsDate
 {
@@ -168,8 +170,8 @@ extern "C"
     void *windows_createArena(u64 arenaSize, u32 *id);
     void windows_useArena(u32 id);
     void windows_stopArena();
-    void windows_resetArena(u32 id);
-    void windows_destroyArena(void *data, u32 id);
+    void windows_clearArena(u32 id);
+    void windows_destroyArena(u32 id);
     
 	u64 windows_ReadConsole(char *Dest, u32 bytesToRead);
 	u64 windows_WriteConsole(char *buff, u32 bytesToWrite);
@@ -196,6 +198,10 @@ extern "C"
     u32 windows_GetUnix32Time();
     u64 windows_GetUnix64Time();
 	windowsDate windows_GetDate(b32 localTime); /*If param is false UTC time is retrieved*/
+    
+    u32 windows_GetClipboard(void *buff, u32 maxUTF32Len);
+    u32 windows_SetClipboard(void *data, u32 len);
+    
 	void windows_setupWindow(WindowInfo *Input);
     
     void windows_initRegionTimer(RegionTimerPrecision p = RT_MILLISECOND);
@@ -293,7 +299,11 @@ void windows_assert(const char *msg, const char *file, s32 line)
 // --- MEMORY SYSTEM --- //
 // --------------------- //
 
+#if !defined (__GNUG__) && !defined (__clang__)
 thread_local MemoryArena Memory = {};
+#else
+__thread MemoryArena Memory = {};
+#endif
 
 void windows_InitMemory(size_t size)
 {
@@ -477,8 +487,8 @@ void *windows_memAlloc(size_t size)
     {
         InternalArena *Ar = &Memory.arenas[Memory.currArenaId];
         
-        Assert(Ar->id == Memory.currArenaId); //NOTE: Some mistake in Arena usage functions?
-        Assert(Ar->used + size <= Ar->capacity); //NOTE: Buy More ArenaRAM
+        AssertMsg(Ar->id == Memory.currArenaId, "The arena ID doesn't match the Memory currentArenaID.\n");
+        AssertMsg(Ar->used + size <= Ar->capacity, "Arena is out of space.\n");
         
         u8 *ResultPtr = (u8 *)Ar->data + Ar->used;
         Ar->used += size;
@@ -650,8 +660,8 @@ void *windows_createArena(u64 arenaSize, u32 *id)
     
     InternalArena *Ar = &Memory.arenas[arId];
     
-    Ar->data = VirtualAlloc(NULL, arenaSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-    Assert(Ar->data); //NOTE: Buy More RAM
+    Ar->data = VirtualAlloc(NULL, arenaSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    AssertMsg(Ar->data, "VirtualAlloc failed.\n");
     
     Ar->capacity = arenaSize;
     Ar->used     = 0;
@@ -664,8 +674,7 @@ void *windows_createArena(u64 arenaSize, u32 *id)
 
 void windows_useArena(u32 id)
 {
-    Assert(Memory.isUsingArena == FALSE);
-    Assert(Memory.arenas[id].data != 0x0);
+    AssertMsg(Memory.arenas[id].data != 0x0, "Arena at chosen ID is not inizialied. Data is NULL.\n");
     
     Memory.isUsingArena = TRUE;
     Memory.currArenaId  = id;
@@ -675,26 +684,26 @@ void windows_useArena(u32 id)
 
 void windows_stopArena()
 {
-    Assert(Memory.isUsingArena == TRUE);
+    AssertMsg(Memory.isUsingArena == TRUE, "Arenas were already not being used. Double stopArena() call?\n");
     Memory.isUsingArena = FALSE;
     return;
 }
 
-void windows_resetArena(u32 id)
+void windows_clearArena(u32 id)
 {
-    Assert(Memory.used[id] == TRUE);
+    AssertMsg(Memory.used[id] == TRUE, "The given ID refers to an Arena which was not being used.\n");
     Memory.arenas[id].used = 0;
     return;
 }
 
-void windows_destroyArena(void *data, u32 id)
+void windows_destroyArena(u32 id)
 {
-    Assert(Memory.used[id] == TRUE);
+    AssertMsg(Memory.used[id] == TRUE, "The given ID refers to an Arena which was not being used.\n");
     Assert(!(Memory.isUsingArena == TRUE && Memory.currArenaId == id)); //NOTE: Thinks this assertion is correct?
-    Assert(Memory.arenas[id].data != 0x0);
+    AssertMsg(Memory.arenas[id].data != 0x0, "Trying to destroy arena with initialized data.\n");
     
     BOOL Error = VirtualFree(Memory.arenas[id].data, 0, MEM_RELEASE);
-    Assert(Error != 0); //NOTE: Couldn't free, something's fucky
+    AssertMsg(Error != 0, "Virtual Free failed.\n");
     
     Memory.arenas[id].data = 0x0;
     Memory.arenas[id].capacity = 0;
@@ -1316,6 +1325,132 @@ windowsDate windows_GetDate(b32 localTime)
     
     return result;
 }
+
+
+u32 __windows_convertUTF16To32(u32 *utf32Buff, u32 maxBuff, wchar_t* data, u32 u16Len)
+{
+    //NOTE: isSurrogate is checking if the code is in range [0xD800 - 0xDFFF], with smartypants unsined math.
+    auto isSurrogate     = [](wchar_t code) -> b32 { return ((u16)code - (u16)0xD800) < (u16)2048; };
+    auto isHighSurrogate = [](wchar_t code) -> b32 { return (code & 0xFFFFFC00) == 0xD800; };
+    auto isLowSurrogate  = [](wchar_t code) -> b32 { return (code & 0xFFFFFC00) == 0xDC00; };
+    auto surrogateTo32   = [](wchar_t h, wchar_t l) -> u32 { return ((h << 10) + l - 0x35FDC00); };
+    
+    u32 idx = 0;
+    
+    wchar_t *In = data;
+    while(In < (data + u16Len))
+    {
+        wchar_t curr16 = *In; 
+        In += 1;
+        
+        b32 isSurr = (curr16 >= 0xD800) && (curr16 <= 0xDFFF);
+        if(!isSurr) { utf32Buff[idx] = (u32)curr16; idx += 1; }
+        else
+        {
+            AssertMsg(In < (data + u16Len), "Input cut off low surrogate??\n");
+            
+            wchar_t next16 = *In;
+            In += 1;
+            
+            b32 hS = isHighSurrogate(curr16);
+            b32 lS = isLowSurrogate(next16);
+            
+            AssertMsg((hS && lS) == TRUE, "Surrogate missing either High or Low\n");
+            
+            utf32Buff[idx] = surrogateTo32(curr16, next16);
+        }
+        
+        AssertMsg(idx < maxBuff, "UTF32 buffer provided is too small\n");
+    }
+    
+    return idx;
+}
+
+//NOTE:TODO: Stuff copy-pasted from the internet. Those left and right shifts are just masking bits...
+u32 __windows_convertUTF32To16(wchar_t* utf16Buff, u32 maxBuff, u32 *data, u32 u32Len)
+{
+    u32 *In = data;
+    
+    u32 index = 0;
+    while(In < (data + u32Len))
+    {
+        u32 codepoint = *In;
+        In += 1;
+        
+        wchar_t high = 0;
+        wchar_t low  = 0;
+        
+        if(codepoint < 0x10000) 
+        { 
+            utf16Buff[index] = (wchar_t)codepoint; 
+            index += 1; 
+            continue; 
+        }
+        
+        u32 temp = codepoint -  0x10000;
+        high = (((temp << 12) >> 22) + 0xD800);
+        low  = (((temp << 22) >> 22) + 0xDC00);
+        
+        utf16Buff[index]   = high;
+        utf16Buff[index+1] = low;
+        
+        index += 1;
+    }
+    
+    return index;
+}
+
+u32 windows_GetClipboard(void *buff, u32 maxUTF32Len)
+{
+    if(OpenClipboard(NULL) == 0) { return 0; }
+    
+    HANDLE Clipboard = GetClipboardData(CF_UNICODETEXT);
+    
+    wchar_t* data = (wchar_t *)GlobalLock(Clipboard);
+    
+    wchar_t* At = data;
+    u32 strLen = 0;
+    while(*At != 0) { strLen += 1; At += 1; }
+    
+    u32 utf32Buff[256] = {}; //TODO: I am unsure about this.
+    
+    u32 utf32Len = __windows_convertUTF16To32(utf32Buff, 256, data, strLen);
+    
+    u32 copyLen = utf32Len < maxUTF32Len ? utf32Len : maxUTF32Len;
+    
+    ls_memcpy(utf32Buff, buff, copyLen*sizeof(u32));
+    GlobalUnlock(Clipboard);
+    
+    CloseClipboard();
+    
+    return copyLen;
+}
+
+u32 windows_SetClipboard(void *data, u32 len)
+{
+    if(OpenClipboard(NULL) == 0) { return 0; }
+    
+    HANDLE Clipboard = GetClipboardData(CF_UNICODETEXT);
+    EmptyClipboard();
+    
+    wchar_t charBuff[256] = {};
+    u32 buffLen = __windows_convertUTF32To16(charBuff, 256, (u32 *)data, len);
+    
+    HGLOBAL clipMem = GlobalAlloc(GMEM_MOVEABLE, (buffLen+1)*sizeof(u32));
+    wchar_t *clipData = (wchar_t *)GlobalLock(clipMem);
+    
+    ls_memcpy(charBuff, clipData, buffLen*sizeof(wchar_t));
+    clipData[buffLen] = 0;
+    
+    GlobalUnlock(clipMem);
+    
+    SetClipboardData(CF_UNICODETEXT, clipMem);
+    
+    CloseClipboard();
+    
+    return len;
+}
+
 
 // --------------------- //
 // --- TIMER  SYSTEM --- //
