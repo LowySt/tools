@@ -22,7 +22,7 @@ extern "C"
     
     void  ls_arenaUse(Arena a);
     void  ls_arenaStop();
-    void  ls_arenaReset(Arena a);
+    void  ls_arenaClear(Arena a);
 };
 
 
@@ -52,11 +52,11 @@ Arena ls_arenaCreate(u64 arenaSize)
 void ls_arenaDestroy(Arena a)
 {
 #ifdef LS_PLAT_WINDOWS
-    return windows_destroyArena(a.data, a.id);
+    return windows_destroyArena(a.id);
 #endif
     
 #ifdef LS_PLAT_LINUX
-    return linux_destroyArena(a.data, a.id);
+    return linux_destroyArena(a.id);
 #endif
 }
 
@@ -83,14 +83,14 @@ void ls_arenaStop()
 #endif
 }
 
-void ls_arenaReset(Arena a)
+void ls_arenaClear(Arena a)
 {
 #ifdef LS_PLAT_WINDOWS
-    return windows_resetArena(a.id);
+    return windows_clearArena(a.id);
 #endif
     
 #ifdef LS_PLAT_LINUX
-    return linux_resetArena(a.id);
+    return linux_clearArena(a.id);
 #endif
 }
 
