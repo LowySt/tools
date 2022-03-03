@@ -7,10 +7,10 @@
 #define CAT2(a,b) CAT(a,b)
 #define CAT3(a,b,c) CAT2(a,CAT2(b,c))
 
-#define AssertMsg(condition, msg) if(!(condition)) { \
+#define AssertMsg(condition, msg) if(!(condition)) {            \
 char *outString = CAT3("[ASSERT]", __FUNCTION__, ": "); \
-windows_WriteConsole(outString, ls_len(outString)); \
-windows_WriteConsole(msg, ls_len(msg)); \
+windows_WriteConsole(outString, ls_len(outString));     \
+windows_WriteConsole(msg, ls_len(msg));                 \
 DebugBreak(); }
 
 #define Assert(condition) if(!(condition)){DebugBreak();}
@@ -378,6 +378,7 @@ b32 ls_dangerousNotToBeCalledInitFunctionHere()
 
 b32 globalVarToCallTheSuperDangerousInitCRTfunction =
 ls_dangerousNotToBeCalledInitFunctionHere();
+
 
 #endif
 
