@@ -827,6 +827,24 @@ SYNCHRONIZE)
         // System Structures
         //
         
+        typedef struct _SYMBOL_INFO {
+            ULONG   SizeOfStruct;
+            ULONG   TypeIndex;
+            u64     Reserved[2];
+            ULONG   Index;
+            ULONG   Size;
+            u64     ModBase;
+            ULONG   Flags;
+            u64     Value;
+            u64     Address;
+            ULONG   Register;
+            ULONG   Scope;
+            ULONG   Tag;
+            ULONG   NameLen;
+            ULONG   MaxNameLen;
+            CHAR    Name[1];
+        } SYMBOL_INFO, *PSYMBOL_INFO;
+        
         typedef struct _SYSTEM_INFO {
             union {
                 DWORD dwOemId;          // Obsolete field...do not use
@@ -1364,6 +1382,21 @@ SYNCHRONIZE)
             UINT      itemHeight;
             ULONG_PTR itemData;
         } MEASUREITEMSTRUCT, *PMEASUREITEMSTRUCT, *LPMEASUREITEMSTRUCT;
+        
+        typedef struct tagCREATESTRUCTA {
+            LPVOID    lpCreateParams;
+            HINSTANCE hInstance;
+            HMENU     hMenu;
+            HWND      hwndParent;
+            int       cy;
+            int       cx;
+            int       y;
+            int       x;
+            LONG      style;
+            LPCSTR    lpszName;
+            LPCSTR    lpszClass;
+            DWORD     dwExStyle;
+        } CREATESTRUCTA, *LPCREATESTRUCTA;
         
         typedef struct tagCREATESTRUCTW {
             LPVOID      lpCreateParams;
@@ -2146,6 +2179,83 @@ SYNCHRONIZE)
 #define h_addr  h_addr_list[0] /* address, for backward compat */
         };
         
+        
+        //
+        // CRITICAL SECTIONS AND CONDITION VARIABLES
+        //
+        
+        typedef struct _LIST_ENTRY {
+            struct _LIST_ENTRY *Flink;
+            struct _LIST_ENTRY *Blink;
+        } LIST_ENTRY, *PLIST_ENTRY;//, *RESTRICTED_POINTER PRLIST_ENTRY;
+        
+        typedef struct _RTL_CRITICAL_SECTION_DEBUG {
+            WORD   Type;
+            WORD   CreatorBackTraceIndex;
+            struct _RTL_CRITICAL_SECTION *CriticalSection;
+            LIST_ENTRY ProcessLocksList;
+            DWORD EntryCount;
+            DWORD ContentionCount;
+            DWORD Flags;
+            WORD   CreatorBackTraceIndexHigh;
+            WORD   SpareWORD  ;
+        } RTL_CRITICAL_SECTION_DEBUG, *PRTL_CRITICAL_SECTION_DEBUG, RTL_RESOURCE_DEBUG, *PRTL_RESOURCE_DEBUG;
+        
+#pragma pack(push, 8)
+        
+        typedef struct _RTL_CRITICAL_SECTION {
+            PRTL_CRITICAL_SECTION_DEBUG DebugInfo;
+            
+            //
+            //  The following three fields control entering and exiting the critical
+            //  section for the resource
+            //
+            
+            LONG LockCount;
+            LONG RecursionCount;
+            HANDLE OwningThread;        // from the thread's ClientId->UniqueThread
+            HANDLE LockSemaphore;
+            ULONG_PTR SpinCount;        // force size on 64-bit systems when packed
+        } RTL_CRITICAL_SECTION, *PRTL_CRITICAL_SECTION;
+        
+#pragma pack(pop)
+        
+        typedef struct _RTL_SRWLOCK {                            
+            PVOID Ptr;                                       
+        } RTL_SRWLOCK, *PRTL_SRWLOCK;                            
+#define RTL_SRWLOCK_INIT {0}                            
+        typedef struct _RTL_CONDITION_VARIABLE {                    
+            PVOID Ptr;                                       
+        } RTL_CONDITION_VARIABLE, *PRTL_CONDITION_VARIABLE;      
+#define RTL_CONDITION_VARIABLE_INIT {0}                 
+#define RTL_CONDITION_VARIABLE_LOCKMODE_SHARED  0x1     
+        
+        typedef RTL_CRITICAL_SECTION CRITICAL_SECTION;
+        typedef PRTL_CRITICAL_SECTION PCRITICAL_SECTION;
+        typedef PRTL_CRITICAL_SECTION LPCRITICAL_SECTION;
+        
+        typedef RTL_CRITICAL_SECTION_DEBUG CRITICAL_SECTION_DEBUG;
+        typedef PRTL_CRITICAL_SECTION_DEBUG PCRITICAL_SECTION_DEBUG;
+        typedef PRTL_CRITICAL_SECTION_DEBUG LPCRITICAL_SECTION_DEBUG;
+        
+        typedef RTL_CONDITION_VARIABLE CONDITION_VARIABLE, *PCONDITION_VARIABLE;
+        
+        //
+        // Static initializer for the condition variable
+        //
+        
+#define CONDITION_VARIABLE_INIT RTL_CONDITION_VARIABLE_INIT
+        
+        //
+        // Flags for condition variables
+        //
+        
+#define CONDITION_VARIABLE_LOCKMODE_SHARED RTL_CONDITION_VARIABLE_LOCKMODE_SHARED
+        
+        
+        
+        
+        
         //
         // Window Styles
         //
@@ -2218,6 +2328,17 @@ WS_SYSMENU)
         HANDLE     CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes,
                                 SIZE_T dwStackSize, LPTHREAD_START_ROUTINE lpStartAddress,
                                 LPVOID lpParameter, DWORD dwCreationFlags, LPDWORD lpThreadId);
+        DWORD      GetThreadId(HANDLE Thread);
+        
+        void       InitializeConditionVariable(PCONDITION_VARIABLE ConditionVariable);
+        BOOL       SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVariable, 
+                                            PCRITICAL_SECTION CriticalSection, DWORD dwMilliseconds);
+        void       WakeAllConditionVariable(PCONDITION_VARIABLE ConditionVariable);
+        void       WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable);
+        void       InitializeCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
+        void       EnterCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
+        void       LeaveCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
+        
         DWORD      WaitForSingleObject(HANDLE hHandle, DWORD  dwMilliseconds);
         DWORD      WaitForMultipleObjects(DWORD nCount, const HANDLE *lpHandles, BOOL bWaitAll, DWORD dwMilliseconds);
         
@@ -2229,6 +2350,11 @@ WS_SYSMENU)
         
         __time32_t _time32(__time32_t* _Time);
         __time64_t _time64(__time64_t* _Time);
+        
+        USHORT     CaptureStackBackTrace(ULONG  FramesToSkip, ULONG  FramesToCapture, 
+                                         PVOID  *BackTrace, PULONG BackTraceHash);
+        BOOL       SymInitialize(HANDLE hProcess, PCSTR UserSearchPath, BOOL fInvadeProcess);
+        BOOL       SymFromAddr(HANDLE hProcess, u64 Address, u64 *Displacement, PSYMBOL_INFO Symbol);
         
         BOOL       GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
         VOID       GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
@@ -2392,11 +2518,11 @@ WS_SYSMENU)
 #else
         WINBASEAPI	DECLSPEC_ALLOCATOR	LPVOID	WINAPI	HeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T dwBytes);
 #endif
-        WINBASEAPI	BOOL	WINAPI	HeapFree(HANDLE hHeap, DWORD dwFlags, /*__drv_freesMem(Mem) _Frees_ptr_opt_*/ LPVOID lpMem);
-        WINBASEAPI 	LPVOID	WINAPI	VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
-        WINBASEAPI 	BOOL      WINAPI	VirtualFree(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType);
-        
-        WINBASEAPI	HANDLE	WINAPI	GetProcessHeap(VOID);
+        BOOL       HeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem);
+        LPVOID     VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
+        BOOL       VirtualFree(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType);
+        HANDLE     GetProcessHeap(VOID);
+        HANDLE     GetCurrentProcess();
         
         //
         // Message Queue
@@ -2892,6 +3018,8 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         LONG     GetWindowLongA(HWND hWnd, int  nIndex);
         LONG_PTR SetWindowLongPtrA(HWND hWnd, int nIndex, LONG_PTR dwNewLong);
         LONG_PTR SetWindowLongPtrW(HWND hWnd, int nIndex, LONG_PTR dwNewLong);
+        LONG_PTR GetWindowLongPtrA(HWND hWnd, int  nIndex);
+        LONG_PTR GetWindowLongPtrW(HWND hWnd, int  nIndex);
         
         BOOL     PostMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
         VOID     PostQuitMessage(int nExitCode);
