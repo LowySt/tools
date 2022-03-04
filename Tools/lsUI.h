@@ -380,7 +380,6 @@ void    *closeButtBackbuff;
 
 HDC  WindowDC;
 HDC  BackBufferDC;
-u8  *BackBuffer;
 
 LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 {
@@ -429,7 +428,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             
             StretchDIBits(BackBufferDC, 0, 0, c->windowWidth, c->windowHeight,
                           0, 0, c->windowWidth, c->windowHeight,
-                          BackBuffer, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+                          c->drawBuffer, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
             
             Result = BitBlt(WindowDC, r.left, r.top, r.right, r.bottom,
                             BackBufferDC, 0, 0, SRCCOPY);
@@ -618,7 +617,7 @@ void __ui_RegisterWindow(HINSTANCE MainInstance)
     }
 }
 
-HWND __ui_CreateWindow(HINSTANCE MainInstance, u8 *drawBuffer, UIContext *c)
+HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c)
 {
     u32 style = LS_THIN_BORDER | LS_POPUP;// | LS_VISIBLE; //| LS_OVERLAPPEDWINDOW;
     BOOL Result;
@@ -656,10 +655,8 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, u8 *drawBuffer, UIContext *c)
     WindowDC           = GetDC(WindowHandle);
     BackBufferDC       = CreateCompatibleDC(WindowDC);
     HBITMAP DibSection = CreateDIBSection(BackBufferDC, &BackBufferInfo,
-                                          DIB_RGB_COLORS, (void **)&drawBuffer, NULL, 0);
+                                          DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
     SelectObject(BackBufferDC, DibSection);
-    
-    c->drawBuffer = drawBuffer;
     
     c->windowPosX = (s16)spaceX;
     c->windowPosY = (s16)spaceY; //NOTE:TODO: Hardcoded!!
@@ -667,14 +664,14 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, u8 *drawBuffer, UIContext *c)
     return WindowHandle;
 }
 
-HWND ls_uiCreateWindow(HINSTANCE MainInstance, u8 *drawBuffer, UIContext *c)
+HWND ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c)
 {
     __ui_RegisterWindow(MainInstance);
     
     UserInput.Keyboard.getClipboard = windows_GetClipboard;
     UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
-    c->MainWindow = __ui_CreateWindow(MainInstance, drawBuffer, c);
+    c->MainWindow = __ui_CreateWindow(MainInstance, c);
     
     return c->MainWindow;
 }
@@ -708,10 +705,10 @@ void __ui_default_windows_render_callback(UIContext *c)
 }
 
 
-UIContext *ls_uiInitDefaultContext(u32 width, u32 height, RenderCallback cb = __ui_default_windows_render_callback)
+UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, RenderCallback cb = __ui_default_windows_render_callback)
 {
     UIContext *uiContext       = (UIContext *)ls_alloc(sizeof(UIContext));
-    //NOTE: DrawBuffer has already been set in ls_uiCreateWindow()
+    uiContext->drawBuffer      = drawBuffer;
     
     //NOTETODO Redundant? Maybe not?
     uiContext->width           = width;
