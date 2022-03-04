@@ -157,7 +157,7 @@ void    ls_unistrTrimRight(unistring *s, u32 numChars);
 void    ls_unistrInsertSubstr(unistring *s, unistring toInsert, u32 insertIdx);
 void    ls_unistrInsertChar(unistring *s, u32 c, u32 idx);
 void    ls_unistrInsertCStr(unistring *s, char *toInsert, u32 insertIdx);
-
+void    ls_unistrInsertBuffer(unistring *s, u32 *toInsert, u32 buffLen, u32 insertIdx);
 
 unistring  *ls_unistrSplit(unistring s, u32 *outNum, unistring delim);
 unistring  *ls_unistrSplit(unistring s, u32 *outNum, const char32_t *a);
