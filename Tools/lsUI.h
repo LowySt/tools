@@ -310,6 +310,7 @@ struct ___threadCtx
 };
 
 
+
 HWND       ls_uiCreateWindow(HINSTANCE MainInstance, u8 *drawBuffer, UIContext *c);
 UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, RenderCallback cb);
 
@@ -338,6 +339,7 @@ b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w
 
 void       ls_uiLabel(UIContext *cxt, unistring label, s32 xPos, s32 yPos);
 void       ls_uiLabel(UIContext *cxt, const char32_t *label, s32 xPos, s32 yPos);
+
 void       ls_uiTextBoxClear(UIContext *cxt, UITextBox *box);
 void       ls_uiTextBoxSet(UIContext *cxt, UITextBox *box, unistring s);
 b32        ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h);
@@ -753,6 +755,10 @@ UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, Render
         uiContext->renderGroups[0].RenderCommands[1] = ls_stackInit(sizeof(RenderCommand), 64);
         uiContext->renderGroups[0].RenderCommands[2] = ls_stackInit(sizeof(RenderCommand), 64);
     }
+    
+    //NOTETODO This is initializing the first scissor, but is this good?
+    //         Is this even necessary?
+    ls_uiPushScissor(uiContext, 0, 0, uiContext->windowWidth, uiContext->windowHeight);
     
     return uiContext;
 }
@@ -1867,19 +1873,24 @@ s32 ls_uiGlyphStringLen(UIContext *cxt, unistring text)
     return totalLen;
 }
 
-void ls_uiSelectFontByPixelHeight(UIContext *cxt, u32 pixelHeight)
+void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
 {
+    AssertMsg(c->fonts, "No fonts were loaded\n");
+    
     //TODO: Hardcoded
     b32 found = FALSE;
     for(u32 i = 0; i < 4; i++)
-    { if(cxt->fonts[i].pixelHeight == pixelHeight) { found = TRUE; cxt->currFont = &cxt->fonts[i]; } }
+    { if(c->fonts[i].pixelHeight == pixelHeight) { found = TRUE; c->currFont = &c->fonts[i]; } }
     
     AssertMsg(found, "Asked pixelHeight not available\n");
 }
 
 inline
-s32 ls_uiSelectFontByFontSize(UIContext *cxt, UIFontSize fontSize)
-{ cxt->currFont = &cxt->fonts[fontSize]; return cxt->currFont->pixelHeight; }
+s32 ls_uiSelectFontByFontSize(UIContext *c, UIFontSize fontSize)
+{ 
+    AssertMsg(c->fonts, "No fonts were loaded\n");
+    c->currFont = &c->fonts[fontSize]; return c->currFont->pixelHeight; 
+}
 
 //TODO:Button autosizing width
 //TODO:Menus use buttons, but also claim Focus, which means I can't use the global focus trick to avoid input
