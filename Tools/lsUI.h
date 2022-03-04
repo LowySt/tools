@@ -290,6 +290,7 @@ struct UIContext
     
     RenderCallback renderFunc = NULL;
     u32 dt;
+    RegionTimer frameTime = {};
     
     HWND MainWindow;
     
@@ -315,6 +316,7 @@ HWND       ls_uiCreateWindow(HINSTANCE MainInstance, u8 *drawBuffer, UIContext *
 UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, RenderCallback cb);
 
 void       ls_uiFrameBegin(UIContext *c);
+void       ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs);
 
 void       ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f);
 
@@ -588,7 +590,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         case WM_DESTROY:
         {
             c = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
-            c->onDestroy(c);
+            if(c->onDestroy) { c->onDestroy(c); }
             ExitProcess(0);
         } break;
         
@@ -756,6 +758,7 @@ UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, Render
         uiContext->renderGroups[0].RenderCommands[2] = ls_stackInit(sizeof(RenderCommand), 64);
     }
     
+    
     //NOTETODO This is initializing the first scissor, but is this good?
     //         Is this even necessary?
     ls_uiPushScissor(uiContext, 0, 0, uiContext->windowWidth, uiContext->windowHeight);
@@ -766,6 +769,8 @@ UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, Render
 void ls_uiFrameBegin(UIContext *c)
 {
     static b32 isStartup = TRUE;
+    
+    RegionTimerBegin(c->frameTime);
     
     UserInput.Keyboard.prevState = UserInput.Keyboard.currentState;
     UserInput.Keyboard.repeatState = {};
@@ -801,7 +806,23 @@ void ls_uiFrameBegin(UIContext *c)
     //NOTE: Window starts hidden, and then is shown after the first frame, 
     //      to avoid flashing because initially the frame buffer is all white.
     if(isStartup) { ShowWindow(c->MainWindow, SW_SHOW); isStartup = FALSE; c->hasReceivedInput = TRUE; }
+}
+
+void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
+{
+    static u32 lastFrameTime = 0;
     
+    RegionTimerEnd(c->frameTime);
+    u32 frameTimeMs = RegionTimerGet(c->frameTime);
+    if(frameTimeMs < frameTimeTargetMs)
+    {
+        u32 deltaTimeInMs = frameTimeTargetMs - frameTimeMs;
+        Sleep(deltaTimeInMs);
+    }
+    
+    RegionTimerEnd(c->frameTime);
+    c->dt = RegionTimerGet(c->frameTime); //frameTimeMs;
+    lastFrameTime = c->dt;
 }
 
 inline void ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f)
