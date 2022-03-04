@@ -2,7 +2,12 @@
 #define LS_UI_H
 
 #include "lsWindows.h"
+#include "lsGraphics.h"
+#include "lsCRT.h"
+#include "lsMath.h"
+#include "lsString.h"
 #include "lsInput.h"
+#include "lsStack.h"
 
 #define RGBA(r,g,b,a)  (u32)((a<<24)|(r<<16)|(g<<8)|b)
 #define RGB(r,g,b)     (u32)((0xFF<<24)|(r<<16)|(g<<8)|b)
@@ -243,7 +248,7 @@ struct RenderGroup
 };
 
 struct UIContext;
-typedef void (*RenderCallback)();
+typedef void (*RenderCallback)(UIContext *);
 typedef void (*onDestroyFunc)(UIContext *);
 struct UIContext
 {
@@ -305,7 +310,7 @@ struct ___threadCtx
 };
 
 
-HWND       ls_uiCreateWindow();
+HWND       ls_uiCreateWindow(HINSTANCE MainInstance, u8 *drawBuffer, UIContext *c);
 UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, RenderCallback cb);
 
 void       ls_uiFrameBegin(UIContext *c);
@@ -666,8 +671,8 @@ HWND ls_uiCreateWindow(HINSTANCE MainInstance, u8 *drawBuffer, UIContext *c)
 {
     __ui_RegisterWindow(MainInstance);
     
-    UserInput.Keyboard.getClipboard = win32_GetClipboard;
-    UserInput.Keyboard.setClipboard = win32_SetClipboard;
+    UserInput.Keyboard.getClipboard = windows_GetClipboard;
+    UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
     c->MainWindow = __ui_CreateWindow(MainInstance, drawBuffer, c);
     
@@ -696,7 +701,14 @@ DWORD ls_uiRenderThreadProc(void *param)
     return 0;
 }
 
-UIContext *ls_uiInitDefaultContext(u32 width, u32 height, RenderCallback cb)
+
+void __ui_default_windows_render_callback(UIContext *c)
+{
+    InvalidateRect(c->MainWindow, NULL, TRUE);
+}
+
+
+UIContext *ls_uiInitDefaultContext(u32 width, u32 height, RenderCallback cb = __ui_default_windows_render_callback)
 {
     UIContext *uiContext       = (UIContext *)ls_alloc(sizeof(UIContext));
     //NOTE: DrawBuffer has already been set in ls_uiCreateWindow()
@@ -2687,7 +2699,7 @@ void ls_uiRender(UIContext *c)
     if(THREAD_COUNT == 0)
     {
         ls_uiRender__(c, 0);
-        c->renderFunc();
+        c->renderFunc(c);
         return;
     }
     
@@ -2710,7 +2722,7 @@ void ls_uiRender(UIContext *c)
         c->renderGroups[i].isDone = FALSE;
     }
     
-    c->renderFunc();
+    c->renderFunc(c);
 }
 
 void ls_uiRender__(UIContext *c, u32 threadID)
