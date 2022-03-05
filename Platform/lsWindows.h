@@ -1412,9 +1412,9 @@ u32 windows_GetClipboard(void *buff, u32 maxUTF32Len)
     u32 strLen = 0;
     while(*At != 0) { strLen += 1; At += 1; }
     
-    u32 utf32Buff[256] = {}; //TODO: I am unsure about this.
+    u32 utf32Buff[4096] = {}; //TODO: I am unsure about this.
     
-    u32 utf32Len = __windows_convertUTF16To32(utf32Buff, 256, data, strLen);
+    u32 utf32Len = __windows_convertUTF16To32(utf32Buff, 4096, data, strLen);
     
     u32 copyLen = utf32Len < maxUTF32Len ? utf32Len : maxUTF32Len;
     
@@ -1433,8 +1433,8 @@ u32 windows_SetClipboard(void *data, u32 len)
     HANDLE Clipboard = GetClipboardData(CF_UNICODETEXT);
     EmptyClipboard();
     
-    wchar_t charBuff[256] = {};
-    u32 buffLen = __windows_convertUTF32To16(charBuff, 256, (u32 *)data, len);
+    wchar_t charBuff[4096] = {};
+    u32 buffLen = __windows_convertUTF32To16(charBuff, 4096, (u32 *)data, len);
     
     HGLOBAL clipMem = GlobalAlloc(GMEM_MOVEABLE, (buffLen+1)*sizeof(u32));
     wchar_t *clipData = (wchar_t *)GlobalLock(clipMem);
