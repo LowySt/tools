@@ -454,7 +454,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             b32 wasPressed = (l >> 30) & 0x1;
             u16 repeat     = (u16)l;
             
-            b32 asciiRange  = ((w >= 32) && (w <= 126));
+            b32 asciiRange  = ((w >= 32) && (w <= 126)) || (w == 13);
             b32 plane0Latin = ((w >= 0x00A1) && (w <= 0x024F));
             
             if(asciiRange || plane0Latin)
@@ -762,6 +762,10 @@ UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, Render
     //NOTETODO This is initializing the first scissor, but is this good?
     //         Is this even necessary?
     ls_uiPushScissor(uiContext, 0, 0, uiContext->windowWidth, uiContext->windowHeight);
+    
+    //NOTETODO: Should this be here? Should we have another function 
+    //          that specifically takes care of initialization of these global things??
+    windows_initRegionTimer();
     
     return uiContext;
 }
@@ -2016,7 +2020,7 @@ b32 ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 
         { inputUse |= box->preInput(cxt, box->data); }
         
         //NOTE: Draw characters. (box->maxLen == 0 means there's no max len)
-        if(HasPrintableKey() && (box->text.len < box->maxLen || box->maxLen == 0))
+        if((HasPrintableKey() || KeyPressOrRepeat(keyMap::Enter)) && (box->text.len < box->maxLen || box->maxLen == 0))
         {
             if(box->isSelecting) {
                 s32 insertIdx = box->selectBeginIdx;
@@ -2224,8 +2228,8 @@ b32 ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 
                 AssertMsg(FALSE, "Not implemented yet.\n");
             }
             
-            u32 buff[128] = {};
-            u32 copiedLen = GetClipboard(buff, 128);
+            u32 buff[4096] = {};
+            u32 copiedLen = GetClipboard(buff, 4096);
             
             u32 realCopyLen = copiedLen;
             
