@@ -32,6 +32,14 @@ struct view
     u32  len;
 };
 
+struct uview
+{
+    unistring s;
+    
+    u32 *next;
+    u32 len;
+};
+
 //-----------------------------//
 //        ASCII STRINGS        //
 //-----------------------------//
@@ -132,6 +140,7 @@ void       ls_unistrFreePtr(unistring *s);
 void       ls_unistrFreeArr(unistring *s, u32 arrSize);
 
 b32        ls_unistrAreEqual(unistring a, unistring b);
+b32        ls_unistrAsciiAreEqual(unistring a, string b);
 void       ls_unistrSet(unistring *toSet, unistring source);
 
 unistring  ls_unistrFromAscii(char *s);
@@ -172,6 +181,7 @@ unistring  *ls_unistrBreakBySpaceUntilDelimiter(unistring s, u32 delimiter, u32 
 u32         ls_unistrLeftFind(unistring s, u32 c);
 u32         ls_unistrRightFind(unistring s, u32 c);
 
+b32         ls_UTF32IsWhitespace(u32 c);
 
 //Merge
 unistring  ls_unistrConcat(unistring s1, unistring s2);
@@ -200,21 +210,29 @@ b32     operator!=(unistring s1, unistring s2);
 #endif
 
 
-extern "C" //VIEWS
-{
-    //Create/Destroy
-    view ls_viewCreate(string s);
-    
-    //OperateOn
-    view ls_viewEatWhitespace(view v);
-    view ls_viewNextNChars(view v, u32 n);
-    view ls_viewNextDelimiter(view v, char c);
-    view ls_viewNextWord(view v);
-    view ls_viewNextLine(view v);
-    view ls_viewNextLineSkipWS(view v);
-    
-    b32 ls_viewIsLineEmpty(view v);
-};
+//Create/Destroy
+view  ls_viewCreate(string s);
+uview ls_uviewCreate(unistring s);
+
+//OperateOn
+view  ls_viewEatWhitespace(view v);
+view  ls_viewNextNChars(view v, u32 n);
+view  ls_viewNextDelimiter(view v, char c);
+view  ls_viewNextWord(view v);
+view  ls_viewNextLine(view v);
+view  ls_viewNextLineSkipWS(view v);
+b32   ls_viewIsLineEmpty(view v);
+
+
+uview  ls_uviewEatWhitespace(uview v);
+uview  ls_uviewNextNChars(uview v, u32 n);
+uview  ls_uviewNextDelimiter(uview v, u32 c);
+uview  ls_uviewNextWord(uview v);
+uview  ls_uviewNextLine(uview v);
+uview  ls_uviewNextLineSkipWS(uview v);
+
+b32   ls_uviewIsLineEmpty(uview v);
+
 
 
 #endif //LS_STRING_H
@@ -1341,6 +1359,20 @@ b32 ls_unistrAreEqual(unistring a, unistring b)
     return FALSE;
 }
 
+b32 ls_unistrAsciiAreEqual(unistring a, string b)
+{
+    AssertMsg(a.data, "First string's data pointer is null");
+    AssertMsg(b.data, "Second string's data pointer is null");
+    
+    if(a.len != b.len)   { return FALSE; }
+    
+    for(u32 i = 0; i < a.len; i++) {
+        if(a.data[i] != (u32)(b.data[i])) { return FALSE; }
+    }
+    
+    return TRUE;
+}
+
 void ls_unistrSet(unistring *toSet, unistring source)
 {
     AssertMsg(toSet, "String to be set pointer is null\n");
@@ -1868,6 +1900,14 @@ u32 ls_unistrRightFind(unistring s, u32 c)
     return offset;
 }
 
+b32 ls_UTF32IsWhitespace(u32 c)
+{
+    if((c == (u32)' ') || (c == (u32)'\n') || (c == (u32)'\r') || (c == (u32)'\t') || (c == (u32)'\v'))
+    { return TRUE; }
+    
+    return FALSE;
+}
+
 //    OperateOn     //
 //------------------//
 
@@ -2204,6 +2244,16 @@ view ls_viewCreate(string s)
     return Res;
 }
 
+uview ls_uviewCreate(unistring s)
+{
+    uview Res = {};
+    
+    Res.next = s.data;
+    Res.len  = s.len;
+    
+    return Res;
+}
+
 //      Create      //
 //------------------//
 
@@ -2302,15 +2352,23 @@ view ls_viewNextLineSkipWS(view v)
     v = ls_viewEatWhitespace(v);
     
     u32 lineLen = 0;
-    u32 skipWhite = 1;
+    u32 skipWhite = 0;
     
     char *At = v.next;
     while(lineLen < v.len)
     {
         if(*At == '\r')
-        { skipWhite += 1; break; }
+        { 
+            skipWhite += 1;
+            
+            if((At+1 < v.next+v.len) && (*(At+1) == '\n'))
+            { skipWhite += 1; }
+            
+            break;
+        }
+        
         if(*At == '\n')
-        { break; }
+        { skipWhite += 1; break; }
         
         lineLen++;
         At++;
@@ -2360,6 +2418,169 @@ b32 ls_viewIsLineEmpty(view v)
     
     return FALSE;
 }
+
+
+uview ls_uviewEatWhitespace(uview v)
+{
+    u32 *At = v.next;
+    u32 advance = 0;
+    while(ls_UTF32IsWhitespace(*At))
+    {
+        advance += 1;
+        At += 1;
+    }
+    
+    uview Result = { {}, v.next + advance, v.len - advance};
+    
+    return Result;
+}
+
+uview ls_uviewNextNChars(uview v, u32 n)
+{
+    uview Result = {};
+    
+    Result.s = {v.next, n, n};
+    Result.next = v.next + n;
+    Result.len  = v.len - n;
+    
+    return Result;
+}
+
+uview ls_uviewNextDelimiter(uview v, u32 c)
+{
+    uview Result = {};
+    
+    v = ls_uviewEatWhitespace(v);
+    
+    u32 wordLen = 0;
+    u32 *At = v.next;
+    
+    //NOTETODO: add found, and return original if not found? Or return error?
+    while(wordLen < v.len)
+    {
+        if(*At == c)
+        { break; }
+        
+        wordLen++;
+        At++;
+    }
+    
+    //TODO: This is bullshit.
+    AssertMsg(wordLen <= v.len, "Delimeter not found\n");
+    
+    //NOTE: We don't keep the delimiter in the word
+    //      But we skip it in the .next
+    u32 nextLen = wordLen + 1;
+    if(wordLen == v.len)
+    { nextLen = wordLen; }
+    
+    Result.s = {v.next, wordLen, wordLen};
+    Result.next = v.next + nextLen;
+    Result.len  = v.len - nextLen;
+    
+    return Result;
+}
+
+uview ls_uviewNextWord(uview v)
+{
+    uview Result = {};
+    
+    v = ls_uviewEatWhitespace(v);
+    
+    u32 wordLen = 0;
+    u32 *At = v.next;
+    while(wordLen < v.len)
+    {
+        if(ls_UTF32IsWhitespace(*At))
+        { break; }
+        
+        wordLen++;
+        At++;
+    }
+    
+    Result.s = {v.next, wordLen, wordLen};
+    Result.next = v.next + wordLen;
+    Result.len  = v.len - wordLen;
+    
+    return Result;
+}
+
+uview ls_uviewNextLineSkipWS(uview v)
+{
+    uview Result = {};
+    
+    v = ls_uviewEatWhitespace(v);
+    
+    u32 lineLen   = 0;
+    u32 skipWhite = 0;
+    
+    u32 *At = v.next;
+    while(lineLen < v.len)
+    {
+        if(*At == (u32)'\r')
+        { 
+            skipWhite += 1;
+            
+            if((At+1 < v.next+v.len) && (*(At+1) == (u32)'\n'))
+            { skipWhite += 1; }
+            
+            break;
+        }
+        if(*At == (u32)'\n')
+        { 
+            skipWhite += 1;
+            break;
+        }
+        
+        lineLen++;
+        At++;
+    }
+    
+    Result.s = {v.next, lineLen, lineLen};
+    Result.next = v.next + lineLen + skipWhite;
+    Result.len  = v.len - (lineLen + skipWhite);
+    
+    return Result;
+}
+
+uview ls_uviewNextLine(uview v)
+{
+    uview Result = {};
+    
+    u32 lineLen = 0;
+    u32 *At = v.next;
+    while(lineLen < v.len)
+    {
+        if((*At == (u32)'\r') && (*(At+1) == (u32)'\n'))
+        { lineLen += 2; break; }
+        if(*At == (u32)'\n') { lineLen += 1; break; }
+        
+        lineLen += 1;
+        At++;
+    }
+    
+    Result.s = {v.next, lineLen, lineLen};
+    Result.next = v.next + lineLen;
+    Result.len  = v.len - lineLen;
+    
+    return Result;
+}
+
+b32 ls_uviewIsLineEmpty(uview v)
+{
+    unistring s = v.s;
+    if(s.len == 1)
+    {
+        if(s.data[0] == (u32)'\n') { return TRUE; }
+    }
+    else if(s.len == 2)
+    {
+        if((s.data[0] == (u32)'\r') && (s.data[1] == (u32)'\n')) { return TRUE; }
+    }
+    
+    return FALSE;
+}
+
 
 //     OperateOn    //
 //------------------//
