@@ -91,8 +91,8 @@ string  *ls_strBreakByLine(string s, u32 *numOfLines);
 string  *ls_strBreakByWhitespace(string s, u32 *numOfStrings);
 string  *ls_strBreakBySpace(string s, u32 *numOfStrings);
 string  *ls_strBreakBySpaceUntilDelimiter(string s, char delimiter, u32 *numOfStrings);
-u32     ls_strLeftFind(string s, char c);
-u32     ls_strRightFind(string s, char c);
+s32     ls_strLeftFind(string s, char c);
+s32     ls_strRightFind(string s, char c);
 
 
 //Merge
@@ -178,8 +178,10 @@ unistring  *ls_unistrSplit(unistring s, u32 *outNum, const char *c);
 unistring  *ls_unistrSeparateByNumber(unistring s, u32 *outNum);
 
 unistring  *ls_unistrBreakBySpaceUntilDelimiter(unistring s, u32 delimiter, u32 *numOfStrings);
-u32         ls_unistrLeftFind(unistring s, u32 c);
-u32         ls_unistrRightFind(unistring s, u32 c);
+s32         ls_unistrLeftFind(unistring s, u32 c);
+s32         ls_unistrLeftFind(unistring s, s32 offset, u32 c);
+s32         ls_unistrRightFind(unistring s, u32 c);
+s32         ls_unistrRightFind(unistring s, s32 offset, u32 c);
 
 b32         ls_UTF32IsWhitespace(u32 c);
 
@@ -829,31 +831,42 @@ string *ls_strBreakBySpaceUntilDelimiter(string s, char delimiter, u32 *numOfStr
     return Result;
 }
 
-u32 ls_strLeftFind(string s, char c)
+s32 ls_strLeftFind(string s, char c)
 {
+    AssertMsg(s.data, "Unistring data is null.\n");
+    
     char *At = s.data;
-    u32 offset = 0;
+    s32 offset = 0;
     
-    //NOTE:TODO Is && correct!?
-    while ((*At != c) && (At != (s.data + s.len)))
-    { At++; offset++; }
+    b32 found = FALSE;
+    while (At != (s.data + s.len))
+    { 
+        if(*At == c) { found = TRUE; break; }
+        At++; offset++;
+    }
     
-    return offset;
+    if(found) return offset;
+    
+    return -1;
 }
 
-u32 ls_strRightFind(string s, char c)
+s32 ls_strRightFind(string s, char c)
 {
-    char *At = s.data + s.len;
-    u32 offset = s.len;
+    AssertMsg(s.data, "Unistring data is null.\n");
     
-    //NOTE:TODO Is && correct!?
-    while((*At != c) && (At != s.data))
+    char *At = s.data + s.len;
+    s32 offset = s.len;
+    
+    b32 found = FALSE;
+    while(At != s.data)
     {
+        if(*At == c) { found = TRUE; break; }
         At--;
         offset--;
     }
     
-    return offset;
+    if(found) return offset;
+    return -1;
 }
 
 //    OperateOn     //
@@ -1873,32 +1886,51 @@ unistring *ls_unistrBreakBySpaceUntilDelimiter(unistring s, u32 delimiter, u32 *
 #endif
 }
 
-u32 ls_unistrLeftFind(unistring s, u32 c)
+s32 ls_unistrLeftFind(unistring s, s32 off, u32 c)
 {
-    u32 *At = s.data;
-    u32 offset = 0;
+    AssertMsg(s.data, "Unistring data is null.\n");
+    AssertMsg(off >= 0, "Offset is negative.\n");
     
-    //NOTE:TODO Is && correct!?
-    while ((*At != c) && (At != (s.data + s.len)))
-    { At++; offset++; }
+    u32 *At = s.data + off;
+    s32 offset = 0;
     
-    return offset;
-}
-
-u32 ls_unistrRightFind(unistring s, u32 c)
-{
-    u32 *At = s.data + s.len;
-    u32 offset = s.len;
-    
-    //NOTE:TODO Is && correct!?
-    while((*At != c) && (At != s.data))
-    {
-        At--;
-        offset--;
+    b32 found = FALSE;
+    while (At != (s.data + s.len))
+    { 
+        if(*At == c) { found = TRUE; break; }
+        At++; offset++;
     }
     
-    return offset;
+    if(found) return offset;
+    return -1;
 }
+
+
+s32 ls_unistrLeftFind(unistring s, u32 c)
+{ return ls_unistrLeftFind(s, 0, c); }
+
+s32 ls_unistrRightFind(unistring s, s32 off, u32 c)
+{
+    AssertMsg(s.data, "Unistring data is null.\n");
+    AssertMsg(off >= 0, "Offset is negative.\n");
+    
+    u32 *At = s.data + off;
+    s32 offset = off;
+    
+    b32 found = FALSE;
+    while(At != s.data)
+    {
+        if(*At == c) { found = TRUE; break; }
+        At--; offset--;
+    }
+    
+    if(found) return offset;
+    return -1;
+}
+
+s32 ls_unistrRightFind(unistring s, u32 c)
+{ return ls_unistrRightFind(s, 0, c); }
+
 
 b32 ls_UTF32IsWhitespace(u32 c)
 {
@@ -2505,6 +2537,29 @@ uview ls_uviewNextWord(uview v)
     return Result;
 }
 
+uview ls_uviewNextLine(uview v)
+{
+    uview Result = {};
+    
+    u32 lineLen = 0;
+    u32 *At = v.next;
+    while(lineLen < v.len)
+    {
+        if((*At == (u32)'\r') && (*(At+1) == (u32)'\n'))
+        { lineLen += 2; break; }
+        if(*At == (u32)'\n') { lineLen += 1; break; }
+        
+        lineLen += 1;
+        At++;
+    }
+    
+    Result.s = {v.next, lineLen, lineLen};
+    Result.next = v.next + lineLen;
+    Result.len  = v.len - lineLen;
+    
+    return Result;
+}
+
 uview ls_uviewNextLineSkipWS(uview v)
 {
     uview Result = {};
@@ -2539,29 +2594,6 @@ uview ls_uviewNextLineSkipWS(uview v)
     Result.s = {v.next, lineLen, lineLen};
     Result.next = v.next + lineLen + skipWhite;
     Result.len  = v.len - (lineLen + skipWhite);
-    
-    return Result;
-}
-
-uview ls_uviewNextLine(uview v)
-{
-    uview Result = {};
-    
-    u32 lineLen = 0;
-    u32 *At = v.next;
-    while(lineLen < v.len)
-    {
-        if((*At == (u32)'\r') && (*(At+1) == (u32)'\n'))
-        { lineLen += 2; break; }
-        if(*At == (u32)'\n') { lineLen += 1; break; }
-        
-        lineLen += 1;
-        At++;
-    }
-    
-    Result.s = {v.next, lineLen, lineLen};
-    Result.next = v.next + lineLen;
-    Result.len  = v.len - lineLen;
     
     return Result;
 }
