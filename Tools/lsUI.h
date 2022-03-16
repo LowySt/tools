@@ -15,7 +15,7 @@
 #define SetAlpha(v, a) (u32)((v & 0x00FFFFFF) | (((u32)a)<<24))
 #define GetAlpha(v)    ( u8)(((v) & 0xFF000000) >> 24)
 
-const     u32 THREAD_COUNT       = 2;
+const     u32 THREAD_COUNT       = 1;
 constexpr u32 RENDER_GROUP_COUNT = THREAD_COUNT == 0 ? 1 : THREAD_COUNT;
 
 typedef u32 Color;
@@ -91,7 +91,7 @@ struct UIButton
 };
 
 
-typedef b32(*TextBoxProc)(UIContext *cxt, void *data);
+typedef b32(*TextBoxProc)(UIContext *, void *);
 struct UITextBox
 {
     unistring text;
@@ -99,9 +99,13 @@ struct UITextBox
     
     b32 isReadonly;
     
+    s32 lineCount;
+    s32 currLineBeginIdx;
+    
     u32 dtCaret;
     b32 isCaretOn;
     s32 caretIndex;
+    s32 caretLineIdx;
     
     s32 viewBeginIdx;
     s32 viewEndIdx;
@@ -125,7 +129,7 @@ struct UIListBoxItem
     Color textColor;
 };
 
-typedef void(*ListBoxProc)(UIContext *cxt, void *data);
+typedef void(*ListBoxProc)(UIContext *, void *);
 struct UIListBox
 {
     Array<UIListBoxItem> list;
@@ -195,6 +199,8 @@ enum RenderCommandExtra
 
 enum RenderCommandType
 {
+    UI_RC_TESTBOX,
+    
     UI_RC_TEXTBOX = 1,
     UI_RC_BUTTON,
     UI_RC_LISTBOX,
@@ -454,7 +460,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             b32 wasPressed = (l >> 30) & 0x1;
             u16 repeat     = (u16)l;
             
-            b32 asciiRange  = ((w >= 32) && (w <= 126)) || (w == 13);
+            b32 asciiRange  = ((w >= 32) && (w <= 126));
             b32 plane0Latin = ((w >= 0x00A1) && (w <= 0x024F));
             
             if(asciiRange || plane0Latin)
@@ -465,6 +471,15 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                     UserInput.Keyboard.keyCodepoint    = w;
                 }
             }
+            else if(w == 13) //NOTETODO: Hack to input a '\n' when Enter ('\r') is pressed.
+            {
+                if(!wasPressed || repeat > 0)
+                {
+                    UserInput.Keyboard.hasPrintableKey = TRUE;
+                    UserInput.Keyboard.keyCodepoint    = 10;
+                }
+            }
+            
         } break;
         
         case WM_KEYDOWN:
@@ -478,7 +493,9 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             
             switch(w)
             { 
+                case VK_F1:      KeySetAndRepeat(keyMap::F1, rep);        break;
                 case VK_F2:      KeySetAndRepeat(keyMap::F2, rep);        break;
+                case VK_F3:      KeySetAndRepeat(keyMap::F3, rep);        break;
                 case VK_F12:     KeySetAndRepeat(keyMap::F12, rep);       break;
                 
                 case VK_DOWN:    KeySetAndRepeat(keyMap::DArrow, rep);    break;
@@ -512,7 +529,9 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             
             switch(w)
             { 
+                case VK_F1:      KeyUnset(keyMap::F1);        break;
                 case VK_F2:      KeyUnset(keyMap::F2);        break;
+                case VK_F3:      KeyUnset(keyMap::F3);        break;
                 case VK_F12:     KeyUnset(keyMap::F12);       break;
                 
                 case VK_DOWN:    KeyUnset(keyMap::DArrow);    break;
@@ -1800,6 +1819,100 @@ s32 ls_uiGetKernAdvance(UIContext *cxt, s32 codepoint1, s32 codepoint2)
     return kernAdvance;
 }
 
+void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 cIdx, Color textColor)
+{
+    //NOTETODO Hacky shit.
+    const s32 lineHeight = 18;
+    
+    //NOTETODO: Hacky shit.
+    const u32 horzOff = 8;
+    const u32 maxX    = xPos + (w-(horzOff*2));
+    
+    //NOTETODO: Hacky shit.
+    const u32 vertOff = 8;
+    const u32 maxH    = (h-(vertOff*2));
+    
+    s32 xOffset = box->viewBeginIdx;
+    s32 yOffset = 0;
+    
+    
+    s32 maxLines = maxH / lineHeight;
+    
+    u32 i = 0;
+    if(box->caretLineIdx > maxLines) { 
+        yOffset = box->caretLineIdx - maxLines;
+        
+        //NOTE: Advance the string vertically to the nth line
+        while(yOffset)
+        {
+            u32 code = box->text.data[i];
+            AssertMsg(code <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
+            
+            if(code == (char32_t)'\n') { yOffset -= 1; }
+            i += 1;
+        }
+    }
+    
+    s32 adjustedCaretLine = box->caretLineIdx - yOffset;
+    
+    s32 currXPos = xPos;
+    s32 currYPos = yPos;
+    u32 code    = 0;
+    
+    unistring realString = { box->text.data + i, box->text.len - i, box->text.size - i };
+    uview lineView = ls_uviewCreate(realString);
+    
+    for(u32 lineIdx = 0; lineIdx < (box->lineCount+1-yOffset); lineIdx++)
+    {
+        lineView = ls_uviewNextLine(lineView);
+        unistring line = lineView.s;
+        
+        u32 lIdx = xOffset;
+        s32 caretX = currXPos-3;
+        for(; lIdx < line.len; lIdx++)
+        {
+            if(currXPos >= maxX) { break; }
+            if((lineIdx == box->caretLineIdx) && (cIdx == lIdx)) { caretX = currXPos-3; }
+            
+            code = line.data[lIdx];
+            AssertMsg(code <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
+            
+            if(code == (char32_t)'\n')
+            {
+                ls_uiFillRect(c, currXPos+4, currYPos-2, 10, 14, RGB(200, 10, 10));
+            }
+            else
+            {
+                UIGlyph *currGlyph = &c->currFont->glyph[code];
+                ls_uiGlyph(c, currXPos, currYPos, currGlyph, textColor);
+                
+                s32 kernAdvance = 0;
+                if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
+                currXPos += (currGlyph->xAdv + kernAdvance);
+            }
+        }
+        
+        if(((lineIdx == box->caretLineIdx) && cIdx == line.len)) { caretX = currXPos-3; }
+        
+        if(KeyPress(keyMap::F3))
+        { ls_printf("cIdx: %d, line.len: %d, caretLineIdx %d, xOff: %d\n", cIdx, line.len, box->caretLineIdx, xOffset); }
+        
+        if(KeyPress(keyMap::F1))
+        { ls_printf("-------------\n"); }
+        
+        if((cIdx != -1) && (lineIdx == box->caretLineIdx))
+        {
+            UIGlyph *currGlyph = &c->currFont->glyph[(char32_t)'|'];
+            ls_uiGlyph(c, caretX, currYPos, currGlyph, textColor);
+        }
+        
+        
+        currYPos -= lineHeight;
+        currXPos  = xPos;
+    }
+    
+}
+
 //TODO: Use font max descent to determine yOffsets globally
 void ls_uiGlyphString(UIContext *c, s32 xPos, s32 yPos, unistring text, Color textColor)
 {
@@ -1879,23 +1992,43 @@ void ls_uiGlyphStringFrag(UIContext *c, s32 xPos, s32 yPos, s32 oX, s32 oY,
     }
 }
 
-s32 ls_uiGlyphStringLen(UIContext *cxt, unistring text)
+s32 ls_uiGlyphStringLen(UIContext *c, unistring text)
 {
     s32 totalLen = 0;
     for(u32 i = 0; i < text.len; i++)
     {
         u32 indexInGlyphArray = text.data[i];
-        AssertMsg(indexInGlyphArray <= cxt->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        AssertMsg(indexInGlyphArray <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
         
-        UIGlyph *currGlyph = &cxt->currFont->glyph[indexInGlyphArray];
+        UIGlyph *currGlyph = &c->currFont->glyph[indexInGlyphArray];
         
         s32 kernAdvance = 0;
-        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(cxt, text.data[i], text.data[i+1]); }
+        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(c, text.data[i], text.data[i+1]); }
         
         totalLen += (currGlyph->xAdv + kernAdvance);
     }
     
     return totalLen;
+}
+
+s32 ls_uiGlyphStringFit(UIContext *c, unistring text, s32 maxLen)
+{
+    s32 totalLen = 0;
+    for(s32 i = text.len-1; i > 0; i--)
+    {
+        u32 indexInGlyphArray = text.data[i];
+        AssertMsg(indexInGlyphArray <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        
+        UIGlyph *currGlyph = &c->currFont->glyph[indexInGlyphArray];
+        
+        s32 kernAdvance = 0;
+        if(i > 0) { kernAdvance = ls_uiGetKernAdvance(c, text.data[i-1], text.data[i]); }
+        
+        totalLen += (currGlyph->xAdv + kernAdvance);
+        if(totalLen > maxLen) { return i; }
+    }
+    
+    return 0;
 }
 
 void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
@@ -1959,26 +2092,26 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h
     return inputUse;
 }
 
-void ls_uiLabel(UIContext *cxt, unistring label, s32 xPos, s32 yPos)
+void ls_uiLabel(UIContext *c, unistring label, s32 xPos, s32 yPos)
 {
-    s32 strPixelHeight = ls_uiSelectFontByFontSize(cxt, FS_SMALL);
+    s32 strPixelHeight = ls_uiSelectFontByFontSize(c, FS_SMALL);
     
-    s32 strWidth = ls_uiGlyphStringLen(cxt, label);
+    s32 strWidth = ls_uiGlyphStringLen(c, label);
     
-    ls_uiPushScissor(cxt, xPos, yPos-4, strWidth, strPixelHeight+8);
+    ls_uiPushScissor(c, xPos, yPos-4, strWidth, strPixelHeight+8);
     
-    ls_uiGlyphString(cxt, xPos, yPos, label, cxt->textColor);
+    ls_uiGlyphString(c, xPos, yPos, label, c->textColor);
     
-    ls_uiPopScissor(cxt);
+    ls_uiPopScissor(c);
 }
 
-void ls_uiLabel(UIContext *cxt, const char32_t *label, s32 xPos, s32 yPos)
+void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos)
 {
     unistring lab = ls_unistrConstant(label);
-    ls_uiLabel(cxt, lab, xPos, yPos);
+    ls_uiLabel(c, lab, xPos, yPos);
 }
 
-void ls_uiTextBoxClear(UIContext *cxt, UITextBox *box)
+void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
 {
     ls_unistrClear(&box->text);
     
@@ -1991,7 +2124,7 @@ void ls_uiTextBoxClear(UIContext *cxt, UITextBox *box)
     box->viewEndIdx     = 0;
 }
 
-void ls_uiTextBoxSet(UIContext *cxt, UITextBox *box, unistring s)
+void ls_uiTextBoxSet(UIContext *c, UITextBox *box, unistring s)
 {
     ls_unistrSet(&box->text, s);
     box->viewEndIdx = box->text.len;
@@ -1999,37 +2132,67 @@ void ls_uiTextBoxSet(UIContext *cxt, UITextBox *box, unistring s)
 
 //TODO: Text Alignment
 //TODO: Delete/Backspace don't respect selection
-b32 ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
+b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
 {
     b32 inputUse = FALSE;
     
-    if(LeftClickIn(xPos, yPos, w, h) && (box->isReadonly == FALSE) && ls_uiHasCapture(cxt, 0)) {
-        cxt->currentFocus = (u64 *)box;
-        cxt->focusWasSetThisFrame = TRUE;
+    if(LeftClickIn(xPos, yPos, w, h) && (box->isReadonly == FALSE) && ls_uiHasCapture(c, 0)) {
+        c->currentFocus = (u64 *)box;
+        c->focusWasSetThisFrame = TRUE;
         box->isCaretOn = TRUE; 
     }
     
-    const s32 horzOff   = 4;
-    s32 scissorWidth    = w - horzOff;
-    s32 viewAddWidth    = scissorWidth - horzOff;
+    const s32 horzOff   = 8;
+    s32 viewAddWidth    = w - 2*horzOff;
     //ls_uiPushScissor(cxt, xPos+4, yPos, scissorWidth, h);
     
-    if(ls_uiInFocus(cxt, box))
+    auto setIndices = [c, box, viewAddWidth](s32 index) -> u32 {
+        
+        if(index <= 0) { 
+            box->viewBeginIdx = 0; 
+            box->viewEndIdx = 0;
+            
+            //TODONOTE: Very wrong.
+            if(box->text.data[0] == (char32_t)'\n') return 1;
+            return 0;
+        }
+        
+        u32 beginOffset    = ls_unistrRightFind(box->text, index, (char32_t)'\n');
+        
+        s32 realOffset = beginOffset+1;
+        if(beginOffset == -1) { realOffset = 0; }
+        
+        u32 lineLength     = (index-realOffset+1);
+        
+        unistring currLine = { box->text.data + realOffset, lineLength, lineLength };
+        u32 maxBeginIndex  = ls_uiGlyphStringFit(c, currLine, viewAddWidth);
+        
+        box->viewBeginIdx  = maxBeginIndex;
+        box->viewEndIdx    = lineLength; //NOTETODO Seems wrong Index == Len??? Usually bad news
+        
+        return realOffset;
+    };
+    
+    //ls_printf("Begin: %d, End: %d\n", box->viewBeginIdx, box->viewEndIdx);
+    
+    if(ls_uiInFocus(c, box))
     {
         if(box->preInput)
-        { inputUse |= box->preInput(cxt, box->data); }
+        { inputUse |= box->preInput(c, box->data); }
         
         //NOTE: Draw characters. (box->maxLen == 0 means there's no max len)
-        if((HasPrintableKey() || KeyPressOrRepeat(keyMap::Enter)) && (box->text.len < box->maxLen || box->maxLen == 0))
+        if(HasPrintableKey() && (box->text.len < box->maxLen || box->maxLen == 0))
         {
             if(box->isSelecting) {
+                AssertMsg(FALSE, "Not implemented yet\n");
+#if 0
                 s32 insertIdx = box->selectBeginIdx;
                 s32 selectRange = box->selectEndIdx - box->selectBeginIdx;
                 s32 endIdx = box->selectEndIdx-1;
                 
                 if(box->caretIndex > insertIdx) { box->caretIndex -= selectRange; }
                 
-                if(ls_uiGlyphStringLen(cxt, box->text) <= viewAddWidth)
+                if(ls_uiGlyphStringLen(c, box->text) <= viewAddWidth)
                 { box->viewEndIdx -= selectRange; }
                 
                 ls_unistrRmSubstr(&box->text, insertIdx, endIdx);
@@ -2040,48 +2203,69 @@ b32 ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 
                 if(diff < 0) { box->viewEndIdx += diff; box->viewBeginIdx += diff; }
                 
                 box->isSelecting = FALSE;
+#endif
             }
             
             if(box->caretIndex == box->text.len) { ls_unistrAppendChar(&box->text, GetPrintableKey()); }
             else { ls_unistrInsertChar(&box->text, GetPrintableKey(), box->caretIndex); }
             
-            box->caretIndex += 1;
-            box->viewEndIdx += 1;
+            //NOTE We changed line, so we reset the view (Which is always relative caret curret line)
+            if(GetPrintableKey() == (char32_t)'\n') {
+                box->lineCount        += 1;
+                box->caretLineIdx     += 1;
+                box->currLineBeginIdx  = box->caretIndex+1;
+            }
             
-            if(ls_uiGlyphStringLen(cxt, box->text) > viewAddWidth)
-            { box->viewBeginIdx += 1; }
+            box->caretIndex += 1;
+            box->isCaretOn = TRUE; box->dtCaret = 0;
+            
+            setIndices(box->caretIndex);
             
             inputUse = TRUE;
         }
+        
         if(KeyPressOrRepeat(keyMap::Backspace) && box->text.len > 0 && box->caretIndex > 0) 
         {
             if(box->isSelecting) {
                 AssertMsg(FALSE, "Not implemented yet\n");
             }
             
+            if(box->text.data[box->caretIndex-1] == (char32_t)'\n')
+            { 
+                u32 beginOffset = setIndices(box->caretIndex-2);
+                
+                box->lineCount        -= 1;
+                box->caretLineIdx     -= 1;
+                box->currLineBeginIdx  = beginOffset;
+                
+            }
+            else { setIndices(box->caretIndex-1); }
             
             if(box->caretIndex == box->text.len) { ls_unistrTrimRight(&box->text, 1); }
             else { ls_unistrRmIdx(&box->text, box->caretIndex-1); }
             
             box->caretIndex -= 1;
-            box->viewEndIdx -= 1;
-            if(box->viewBeginIdx != 0) { box->viewBeginIdx -= 1; }
+            box->isCaretOn = TRUE; box->dtCaret = 0;
             
             inputUse = TRUE;
         }
+        
         if(KeyPressOrRepeat(keyMap::Delete) && box->text.len > 0 && box->caretIndex < box->text.len)
         {
             if(box->isSelecting) {
                 AssertMsg(FALSE, "Not implemented yet\n");
             }
             
+            b32 isCR = (box->text.data[box->caretIndex] == (char32_t)'\n');
+            
             if(box->caretIndex == box->text.len-1) { ls_unistrTrimRight(&box->text, 1); }
             else { ls_unistrRmIdx(&box->text, box->caretIndex); }
             
-            if(box->text.len < box->viewEndIdx) { box->viewEndIdx -= 1; }
-            
+            if((box->text.len < box->viewEndIdx) && !isCR) { box->viewEndIdx -= 1; }
             
             if(box->text.len == 0 && box->isSelecting) { box->isSelecting = FALSE; }
+            
+            box->isCaretOn = TRUE; box->dtCaret = 0;
             
             inputUse = TRUE;
         }
@@ -2090,6 +2274,8 @@ b32 ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 
         { 
             if(KeyHeld(keyMap::Shift))
             {
+                AssertMsg(FALSE, "Not Implemented yet\n");
+                
                 if(!box->isSelecting) 
                 { 
                     box->selectEndIdx   = box->caretIndex;
@@ -2112,9 +2298,24 @@ b32 ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 
             else 
             { if(box->isSelecting) { box->isSelecting = FALSE; box->selectEndIdx = 0; box->selectBeginIdx = 0; } }
             
-            box->isCaretOn = TRUE; box->dtCaret = 0; 
-            box->caretIndex -= 1;
-            if(box->caretIndex < box->viewBeginIdx) { box->viewBeginIdx -= 1; box->viewEndIdx -= 1; }
+            box->isCaretOn      = TRUE;
+            box->dtCaret        = 0;
+            box->caretIndex    -= 1;
+            
+            s32 newLineBeginIdx = -1;
+            
+            if(box->text.data[box->caretIndex] == (char32_t)'\n')
+            { newLineBeginIdx = setIndices(box->caretIndex-1); }
+            else
+            { newLineBeginIdx = setIndices(box->caretIndex); }
+            
+            AssertMsg(newLineBeginIdx != -1, "Fucked Up line index in LArrow");
+            
+            if(newLineBeginIdx < box->currLineBeginIdx)
+            {
+                box->caretLineIdx    -= 1;
+                box->currLineBeginIdx = newLineBeginIdx;
+            }
             
         }
         if(KeyPressOrRepeat(keyMap::RArrow) && box->caretIndex < box->text.len)
@@ -2143,10 +2344,24 @@ b32 ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 
             else 
             { if(box->isSelecting) { box->isSelecting = FALSE; box->selectEndIdx = 0; box->selectBeginIdx = 0; } }
             
-            box->isCaretOn = TRUE; box->dtCaret = 0; 
-            box->caretIndex += 1; 
-            if(box->caretIndex > box->viewEndIdx) { box->viewBeginIdx += 1; box->viewEndIdx += 1; }
+            box->isCaretOn      = TRUE;
+            box->dtCaret        = 0; 
+            box->caretIndex    += 1;
             
+            s32 newLineBeginIdx = -1;
+            
+            if(box->text.data[box->caretIndex] == (char32_t)'\n')
+            { newLineBeginIdx = setIndices(box->caretIndex-1); }
+            else
+            { newLineBeginIdx = setIndices(box->caretIndex); }
+            
+            AssertMsg(newLineBeginIdx != -1, "Fucked Up line index in RArrow");
+            
+            if(newLineBeginIdx > box->currLineBeginIdx)
+            {
+                box->caretLineIdx    += 1;
+                box->currLineBeginIdx = newLineBeginIdx;
+            }
         }
         if(KeyPress(keyMap::Home)) 
         { 
@@ -2174,8 +2389,10 @@ b32 ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 
             else 
             { if(box->isSelecting) { box->isSelecting = FALSE; box->selectEndIdx = 0; box->selectBeginIdx = 0; } }
             
-            box->isCaretOn = TRUE; box->dtCaret = 0; 
-            box->caretIndex = 0;
+            box->isCaretOn = TRUE; box->dtCaret = 0;
+            box->caretIndex       = 0;
+            box->currLineBeginIdx = 0;
+            box->caretLineIdx     = 0;
             
             s32 vLen = box->viewEndIdx - box->viewBeginIdx;
             box->viewBeginIdx = 0;
@@ -2260,16 +2477,16 @@ b32 ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 
             SetClipboard(box->text.data, box->text.len); 
         }
         
-        box->dtCaret += cxt->dt;
+        box->dtCaret += c->dt;
         if(box->dtCaret >= 400) { box->dtCaret = 0; box->isCaretOn = !box->isCaretOn; }
         
         
         if(box->postInput) 
-        { inputUse |= box->postInput(cxt, box->data); }
+        { inputUse |= box->postInput(c, box->data); }
     }
     
-    RenderCommand command = {UI_RC_TEXTBOX, xPos, yPos, w, h, box, cxt->widgetColor, cxt->textColor};
-    ls_uiPushRenderCommand(cxt, command, 0);
+    RenderCommand command = {UI_RC_TESTBOX, xPos, yPos, w, h, box, c->widgetColor, c->textColor};
+    ls_uiPushRenderCommand(c, command, 0);
     
     return inputUse;
 }
@@ -2849,6 +3066,37 @@ void ls_uiRender__(UIContext *c, u32 threadID)
             
             switch(curr->type)
             {
+                
+                case UI_RC_TESTBOX:
+                {
+                    UITextBox *box = curr->textBox;
+                    
+                    Color caretColor = textColor;
+                    const s32 horzOff = 4;
+                    
+                    //TODO: Make the font selection more of a global thing??
+                    s32 strPixelHeight = ls_uiSelectFontByFontSize(c, FS_SMALL);
+                    
+                    ls_uiBorderedRect(c, xPos, yPos, w, h, bkgColor);
+                    
+                    s32 vertOff = ((h - strPixelHeight) / 2) + 5; //TODO: @FontDescent
+                    u32 viewLen = box->viewEndIdx - box->viewBeginIdx;
+                    u32 actualViewLen = viewLen <= box->text.len ? viewLen : box->text.len;
+                    unistring viewString = {box->text.data + box->viewBeginIdx, actualViewLen, actualViewLen};
+                    
+                    //NOTE: Finally draw the entire string.
+                    //ls_uiGlyphString(c, xPos + horzOff, yPos + vertOff, viewString, textColor);
+                    
+                    s32 strX = xPos + horzOff;
+                    s32 strY = yPos + h - strPixelHeight;
+                    
+                    if(box->isCaretOn && c->currentFocus == (u64 *)box)
+                    { ls_uiRenderStringOnRect(c, box, strX, strY, w, h, 
+                                              box->caretIndex-box->currLineBeginIdx, textColor); }
+                    else
+                    { ls_uiRenderStringOnRect(c, box, strX, strY, w, h, -1, textColor); }
+                    
+                } break;
                 
                 case UI_RC_TEXTBOX:
                 {
