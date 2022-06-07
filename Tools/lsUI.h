@@ -2445,21 +2445,29 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         
         else if(KeyPressOrRepeat(keyMap::Delete) && box->text.len > 0 && box->caretIndex < box->text.len)
         {
+            //NOTETODO: Should I reset the indices for the view????
+            
             if(box->isSelecting) {
-                AssertMsg(FALSE, "Not implemented yet\n");
+                box->lineCount   -= (box->selectEndLine - box->selectBeginLine);
+                box->caretIndex   = box->selectBeginIdx;
+                box->caretLineIdx = box->selectBeginLine;
+                box->isSelecting  = FALSE;
+                
+                ls_unistrRmSubstr(&box->text, box->selectBeginIdx, box->selectEndIdx-1);
+            }
+            else
+            {
+                b32 isCR = (box->text.data[box->caretIndex] == (char32_t)'\n');
+                
+                if(box->caretIndex == box->text.len-1) { ls_unistrTrimRight(&box->text, 1); }
+                else { ls_unistrRmIdx(&box->text, box->caretIndex); }
+                
+                if(isCR) { box->lineCount -= 1; }
+                
+                if((box->text.len < box->viewEndIdx) && !isCR) { box->viewEndIdx -= 1; }
             }
             
-            b32 isCR = (box->text.data[box->caretIndex] == (char32_t)'\n');
-            
-            if(box->caretIndex == box->text.len-1) { ls_unistrTrimRight(&box->text, 1); }
-            else { ls_unistrRmIdx(&box->text, box->caretIndex); }
-            
-            if((box->text.len < box->viewEndIdx) && !isCR) { box->viewEndIdx -= 1; }
-            
-            if(box->text.len == 0 && box->isSelecting) { box->isSelecting = FALSE; }
-            
             box->isCaretOn = TRUE; box->dtCaret = 0;
-            
             inputUse = TRUE;
         }
         
