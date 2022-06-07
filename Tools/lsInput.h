@@ -58,6 +58,7 @@ if(rp) { (UserInput.Keyboard.repeatState.k = 1); }
 
 #define HasPrintableKey() (UserInput.Keyboard.hasPrintableKey == TRUE)
 #define GetPrintableKey() (UserInput.Keyboard.keyCodepoint)
+#define ClearPrintableKey() (UserInput.Keyboard.hasPrintableKey = FALSE)
 
 #define GetClipboard(b,l) (UserInput.Keyboard.getClipboard(b,l))
 #define SetClipboard(b,l) (UserInput.Keyboard.setClipboard(b,l))
