@@ -1864,7 +1864,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
     
     //NOTETODO: Hacky shit.
     const u32 horzOff = 8;
-    const u32 maxX    = xPos + (w-(horzOff*2));
+    const u32 maxX    = xPos + (w - 2*horzOff);
     
     //NOTETODO: Hacky shit.
     const u32 vertOff = 8;
@@ -1910,8 +1910,8 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
         s32 caretX = currXPos-3;
         for(; lIdx < line.len; lIdx++, i++)
         {
-            if(currXPos >= maxX) { break; }
             if((lineIdx == box->caretLineIdx) && (cIdx == lIdx)) { caretX = currXPos-3; }
+            if(currXPos >= maxX) { break; }
             
             code = line.data[lIdx];
             AssertMsg(code <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
@@ -1945,19 +1945,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
         
         if(((lineIdx == box->caretLineIdx) && cIdx == line.len)) { caretX = currXPos-3; }
         
-#ifdef _DEBUG
-        if(KeyPress(keyMap::F3))
-        { 
-            //ls_printf("cIdx: %d, line.len: %d, caretLineIdx %d, xOff: %d\n", 
-            //cIdx, line.len, box->caretLineIdx, xOffset);
-            
-            ls_printf("Begin Line: %d, End Line: %d, BIdx: %d, EIdx: %d\n", 
-                      box->selectBeginLine, box->selectEndLine, box->selectBeginIdx, box->selectEndIdx);
-        }
         
-        if(KeyPress(keyMap::F1))
-        { ls_printf("-------------\n"); }
-#endif
         if((cIdx != -1) && (lineIdx == box->caretLineIdx))
         {
             UIGlyph *currGlyph = &c->currFont->glyph[(char32_t)'|'];
@@ -2083,7 +2071,7 @@ s32 ls_uiGlyphStringFit(UIContext *c, unistring text, s32 maxLen)
         if(i > 0) { kernAdvance = ls_uiGetKernAdvance(c, text.data[i-1], text.data[i]); }
         
         totalLen += (currGlyph->xAdv + kernAdvance);
-        if(totalLen > maxLen) { return i; }
+        if(totalLen >= maxLen) { return i; }
     }
     
     return 0;
@@ -2228,7 +2216,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         s32 realOffset = beginOffset+1;
         if(beginOffset == -1) { realOffset = 0; }
         
-        u32 lineLength     = (index-(realOffset+1));
+        u32 lineLength     = index-realOffset;
         
         unistring currLine = { box->text.data + realOffset, lineLength, lineLength };
         u32 maxBeginIndex  = ls_uiGlyphStringFit(c, currLine, viewAddWidth);
@@ -2376,28 +2364,6 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         //NOTE: Draw characters. (box->maxLen == 0 means there's no max len)
         else if(HasPrintableKey() && (box->text.len < box->maxLen || box->maxLen == 0))
         {
-            if(box->isSelecting) {
-                AssertMsg(FALSE, "Not implemented yet\n");
-#if 0
-                s32 insertIdx = box->selectBeginIdx;
-                s32 selectRange = box->selectEndIdx - box->selectBeginIdx;
-                s32 endIdx = box->selectEndIdx-1;
-                
-                if(box->caretIndex > insertIdx) { box->caretIndex -= selectRange; }
-                
-                if(ls_uiGlyphStringLen(c, box->text) <= viewAddWidth)
-                { box->viewEndIdx -= selectRange; }
-                
-                ls_unistrRmSubstr(&box->text, insertIdx, endIdx);
-                
-                //NOTE: Because te view region gets invalidated by scrolled replacements
-                //      We need to re-adjust it!
-                s32 diff = (s32)box->text.len - (s32)box->viewEndIdx;
-                if(diff < 0) { box->viewEndIdx += diff; box->viewBeginIdx += diff; }
-                
-                box->isSelecting = FALSE;
-#endif
-            }
             
             if(box->caretIndex == box->text.len) { ls_unistrAppendChar(&box->text, GetPrintableKey()); }
             else { ls_unistrInsertChar(&box->text, GetPrintableKey(), box->caretIndex); }
@@ -2501,7 +2467,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             handleSelection(1);
             
             box->isCaretOn      = TRUE;
-            box->dtCaret        = 0; 
+            box->dtCaret        = 0;
             box->caretIndex    += 1;
             
             s32 newLineBeginIdx = -1;
