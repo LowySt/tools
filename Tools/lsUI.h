@@ -1911,7 +1911,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
         for(; lIdx < line.len; lIdx++, i++)
         {
             if((lineIdx == box->caretLineIdx) && (cIdx == lIdx)) { caretX = currXPos-3; }
-            if(currXPos >= maxX) { break; }
+            if(currXPos >= maxX) { i += line.len - lIdx; break; }
             
             code = line.data[lIdx];
             AssertMsg(code <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
@@ -1944,7 +1944,6 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
         }
         
         if(((lineIdx == box->caretLineIdx) && cIdx == line.len)) { caretX = currXPos-3; }
-        
         
         if((cIdx != -1) && (lineIdx == box->caretLineIdx))
         {
@@ -2294,7 +2293,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                         if(box->caretIndex == box->selectBeginIdx)
                         { 
                             box->selectBeginIdx += direction;
-                            if(box->text.data[box->caretIndex] == (char32_t)'\n') { box->selectBeginLine += direction; }
+                            if(box->text.data[box->caretIndex] == (char32_t)'\n') { box->selectBeginLine += direction;}
                         }
                         else if(box->caretIndex == box->selectEndIdx)
                         { 
@@ -2386,33 +2385,38 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         else if(KeyPressOrRepeat(keyMap::Backspace) && box->text.len > 0 && box->caretIndex > 0) 
         {
             if(box->isSelecting) {
-                AssertMsg(FALSE, "Not implemented yet\n");
+                box->lineCount   -= (box->selectEndLine - box->selectBeginLine);
+                box->caretIndex   = box->selectBeginIdx;
+                box->caretLineIdx = box->selectBeginLine;
+                box->isSelecting  = FALSE;
+                
+                ls_unistrRmSubstr(&box->text, box->selectBeginIdx, box->selectEndIdx-1);
+                box->currLineBeginIdx = setIndices(box->caretIndex);
+            }
+            else
+            {
+                if(box->text.data[box->caretIndex-1] == (char32_t)'\n')
+                { 
+                    u32 beginOffset = setIndices(box->caretIndex-2);
+                    
+                    box->lineCount        -= 1;
+                    box->caretLineIdx     -= 1;
+                    box->currLineBeginIdx  = beginOffset;
+                    
+                }
+                else { setIndices(box->caretIndex-1); }
+                
+                if(box->caretIndex == box->text.len) { ls_unistrTrimRight(&box->text, 1); }
+                else { ls_unistrRmIdx(&box->text, box->caretIndex-1); }
+                box->caretIndex -= 1;
             }
             
-            if(box->text.data[box->caretIndex-1] == (char32_t)'\n')
-            { 
-                u32 beginOffset = setIndices(box->caretIndex-2);
-                
-                box->lineCount        -= 1;
-                box->caretLineIdx     -= 1;
-                box->currLineBeginIdx  = beginOffset;
-                
-            }
-            else { setIndices(box->caretIndex-1); }
-            
-            if(box->caretIndex == box->text.len) { ls_unistrTrimRight(&box->text, 1); }
-            else { ls_unistrRmIdx(&box->text, box->caretIndex-1); }
-            
-            box->caretIndex -= 1;
             box->isCaretOn = TRUE; box->dtCaret = 0;
-            
             inputUse = TRUE;
         }
         
         else if(KeyPressOrRepeat(keyMap::Delete) && box->text.len > 0 && box->caretIndex < box->text.len)
         {
-            //NOTETODO: Should I reset the indices for the view????
-            
             if(box->isSelecting) {
                 box->lineCount   -= (box->selectEndLine - box->selectBeginLine);
                 box->caretIndex   = box->selectBeginIdx;
@@ -2420,6 +2424,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                 box->isSelecting  = FALSE;
                 
                 ls_unistrRmSubstr(&box->text, box->selectBeginIdx, box->selectEndIdx-1);
+                box->currLineBeginIdx = setIndices(box->caretIndex);
             }
             else
             {
@@ -2484,6 +2489,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                 box->caretLineIdx    += 1;
                 box->currLineBeginIdx = newLineBeginIdx;
             }
+            
         }
         
         else if(KeyPress(keyMap::Home)) 
