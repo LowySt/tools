@@ -2268,6 +2268,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                     
                     case -2:
                     {
+                        if(box->caretIndex == 0) { box->isSelecting = FALSE; break; }
+                        
                         box->selectBeginLine = 0;
                         box->selectEndLine   = box->caretLineIdx;
                         box->selectBeginIdx  = 0;
@@ -2276,6 +2278,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                     
                     case  2:
                     {
+                        if(box->caretIndex >= box->text.len) { box->isSelecting = FALSE; break; }
+                        
                         box->selectBeginLine = box->caretLineIdx;
                         box->selectEndLine   = box->lineCount;
                         box->selectBeginIdx  = box->caretIndex;
@@ -2382,8 +2386,10 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             inputUse = TRUE;
         }
         
-        else if(KeyPressOrRepeat(keyMap::Backspace) && box->text.len > 0 && box->caretIndex > 0) 
+        else if(KeyPressOrRepeat(keyMap::Backspace) && box->text.len > 0 && box->caretIndex >= 0) 
         {
+            if(box->caretIndex == 0 && !box->isSelecting) { goto goto_skip_to_post_input; }
+            
             if(box->isSelecting) {
                 box->lineCount   -= (box->selectEndLine - box->selectBeginLine);
                 box->caretIndex   = box->selectBeginIdx;
@@ -2415,8 +2421,10 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             inputUse = TRUE;
         }
         
-        else if(KeyPressOrRepeat(keyMap::Delete) && box->text.len > 0 && box->caretIndex < box->text.len)
+        else if(KeyPressOrRepeat(keyMap::Delete) && box->text.len > 0 && box->caretIndex <= box->text.len)
         {
+            if(box->caretIndex == box->text.len && !box->isSelecting) { goto goto_skip_to_post_input; }
+            
             if(box->isSelecting) {
                 box->lineCount   -= (box->selectEndLine - box->selectBeginLine);
                 box->caretIndex   = box->selectBeginIdx;
@@ -2492,7 +2500,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             
         }
         
-        else if(KeyPress(keyMap::Home)) 
+        else if(KeyPress(keyMap::Home))
         { 
             handleSelection(-2);
             
@@ -2504,7 +2512,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             setIndices(0);
         }
         
-        else if(KeyPress(keyMap::End)) 
+        else if(KeyPress(keyMap::End))
         {
             handleSelection(2);
             
@@ -2560,6 +2568,9 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             
             SetClipboard(box->text.data, box->text.len); 
         }
+        
+        //NOTE: GOTO label to skip here.
+        goto_skip_to_post_input:
         
         box->dtCaret += c->dt;
         if(box->dtCaret >= 400) { box->dtCaret = 0; box->isCaretOn = !box->isCaretOn; }
