@@ -2525,9 +2525,19 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         
         else if(KeyHeld(keyMap::Control) && KeyPress(keyMap::A))
         {
-            box->isSelecting    = TRUE;
-            box->selectBeginIdx = 0;
-            box->selectEndIdx   = box->text.len;
+            box->isSelecting     = TRUE;
+            box->selectBeginIdx  = 0;
+            box->selectEndIdx    = box->text.len;
+            box->selectBeginLine = 0;
+            box->selectEndLine   = box->lineCount;
+        }
+        
+        else if(KeyHeld(keyMap::Control) && KeyPress(keyMap::C) && box->isSelecting)
+        { 
+            u32 *data = box->text.data + box->selectBeginIdx;;
+            u32 selectionLen = box->selectEndIdx - box->selectBeginIdx;
+            
+            SetClipboard(data, selectionLen);
         }
         
         else if(KeyHeld(keyMap::Control) && KeyPress(keyMap::V))
@@ -2557,16 +2567,6 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->caretIndex += copiedLen;
             
             inputUse = TRUE;
-        }
-        
-        else if(KeyHeld(keyMap::Control) && KeyPress(keyMap::C))
-        { 
-            if(box->isSelecting)
-            {
-                AssertMsg(FALSE, "Not implemented yet.\n");
-            }
-            
-            SetClipboard(box->text.data, box->text.len); 
         }
         
         //NOTE: GOTO label to skip here.
