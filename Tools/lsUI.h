@@ -2353,7 +2353,15 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         
     };
     
-    //ls_printf("Begin: %d, End: %d\n", box->viewBeginIdx, box->viewEndIdx);
+    auto removeSelection = [=]() {
+        box->lineCount   -= (box->selectEndLine - box->selectBeginLine);
+        box->caretIndex   = box->selectBeginIdx;
+        box->caretLineIdx = box->selectBeginLine;
+        box->isSelecting  = FALSE;
+        
+        ls_unistrRmSubstr(&box->text, box->selectBeginIdx, box->selectEndIdx-1);
+        box->currLineBeginIdx = setIndices(box->caretIndex);
+    };
     
     if(ls_uiInFocus(c, box))
     {
@@ -2367,6 +2375,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         //NOTE: Draw characters. (box->maxLen == 0 means there's no max len)
         else if(HasPrintableKey() && (box->text.len < box->maxLen || box->maxLen == 0))
         {
+            if(box->isSelecting) { removeSelection(); }
             
             if(box->caretIndex == box->text.len) { ls_unistrAppendChar(&box->text, GetPrintableKey()); }
             else { ls_unistrInsertChar(&box->text, GetPrintableKey(), box->caretIndex); }
@@ -2390,14 +2399,9 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         {
             if(box->caretIndex == 0 && !box->isSelecting) { goto goto_skip_to_post_input; }
             
-            if(box->isSelecting) {
-                box->lineCount   -= (box->selectEndLine - box->selectBeginLine);
-                box->caretIndex   = box->selectBeginIdx;
-                box->caretLineIdx = box->selectBeginLine;
-                box->isSelecting  = FALSE;
-                
-                ls_unistrRmSubstr(&box->text, box->selectBeginIdx, box->selectEndIdx-1);
-                box->currLineBeginIdx = setIndices(box->caretIndex);
+            if(box->isSelecting) 
+            { 
+                removeSelection();
             }
             else
             {
@@ -2425,14 +2429,9 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         {
             if(box->caretIndex == box->text.len && !box->isSelecting) { goto goto_skip_to_post_input; }
             
-            if(box->isSelecting) {
-                box->lineCount   -= (box->selectEndLine - box->selectBeginLine);
-                box->caretIndex   = box->selectBeginIdx;
-                box->caretLineIdx = box->selectBeginLine;
-                box->isSelecting  = FALSE;
-                
-                ls_unistrRmSubstr(&box->text, box->selectBeginIdx, box->selectEndIdx-1);
-                box->currLineBeginIdx = setIndices(box->caretIndex);
+            if(box->isSelecting) 
+            { 
+                removeSelection();
             }
             else
             {
