@@ -387,7 +387,9 @@ void       ls_uiTextBoxClear(UIContext *cxt, UITextBox *box);
 void       ls_uiTextBoxSet(UIContext *cxt, UITextBox *box, unistring s);
 b32        ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h);
 
-void       ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, Color bkgColor, UIArrowSide s);
+//void       ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, Color bkgColor, UIArrowSide s);
+void       ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, s32 minX, s32 maxX, s32 minY, s32 maxY, Color bkgColor, UIArrowSide s);
+
 u32        ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, char *s);
 u32        ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, unistring s);
 void       ls_uiListBoxRemoveEntry(UIContext *cxt, UIListBox *list, u32 index);
@@ -987,18 +989,18 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
             {
                 command.minX = 0;
                 command.minY = 0;
-                command.maxX = c->windowWidth / 2;
-                command.maxY = c->windowHeight / 2;
+                command.maxX = c->width / 2;
+                command.maxY = c->height;
                 
                 ls_stackPush(&c->renderGroups[0].RenderCommands[zLayer], (void *)&command);
                 return;
             }
             else if(ls_uiRectIsInside(commandRect, {(s32)(c->width / 2), 0, (s32)(c->width / 2), (s32)c->height}))
             {
-                command.minX = c->windowWidth / 2;
-                command.minY = c->windowHeight / 2;
-                command.maxX = c->windowWidth;
-                command.maxY = c->windowHeight;
+                command.minX = c->width / 2;
+                command.minY = 0;
+                command.maxX = c->width;
+                command.maxY = c->height;
                 
                 ls_stackPush(&c->renderGroups[1].RenderCommands[zLayer], (void *)&command);
                 return;
@@ -1022,35 +1024,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
                 section.maxY = c->height;
                 
                 ls_stackPush(&c->renderGroups[1].RenderCommands[zLayer], (void *)&section);
-#if 0
-                section.type  = (RenderCommandType)(command.type);// + UI_RC_FRAG_OFF);
-                section.extra = UI_RCE_LEFT;
-                section.oX = command.x;
-                section.oY = command.y;
-                section.oW = command.w;
-                section.oH = command.h;
                 
-                section.x     = command.x;
-                section.w     = command.w;//(c->width/2) - command.x;
-                
-                section.minX = 0;
-                section.minY = 0;
-                section.maxX = c->windowWidth / 2;
-                section.maxY = c->windowHeight / 2;
-                
-                ls_stackPush(&c->renderGroups[0].RenderCommands[zLayer], (void *)&section);
-                
-                section.extra = UI_RCE_RIGHT;
-                section.x     = command.x;//c->width/2;
-                section.w     = command.w;//command.w - section.w;
-                
-                section.minX = c->windowWidth / 2;
-                section.minY = c->windowHeight / 2;
-                section.maxX = c->windowWidth;
-                section.maxY = c->windowHeight;
-                
-                ls_stackPush(&c->renderGroups[1].RenderCommands[zLayer], (void *)&section);
-#endif
                 return;
             }
             
@@ -1441,6 +1415,17 @@ void ls_uiBorderedRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h,
     ls_uiFillRect(cxt, xPos+1, yPos+1, w-2, h-2, minX, maxX, minY, maxY, widgetColor);
 }
 
+inline
+void ls_uiRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h, s32 minX, s32 maxX, s32 minY, s32 maxY)
+{
+    ls_uiFillRect(cxt, xPos, yPos, w, h, minX, maxX, minY, maxY, cxt->widgetColor);
+}
+
+inline
+void ls_uiRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h, s32 minX, s32 maxX, s32 minY, s32 maxY, Color widgetColor)
+{
+    ls_uiFillRect(cxt, xPos, yPos, w, h, minX, maxX, minY, maxY, widgetColor);
+}
 
 #if 0
 inline
@@ -1596,19 +1581,6 @@ void ls_uiBorderedRectFrag(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, Rende
     
     ls_uiBorderedRectFrag(c, xPos, yPos, w, h, W, C, rce);
 }
-
-inline
-void ls_uiRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h)
-{
-    ls_uiFillRect(cxt, xPos, yPos, w, h, cxt->widgetColor);
-}
-
-inline
-void ls_uiRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h, Color widgetColor)
-{
-    ls_uiFillRect(cxt, xPos, yPos, w, h, widgetColor);
-}
-
 
 //NOTETODO Circle is not good. Not even working.
 void _ls_uiCircle(UIContext *cxt, s32 xPos, s32 yPos, s32 selRadius)
@@ -1826,7 +1798,7 @@ void ls_uiBitmap(UIContext *cxt, s32 xPos, s32 yPos, u32 *data, s32 w, s32 h)
     }
 }
 
-void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, s32 minX, s32 minY, s32 maxX, s32 maxY, UIGlyph *glyph, Color textColor)
+void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, s32 minX, s32 maxX, s32 minY, s32 maxY, UIGlyph *glyph, Color textColor)
 {
     u32 *At = (u32 *)c->drawBuffer;
     
@@ -1955,7 +1927,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
                                   minX, maxX, minY, maxY, c->invWidgetColor);
                 }
                 
-                ls_uiGlyph(c, currXPos, currYPos+vertGlyphOff, minX, minY, maxX, maxY, currGlyph, actualColor);
+                ls_uiGlyph(c, currXPos, currYPos+vertGlyphOff, minX, maxX, minY, maxY, currGlyph, actualColor);
                 
                 s32 kernAdvance = 0;
                 if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
@@ -1968,7 +1940,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
         if((cIdx != -1) && (lineIdx == box->caretLineIdx))
         {
             UIGlyph *currGlyph = &c->currFont->glyph[(char32_t)'|'];
-            ls_uiGlyph(c, caretX, currYPos+vertGlyphOff, minX, minY, maxX, maxY, currGlyph, textColor);
+            ls_uiGlyph(c, caretX, currYPos+vertGlyphOff, minX, maxX, minY, maxY, currGlyph, textColor);
         }
         
         
@@ -1978,9 +1950,8 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
     
 }
 
-#if 0
 //TODO: Use font max descent to determine yOffsets globally
-void ls_uiGlyphString(UIContext *c, s32 xPos, s32 yPos, unistring text, Color textColor)
+void ls_uiGlyphString(UIContext *c, s32 xPos, s32 yPos, s32 minX, s32 maxX, s32 minY, s32 maxY, unistring text, Color textColor)
 {
     s32 currXPos = xPos;
     for(u32 i = 0; i < text.len; i++)
@@ -1989,7 +1960,7 @@ void ls_uiGlyphString(UIContext *c, s32 xPos, s32 yPos, unistring text, Color te
         AssertMsg(indexInGlyphArray <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
         
         UIGlyph *currGlyph = &c->currFont->glyph[indexInGlyphArray];
-        ls_uiGlyph(c, currXPos, yPos, currGlyph, textColor);
+        ls_uiGlyph(c, currXPos, yPos, minX, maxX, minY, maxY, currGlyph, textColor);
         
         s32 kernAdvance = 0;
         if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(c, text.data[i], text.data[i+1]); }
@@ -1998,28 +1969,7 @@ void ls_uiGlyphString(UIContext *c, s32 xPos, s32 yPos, unistring text, Color te
     }
 }
 
-void ls_uiGlyphStringFrag(UIContext *c, s32 xPos, s32 yPos, s32 oX, s32 oY, 
-                          s32 minX, s32 minY, s32 maxX, s32 maxY, 
-                          unistring text, Color textColor)
-{
-    //TODO: Pre-skip the glyphs that appear before (minX,minY)
-    s32 currXPos = xPos;
-    for(u32 i = 0; i < text.len; i++)
-    {
-        u32 indexInGlyphArray = text.data[i];
-        AssertMsg(indexInGlyphArray <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
-        
-        UIGlyph *currGlyph = &c->currFont->glyph[indexInGlyphArray];
-        ls_uiGlyphFrag(c, currXPos, yPos, oX, oY, minX, minY, maxX, maxY, currGlyph, textColor);
-        
-        s32 kernAdvance = 0;
-        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(c, text.data[i], text.data[i+1]); }
-        
-        currXPos += (currGlyph->xAdv + kernAdvance);
-    }
-}
-#endif
-
+//NOTE: Occupied pixel length of a glyph string
 s32 ls_uiGlyphStringLen(UIContext *c, unistring text)
 {
     s32 totalLen = 0;
@@ -2122,23 +2072,15 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h
 
 void ls_uiLabel(UIContext *c, unistring label, s32 xPos, s32 yPos, u32 zLayer = 0)
 {
+    AssertMsg(c->currFont, "No font was selected before sizing a label");
     
-    RenderCommand command = { UI_RC_LABEL, xPos, yPos };
+    s32 width  = ls_uiGlyphStringLen(c, label);
+    s32 height = c->currFont->pixelHeight;
+    
+    RenderCommand command = { UI_RC_LABEL, xPos, yPos, width, height };
     command.label = (char32_t*)label.data;
     command.textColor = c->textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
-    
-#if 0
-    s32 strPixelHeight = ls_uiSelectFontByFontSize(c, FS_SMALL);
-    
-    s32 strWidth = ls_uiGlyphStringLen(c, label);
-    
-    ls_uiPushScissor(c, xPos, yPos-4, strWidth, strPixelHeight+8);
-    
-    ls_uiGlyphString(c, xPos, yPos, label, c->textColor);
-    
-    ls_uiPopScissor(c);
-#endif
 }
 
 void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, u32 zLayer = 0)
@@ -2577,22 +2519,21 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         { inputUse |= box->postInput(c, box->data); }
     }
     
-    RenderCommand command = {UI_RC_TESTBOX, xPos, yPos, w, h, 0, 0, 0, 0, box, c->widgetColor, c->textColor};
-    //RenderCommand command = {UI_RC_TEXTBOX, xPos, yPos, w, h, box, c->widgetColor, c->textColor};
+    RenderCommand command = {UI_RC_TEXTBOX, xPos, yPos, w, h, 0, 0, 0, 0, box, c->widgetColor, c->textColor};
     ls_uiPushRenderCommand(c, command, 0);
     
     return inputUse;
 }
 
-#if 0
-void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, Color bkgColor, UIArrowSide s)
+void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, 
+                    s32 minX, s32 maxX, s32 minY, s32 maxY, Color bkgColor, UIArrowSide s)
 {
     UIScissor::UIRect *scRect = cxt->scissor.currRect;
     u32 *At = (u32 *)cxt->drawBuffer;
     
     s32 xPos = x-1;
     
-    ls_uiBorderedRect(cxt, xPos, yPos, w, h, bkgColor);
+    ls_uiBorderedRect(cxt, xPos, yPos, w, h, minX, maxX, minY, maxY, bkgColor);
     
     if(s == UIA_DOWN)
     {
@@ -2606,10 +2547,17 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, Color bkgColo
         s32 yStart = (yPos + h - vBearing) - 1;
         s32 yEnd = yStart - arrowHeight;
         
+        if(yStart >= maxY) { yStart = maxY; }
+        if(xBase  < minX) { xEnd -= (minX - xBase); xBase = minX; }
+        
         for(s32 y = yStart; y >= yEnd; y--)
         {
+            if(y < minY) { break; }
+            
             for(s32 x = xBase; x < xEnd; x++)
             {
+                if(x >= maxX) { break; }
+                
                 if(x < 0 || x >= cxt->width)  continue;
                 if(y < 0 || y >= cxt->height) continue;
                 
@@ -2637,10 +2585,18 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, Color bkgColo
         s32 yStart2     = yEnd1;
         s32 yEnd2       = yStart2 - arrowHeight;
         
+        if(yStart1 >= maxY) { yStart1 = maxY; }
+        if(yStart2 >= maxY) { yStart2 = maxY; }
+        if(xBase  < minX) { xEnd -= (minX - xBase); xBase = minX; }
+        
         for(s32 y = yStart1; y >= yEnd1; y--)
         {
+            if(y < minY) { break; }
+            
             for(s32 x = xBase; x < xEnd; x++)
             {
+                if(x >= maxX) { break; }
+                
                 if(x < 0 || x >= cxt->width)  continue;
                 if(y < 0 || y >= cxt->height) continue;
                 
@@ -2656,8 +2612,12 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, Color bkgColo
         xEnd -= 1;
         for(s32 y = yStart2; y >= yEnd2; y--)
         {
+            if(y < minY) { break; }
+            
             for(s32 x = xBase; x < xEnd; x++)
             {
+                if(x >= maxX) { break; }
+                
                 if(x < 0 || x >= cxt->width)  continue;
                 if(y < 0 || y >= cxt->height) continue;
                 
@@ -2684,10 +2644,18 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, Color bkgColo
         s32 yStart2     = yEnd1;
         s32 yEnd2       = yStart2 - arrowHeight;
         
+        if(yStart1 >= maxY) { yStart1 = maxY; }
+        if(yStart2 >= maxY) { yStart2 = maxY; }
+        if(xBase  < minX) { xEnd -= (minX - xBase); xBase = minX; }
+        
         for(s32 y = yStart1; y >= yEnd1; y--)
         {
+            if(y < minY) { break; }
+            
             for(s32 x = xBase; x < xEnd; x++)
             {
+                if(x >= maxX) { break; }
+                
                 if(x < 0 || x >= cxt->width)  continue;
                 if(y < 0 || y >= cxt->height) continue;
                 
@@ -2703,8 +2671,12 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, Color bkgColo
         xBase += 1;
         for(s32 y = yStart2; y >= yEnd2; y--)
         {
+            if(y < minY) { break; }
+            
             for(s32 x = xBase; x < xEnd; x++)
             {
+                if(x >= maxX) { break; }
+                
                 if(x < 0 || x >= cxt->width)  continue;
                 if(y < 0 || y >= cxt->height) continue;
                 
@@ -2719,6 +2691,8 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, Color bkgColo
     }
 }
 
+
+#if 0
 
 //NOTETODO: Not using the command system. Basically broken.
 void _ls_uiLPane(UIContext *c, UILPane *pane, s32 xPos, s32 yPos, s32 w, s32 h)
@@ -3165,19 +3139,14 @@ void ls_uiRender__(UIContext *c, u32 threadID)
             
             switch(curr->type)
             {
-#if 0
+                
                 case UI_RC_LABEL:
                 {
-                    
                     unistring label = ls_unistrConstant(curr->label);
-                    
-                    s32 strPixelHeight = ls_uiSelectFontByFontSize(c, FS_SMALL);
-                    
-                    ls_uiGlyphString(c, xPos, yPos, label, textColor);
-                    
+                    ls_uiGlyphString(c, xPos, yPos, minX, maxX, minY, maxY, label, textColor);
                 } break;
-#endif
-                case UI_RC_TESTBOX:
+                
+                case UI_RC_TEXTBOX:
                 {
                     UITextBox *box = curr->textBox;
                     
@@ -3203,68 +3172,6 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                                               -1, textColor, c->invTextColor); }
                     
                 } break;
-#if 0
-                case UI_RC_TEXTBOX:
-                {
-                    UITextBox *box = curr->textBox;
-                    
-                    Color caretColor = textColor;
-                    const s32 horzOff = 4;
-                    
-                    //TODO: Make the font selection more of a global thing??
-                    s32 strPixelHeight = ls_uiSelectFontByFontSize(c, FS_SMALL);
-                    
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, bkgColor);
-                    
-                    s32 vertOff = ((h - strPixelHeight) / 2) + 5; //TODO: @FontDescent
-                    u32 viewLen = box->viewEndIdx - box->viewBeginIdx;
-                    u32 actualViewLen = viewLen <= box->text.len ? viewLen : box->text.len;
-                    unistring viewString = {box->text.data + box->viewBeginIdx, actualViewLen, actualViewLen};
-                    
-                    //NOTE: Finally draw the entire string.
-                    ls_uiGlyphString(c, xPos + horzOff, yPos + vertOff, viewString, textColor);
-                    
-                    if(box->isSelecting)
-                    {
-                        //TODO: Draw this more efficiently by drawing text in 3 different non-overlapping calls??
-                        s32 viewSelBegin = box->selectBeginIdx;
-                        if(viewSelBegin <= box->viewBeginIdx) { viewSelBegin = box->viewBeginIdx; }
-                        
-                        s32 viewSelEnd = box->selectEndIdx;
-                        if(box->viewEndIdx != 0 && viewSelEnd >= box->viewEndIdx) { viewSelEnd = box->viewEndIdx; }
-                        
-                        u32 selLen = viewSelEnd -  viewSelBegin;
-                        unistring selString = {box->text.data + viewSelBegin, selLen, selLen};
-                        s32 selStringWidth  = ls_uiGlyphStringLen(c, selString);
-                        
-                        u32 diffLen = 0;
-                        if(box->selectBeginIdx > box->viewBeginIdx) { diffLen = box->selectBeginIdx - box->viewBeginIdx; }
-                        
-                        unistring diffString = { box->text.data + box->viewBeginIdx, diffLen, diffLen };
-                        s32 diffStringWidth = ls_uiGlyphStringLen(c, diffString);
-                        
-                        ls_uiFillRect(c, xPos + horzOff + diffStringWidth, yPos+1, selStringWidth, h-2, c->invWidgetColor);
-                        ls_uiGlyphString(c, xPos + horzOff + diffStringWidth, yPos + vertOff, selString, c->invTextColor);
-                        
-                        if(box->caretIndex == box->selectBeginIdx)
-                        { caretColor = c->invTextColor; }
-                    }
-                    
-                    //NOTE: Draw the Caret
-                    if(box->isCaretOn && c->currentFocus == (u64 *)box)
-                    {
-                        UIGlyph *caretGlyph = &c->currFont->glyph['|'];
-                        
-                        u32 caretIndexInView = box->caretIndex - box->viewBeginIdx;
-                        unistring tmp = {viewString.data, caretIndexInView, caretIndexInView};
-                        
-                        u32 stringLen = ls_uiGlyphStringLen(c, tmp);
-                        
-                        const s32 randffset = 4; //TODO: Maybe try to remove this?
-                        ls_uiGlyph(c, xPos + horzOff + stringLen - randffset, yPos+vertOff, caretGlyph, caretColor);
-                    }
-                    
-                } break;
                 
                 case UI_RC_LISTBOX:
                 {
@@ -3273,12 +3180,12 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     s32 strHeight = ls_uiSelectFontByFontSize(c, FS_SMALL);
                     s32 vertOff = ((h - strHeight) / 2) + 4; //TODO: @FontDescent
                     
-                    ls_uiBorderedRect(c, xPos, yPos, w, h);
+                    ls_uiBorderedRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY);
                     
                     if(list->list.count)
                     {
                         unistring selected = list->list[list->selectedIndex].name;
-                        ls_uiGlyphString(c, xPos+10, yPos + vertOff, selected, c->textColor);
+                        ls_uiGlyphString(c, xPos+10, yPos + vertOff, minX, maxX, minY, maxY, selected, c->textColor);
                     }
                     
                     
@@ -3291,7 +3198,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         if(list->dtOpen > 52)  { height = maxHeight*0.70f; }
                         
                         if(!list->isOpen)
-                        { ls_uiFillRect(c, xPos+1, yPos-height, w-2, height, c->widgetColor); }
+                        { ls_uiFillRect(c, xPos+1, yPos-height, w-2, height, minX, maxX, minY, maxY, c->widgetColor); }
                     }
                     
                     if(list->isOpen)
@@ -3301,20 +3208,21 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                             s32 currY = yPos - (h*(i+1));
                             UIListBoxItem *currItem = list->list.getPointer(i);
                             
-                            ls_uiRect(c, xPos+1, currY, w-2, h, currItem->bkgColor);
+                            ls_uiRect(c, xPos+1, currY, w-2, h, minX, maxX, minY, maxY, currItem->bkgColor);
                             ls_uiGlyphString(c, xPos+10, yPos + vertOff - (h*(i+1)),
+                                             minX, maxX, minY, maxY,
                                              currItem->name, currItem->textColor);
                             
                         }
                         
-                        ls_uiBorder(c, xPos, yPos-maxHeight, w, maxHeight+1);
+                        ls_uiBorder(c, xPos, yPos-maxHeight, w, maxHeight+1, minX, maxX, minY, maxY);
                     }
                     
                 } break;
                 
                 case UI_RC_LISTBOX_ARR:
                 {
-                    ls_uiDrawArrow(c, xPos, yPos, w, h, curr->listBox->arrowBkg, UIA_DOWN);
+                    ls_uiDrawArrow(c, xPos, yPos, w, h, minX, maxX, minY, maxY, curr->listBox->arrowBkg, UIA_DOWN);
                 } break;
                 
                 case UI_RC_BUTTON:
@@ -3325,34 +3233,34 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     
                     if(button->style == UIBUTTON_TEXT)
                     {
-                        ls_uiBorderedRect(c, xPos, yPos, w, h, bkgColor);
+                        ls_uiBorderedRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, bkgColor);
                         
                         s32 strWidth = ls_uiGlyphStringLen(c, button->name);
                         s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
                         s32 strHeight = c->currFont->pixelHeight;
                         s32 yOff      = strHeight*0.25; //TODO: @FontDescent
                         
-                        ls_uiGlyphString(c, xPos+xOff, yPos+yOff, button->name, c->textColor);
+                        ls_uiGlyphString(c, xPos+xOff, yPos+yOff, minX, maxX, minY, maxY, button->name, textColor);
                     }
                     else if(button->style == UIBUTTON_TEXT_NOBORDER)
                     {
-                        ls_uiRect(c, xPos, yPos, w, h, bkgColor);
+                        ls_uiRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, bkgColor);
                         
                         s32 strWidth = ls_uiGlyphStringLen(c, button->name);
                         s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
                         s32 strHeight = c->currFont->pixelHeight;
                         s32 yOff      = strHeight*0.25; //TODO: @FontDescent
                         
-                        ls_uiGlyphString(c, xPos+xOff, yPos+yOff, button->name, c->textColor);
+                        ls_uiGlyphString(c, xPos+xOff, yPos+yOff, minX, maxX, minY, maxY, button->name, textColor);
                     }
                     else if(button->style == UIBUTTON_BMP)
                     {
-                        ls_uiBitmap(c, xPos, yPos, (u32 *)button->bmpData, button->bmpW, button->bmpH);
+                        //ls_uiBitmap(c, xPos, yPos, (u32 *)button->bmpData, button->bmpW, button->bmpH);
                     }
                     else { AssertMsg(FALSE, "Unhandled button style"); }
                     
                 } break;
-                
+#if 0
                 case UI_RC_SLIDER:
                 {
                     //TODO: There seems to be a rendering bug in here. the top right square of pixels
