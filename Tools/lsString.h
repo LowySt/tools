@@ -182,6 +182,7 @@ s32         ls_unistrLeftFind(unistring s, u32 c);
 s32         ls_unistrLeftFind(unistring s, s32 offset, u32 c);
 s32         ls_unistrRightFind(unistring s, u32 c);
 s32         ls_unistrRightFind(unistring s, s32 offset, u32 c);
+s32         ls_unistrCountOccurrences(unistring s, u32 c);
 
 b32         ls_UTF32IsWhitespace(u32 c);
 
@@ -1931,6 +1932,22 @@ s32 ls_unistrRightFind(unistring s, s32 off, u32 c)
 s32 ls_unistrRightFind(unistring s, u32 c)
 { return ls_unistrRightFind(s, 0, c); }
 
+
+s32 ls_unistrCountOccurrences(unistring s, u32 c)
+{
+    AssertMsg(s.data, "Unistring data is null.\n");
+    u32 *At = s.data;
+    u32 *End = s.data + s.len;
+    
+    s32 result = 0;
+    while(At != End)
+    {
+        result += (s32)(*At == c);
+        At += 1;
+    }
+    
+    return result;
+}
 
 b32 ls_UTF32IsWhitespace(u32 c)
 {
