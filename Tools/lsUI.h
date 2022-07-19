@@ -989,7 +989,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
             {
                 command.minX = 0;
                 command.minY = 0;
-                command.maxX = c->width / 2;
+                command.maxX = (c->width / 2)-1;
                 command.maxY = c->height;
                 
                 ls_stackPush(&c->renderGroups[0].RenderCommands[zLayer], (void *)&command);
@@ -997,7 +997,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
             }
             else if(ls_uiRectIsInside(commandRect, {(s32)(c->width / 2), 0, (s32)(c->width / 2), (s32)c->height}))
             {
-                command.minX = c->width / 2;
+                command.minX = (c->width / 2);
                 command.minY = 0;
                 command.maxX = c->width;
                 command.maxY = c->height;
@@ -1013,12 +1013,12 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
                 section.extra = UI_RCE_LEFT;
                 section.minX = 0;
                 section.minY = 0;
-                section.maxX = c->width / 2;
+                section.maxX = (c->width / 2)-1;
                 section.maxY = c->height;
                 ls_stackPush(&c->renderGroups[0].RenderCommands[zLayer], (void *)&section);
                 
                 section.extra = UI_RCE_RIGHT;
-                section.minX = c->width / 2;
+                section.minX = (c->width / 2);
                 section.minY = 0;
                 section.maxX = c->width;
                 section.maxY = c->height;
@@ -1279,6 +1279,9 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     s32 startX = xPos;
     if(startX < minX) { w -= (minX-startX); startX = minX; }
     
+    if(startX+w > maxX) { w = maxX-startX+1; }
+    if(startY+h > maxY) { h = maxY-startY+1; }
+    
     s32 diffWidth = (w % 4);
     s32 simdWidth = w - diffWidth;
     
@@ -1292,11 +1295,12 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     
     for(s32 y = startY; y < startY+simdHeight; y++)
     {
-        if(y > maxY) { break; }
+        AssertMsg(y <= maxY, "Should never happen. Height was precomputed\n");
+        //if(y > maxY) { break; }
         
         for(s32 x = startX; x < startX+simdWidth; x+=4)
         {
-            if(x > maxX) { break; }
+            AssertMsg(x <= maxX, "Should never happen. Width was precomputed\n");
             
             if(x < 0 || x >= c->width)  continue;
             if(y < 0 || y >= c->height) continue;
@@ -1336,7 +1340,10 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
             
             for(s32 x = startX+simdWidth; x < startX+w; x++)
             {
-                if(x > maxX) { break; }
+                if(x > maxX) { 
+                    ls_printf("diffSIMDWidth: %d, diffWidth: %d\n", x-maxX, diffWidth);
+                    break; 
+                }
                 
                 if(x < 0 || x >= c->width)  continue;
                 if(y < 0 || y >= c->height) continue;
@@ -1408,7 +1415,7 @@ void ls_uiBorderedRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h,
 }
 
 inline
-void ls_uiBorderedRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h, 
+void ls_uiBorderedRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h,
                        s32 minX, s32 maxX, s32 minY, s32 maxY, Color widgetColor, Color borderColor)
 {
     ls_uiBorder(cxt, xPos, yPos, w, h, minX, maxX, minY, maxY, borderColor);
@@ -1779,6 +1786,7 @@ void ls_uiBackground(UIContext *c)
 
 void ls_uiBitmap(UIContext *cxt, s32 xPos, s32 yPos, u32 *data, s32 w, s32 h)
 {
+    AssertMsg(FALSE, "bitmap drawing not implemented yet.\n It's missing thread boundaries, and SIMD\n");
     UIScissor::UIRect *scRect = cxt->scissor.currRect;
     
     u32 *At = (u32 *)cxt->drawBuffer;
@@ -3260,7 +3268,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     else { AssertMsg(FALSE, "Unhandled button style"); }
                     
                 } break;
-#if 0
+                
                 case UI_RC_SLIDER:
                 {
                     //TODO: There seems to be a rendering bug in here. the top right square of pixels
@@ -3276,12 +3284,14 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     {
                         s32 slideWidth = 3;
                         
-                        ls_uiBorder(c, xPos, yPos, w, h);
+                        //NOTE: Not necessary. The border is drawn anyway later to display text. 
+                        //ls_uiBorder(c, xPos, yPos, w, h, minX, maxX, minY, maxY,);
                         
                         s32 slidePos = w*slider->currPos;
-                        
-                        ls_uiFillRect(c, xPos+1, yPos+1, slidePos, h-2, slider->lColor);
-                        ls_uiFillRect(c, xPos+slidePos, yPos+1, w-slidePos-1, h-2, slider->rColor);
+                        s32 lColorW = slidePos == w ? slidePos-2 : slidePos;
+                        s32 rColorW = w-slidePos-2;
+                        ls_uiFillRect(c, xPos+1, yPos+1, lColorW, h-2, minX, maxX, minY, maxY, slider->lColor);
+                        ls_uiFillRect(c, xPos+slidePos+1, yPos+1, rColorW, h-2, minX, maxX, minY, maxY, slider->rColor);
                         
                         unistring val = ls_unistrFromInt(slider->currValue);
                         
@@ -3296,7 +3306,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         Color valueColor = c->borderColor;
                         u8 alpha = 0x00 + (slider->isHeld*0xFF);
                         valueColor = SetAlpha(valueColor, alpha);
-                        ls_uiGlyphString(c, strXPos, yPos + h - strHeight, val, valueColor);
+                        ls_uiGlyphString(c, strXPos, yPos + h - strHeight, minX, maxX, minY, maxY, val, valueColor);
                         
                         ls_unistrFree(&val);
                         
@@ -3308,11 +3318,11 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                             s32 actualWidth  = slideWidth+2;
                             s32 actualHeight = 4 + h;
                             
-                            ls_uiFillRect(c, actualX, actualY, actualWidth, actualHeight, c->borderColor);
+                            ls_uiFillRect(c, actualX, actualY, actualWidth, actualHeight, minX, maxX, minY, maxY, c->borderColor);
                         }
                         else
                         {
-                            ls_uiFillRect(c, xPos+slidePos, yPos, slideWidth, h, c->borderColor);
+                            ls_uiFillRect(c, xPos+slidePos, yPos, slideWidth, minX, maxX, minY, maxY, h, c->borderColor);
                         }
                         
                     }
@@ -3323,7 +3333,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     
                     Color rectColor = c->widgetColor;
                     rectColor = SetAlpha(rectColor, opacity);
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, rectColor);
+                    ls_uiBorderedRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, rectColor);
                     
                     s32 strHeight = ls_uiSelectFontByFontSize(c, FS_SMALL);
                     
@@ -3334,7 +3344,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     Color textColor = c->textColor;
                     textColor = SetAlpha(textColor, opacity);
                     
-                    ls_uiGlyphString(c, xPos+xOff, yPos + yOff, slider->text, textColor);
+                    ls_uiGlyphString(c, xPos+xOff, yPos + yOff, minX, maxX, minY, maxY, slider->text, textColor);
                     
                     //NOTETODO: The isHot is a hack to grow the slider as long as
                     //          the mouse is on top of it. Is it fine for logic to be here in render?
@@ -3345,9 +3355,9 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 case UI_RC_RECT:
                 {
                     //NOTE: here current text color is being used improperly for the border color
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, c->backgroundColor, curr->textColor);
+                    ls_uiBorderedRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, c->backgroundColor, curr->textColor);
                 } break;
-                
+#if 0
                 case UI_RC_FRAG_LABEL:
                 {
                     unistring label = ls_unistrConstant(curr->label);
