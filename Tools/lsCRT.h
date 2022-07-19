@@ -1320,6 +1320,7 @@ void ls_sleep(u64 milliseconds)
 //	MEMORY FUNCTIONS
 ////////////////////////////////////////////////////
 
+#if _DEBUG
 void __internal_AssertMsg(const char * funcHeader, const char* message)
 {
     void *frames[8];
@@ -1353,6 +1354,7 @@ void __internal_AssertMsg(const char * funcHeader, const char* message)
     
     DebugBreak();
 }
+#endif
 
 void ls_memcpy(void *src, void *dest, size_t size)
 {
