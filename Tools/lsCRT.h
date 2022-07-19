@@ -6,12 +6,16 @@
 #define CAT(a,b) a##b
 #define CAT2(a,b) CAT(a,b)
 #define CAT3(a,b,c) CAT2(a,CAT2(b,c))
-
+/*
 #define AssertMsg(condition, msg) if(!(condition)) {            \
 char *outString = CAT3("[ASSERT]", __FUNCTION__, ": "); \
 windows_WriteConsole(outString, ls_len(outString));     \
 windows_WriteConsole(msg, ls_len(msg));                 \
 DebugBreak(); }
+*/
+
+void __internal_AssertMsg(const char * funcHeader, const char* message);
+#define AssertMsg(condition, msg) { if(!(condition)) __internal_AssertMsg(CAT3("[ASSERT]", __FUNCTION__, ": "), msg); }
 
 #define Assert(condition) if(!(condition)){DebugBreak();}
 #else
@@ -1315,6 +1319,40 @@ void ls_sleep(u64 milliseconds)
 ////////////////////////////////////////////////////
 //	MEMORY FUNCTIONS
 ////////////////////////////////////////////////////
+
+void __internal_AssertMsg(const char * funcHeader, const char* message)
+{
+    void *frames[8];
+    u16   frameCount;
+    SYMBOL_INFO  *symbol;
+    
+    HANDLE process = GetCurrentProcess();
+    SymInitialize(process, NULL, TRUE);
+    
+    frameCount           = RtlCaptureStackBackTrace(2, 8, frames, NULL);
+    symbol               = (SYMBOL_INFO *)ls_alloc(sizeof(SYMBOL_INFO) + 256 * sizeof(char));
+    symbol->MaxNameLen   = 255;
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+    
+    windows_WriteConsole((char *)funcHeader, ls_len((char *)funcHeader));
+    windows_WriteConsole((char *)message, ls_len((char *)message));
+    
+    for(u32 i = 0; i < frameCount; i++)
+    {
+        SymFromAddr(process, (u64)(frames[i]), 0, symbol);
+        
+        if(ls_strncmp(symbol->Name, "WinMain", symbol->NameLen) == 0)
+        {
+            windows_WriteConsole("\n", 1);
+            break;
+        }
+        
+        windows_WriteConsole(symbol->Name, symbol->NameLen);
+        windows_WriteConsole("\n", 1);
+    }
+    
+    DebugBreak();
+}
 
 void ls_memcpy(void *src, void *dest, size_t size)
 {

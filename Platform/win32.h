@@ -2253,9 +2253,6 @@ SYNCHRONIZE)
 #define CONDITION_VARIABLE_LOCKMODE_SHARED RTL_CONDITION_VARIABLE_LOCKMODE_SHARED
         
         
-        
-        
-        
         //
         // Window Styles
         //
@@ -2974,6 +2971,10 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         
         HHOOK    SetWindowsHookExA(int idHook, HOOKPROC lpfn, HINSTANCE hmod, DWORD dwThreadId);
         LRESULT  CallNextHookEx(HHOOK hhk, int nCode, WPARAM wParam, LPARAM lParam);
+        
+        BOOL     SymInitialize(HANDLE hProcess, PCSTR UserSearchPath, BOOL fInvadeProcess);
+        USHORT   RtlCaptureStackBackTrace(ULONG FramesToSkip, ULONG FramesToCapture, PVOID *BackTrace, PULONG BackTraceHash);
+        BOOL     SymFromAddr(HANDLE hProcess, u64 Address, u64 *Displacement, PSYMBOL_INFO Symbol);
         /* ---------------------------- */
         /* High Level Window Management */
         /* ---------------------------- */
