@@ -2975,6 +2975,8 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         BOOL     SymInitialize(HANDLE hProcess, PCSTR UserSearchPath, BOOL fInvadeProcess);
         USHORT   RtlCaptureStackBackTrace(ULONG FramesToSkip, ULONG FramesToCapture, PVOID *BackTrace, PULONG BackTraceHash);
         BOOL     SymFromAddr(HANDLE hProcess, u64 Address, u64 *Displacement, PSYMBOL_INFO Symbol);
+        
+        HANDLE   CreateFileMappingA(HANDLE hFile, LPSECURITY_ATTRIBUTES lpFileMappingAttributes, DWORD flProtect, DWORD dwMaximumSizeHigh, DWORD dwMaximumSizeLow, LPCSTR lpName);
         /* ---------------------------- */
         /* High Level Window Management */
         /* ---------------------------- */
