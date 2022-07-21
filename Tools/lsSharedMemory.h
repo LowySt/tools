@@ -8,6 +8,13 @@
 *  and a sentinel value on the SharedMemoryMessageHeader to make 
 *  sure everything is working correctly.
 *  The payloadSize is decided at Initialization and constant.
+*
+*  NOTE Because of how File Mapping works on windows, the
+*  address of the data is obtained by offsetting from the
+*  beginOfData returned by MapViewOfFile when Connecting to a
+*  SharedMemory.
+*
+*  Look up: @JustViewsProblems
 *  -------------------------------------------------------------- */
 
 struct SharedMemoryMessage
@@ -63,6 +70,18 @@ SharedMemory *ls_sharedMemInit(char *name, u64 payloadSize, u64 maxPayloads)
 SharedMemory *ls_sharedMemConnect(char *name)
 {
     SharedMemory *Result = NULL;
+    
+    /*NOTE: CreateFileMapping and MapViewOfFile give access to a Virtual Address Space. Because of that
+*       Different processes may be given (I think they will CERTAINLY be given) different addresses
+*       that point to the same file. Because of that I can't store the data pointer in the
+*       SharedMemory structure, because that pointer is only valid for the process that originally
+*       obtained it.
+*
+*       Since it's just a view into the memory region, and the SharedMemory structure is stored in
+*       the region itself, simply offsetting from the beginOfData address (the one provided by
+*       MapViewOfFile) will always give the correct data address on any process.
+*       @JustViewsProblems
+*/
     
     //NOTE:Committed pages cannot be decommitted or freed.
     HANDLE mappedFile = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, 1, name);
