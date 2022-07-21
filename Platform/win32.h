@@ -2457,6 +2457,32 @@ WS_SYSMENU)
         //
         
 #pragma region Defines
+        
+#define SECTION_QUERY                0x0001
+#define SECTION_MAP_WRITE            0x0002
+#define SECTION_MAP_READ             0x0004
+#define SECTION_MAP_EXECUTE          0x0008
+#define SECTION_EXTEND_SIZE          0x0010
+#define SECTION_MAP_EXECUTE_EXPLICIT 0x0020 // not included in SECTION_ALL_ACCESS
+        
+#define SECTION_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED|SECTION_QUERY|\
+SECTION_MAP_WRITE |      \
+SECTION_MAP_READ |       \
+SECTION_MAP_EXECUTE |    \
+SECTION_EXTEND_SIZE)
+        
+#define FILE_MAP_WRITE            SECTION_MAP_WRITE
+#define FILE_MAP_READ             SECTION_MAP_READ
+#define FILE_MAP_ALL_ACCESS       SECTION_ALL_ACCESS
+        
+#define FILE_MAP_EXECUTE          SECTION_MAP_EXECUTE_EXPLICIT  // not included in FILE_MAP_ALL_ACCESS
+        
+#define FILE_MAP_COPY             0x00000001
+        
+#define FILE_MAP_RESERVE          0x80000000
+#define FILE_MAP_TARGETS_INVALID  0x40000000
+#define FILE_MAP_LARGE_PAGES      0x20000000
+        
 #define HEAP_ZERO_MEMORY			0x00000008
 #define HEAP_NO_SERIALIZE			0x00000001
 #define HEAP_GENERATE_EXCEPTIONS	0x00000004
@@ -2517,9 +2543,11 @@ WS_SYSMENU)
 #endif
         BOOL       HeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem);
         LPVOID     VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
+        LPVOID     VirtualAllocEx(HANDLE Proc, LPVOID Address, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
         BOOL       VirtualFree(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType);
         HANDLE     GetProcessHeap(VOID);
         HANDLE     GetCurrentProcess();
+        void       RtlCopyMemory(PVOID  Destination, const VOID *Source, SIZE_T Length);
         
         //
         // Message Queue
@@ -2977,6 +3005,8 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         BOOL     SymFromAddr(HANDLE hProcess, u64 Address, u64 *Displacement, PSYMBOL_INFO Symbol);
         
         HANDLE   CreateFileMappingA(HANDLE hFile, LPSECURITY_ATTRIBUTES lpFileMappingAttributes, DWORD flProtect, DWORD dwMaximumSizeHigh, DWORD dwMaximumSizeLow, LPCSTR lpName);
+        LPVOID   MapViewOfFile(HANDLE hFileMappingObject, DWORD dwDesiredAccess, DWORD dwFileOffsetHigh, DWORD dwFileOffsetLow, SIZE_T dwNumberOfBytesToMap);
+        
         /* ---------------------------- */
         /* High Level Window Management */
         /* ---------------------------- */
