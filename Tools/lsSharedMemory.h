@@ -5,47 +5,43 @@
 *  This is meant to be used as a Single Producer Single Consumer
 *  queue between processes (rather than threads) for message
 *  communications. It uses a single Write Memory Barrier on push
-*  and the payloadSize as a sentinel value on the 
-*  SharedMemoryMessageHeader to make sure everything is working
- *  correctly.
+*  and a sentinel value on the SharedMemoryMessageHeader to make 
+*  sure everything is working correctly.
+*  The payloadSize is decided at Initialization and constant.
 *  -------------------------------------------------------------- */
 
 struct SharedMemoryMessage
 {
-    u32   payloadSize;
-    void *payload;
+    u8    sentinel;
+    u8    payload[];
 };
 
 struct SharedMemory
 {
-    HANDLE mappedFile;
-    void  *data;
-    
-    u64    maxSize;
+    u64    maxPayloads;
+    u64    payloadSize;
     u64    writeCursor;
     u64    readCursor;
 };
 
-SharedMemory *ls_sharedMemInit(char *name, u64 maxSizeInBytes);
+SharedMemory *ls_sharedMemInit(char *name, u64 payloadSize, u64 maxPayloads);
 SharedMemory *ls_sharedMemConnect(char *name);
 
-void          ls_sharedMemPush(SharedMemory *mem, void *payload, u64 sizeInBytes);
-
-template <typename T>
-void          ls_sharedMemPush(SharedMemory *mem, T *payload);
-
-u32           ls_sharedMemPop(SharedMemory *mem, void *payload);
+b32           ls_sharedMemPush   (SharedMemory *mem, void *payload);
+b32           ls_sharedMemPop    (SharedMemory *mem, void *payload);
 
 #endif //LS_SHARED_MEMORY_H
 
 #ifdef LS_SHARED_MEMORY_IMPLEMENTATION
 
-SharedMemory *ls_sharedMemInit(char *name, u64 maxSizeInBytes)
+SharedMemory *ls_sharedMemInit(char *name, u64 payloadSize, u64 maxPayloads)
 {
+    AssertMsg((payloadSize != 0) && (maxPayloads != 0), "Invalid payloadSize or maxPayloads\n");
+    
     SharedMemory *Result = NULL;
     
     //NOTE: We add enough space for the Shared Memory structure itself, duplicated at the beginning of the memory.
-    u64 maxSize = maxSizeInBytes + sizeof(SharedMemory);
+    u64 maxSize = maxPayloads*sizeof(SharedMemoryMessage) + sizeof(SharedMemory);
     
     u32 highOrd = (u32)((maxSize & 0xFFFFFFFF00000000LL) >> 32);
     u32 lowOrd  = (u32)maxSize;
@@ -56,9 +52,8 @@ SharedMemory *ls_sharedMemInit(char *name, u64 maxSizeInBytes)
     
     void *beginOfData    = MapViewOfFile(mappedFile, FILE_MAP_ALL_ACCESS, 0, 0, maxSize);
     Result               = (SharedMemory *)beginOfData;
-    Result->mappedFile   = mappedFile;
-    Result->data         = (u8 *)beginOfData + sizeof(SharedMemory);
-    Result->maxSize      = maxSize;
+    Result->maxPayloads  = maxPayloads;
+    Result->payloadSize  = payloadSize;
     Result->writeCursor  = 0;
     Result->readCursor   = 0;
     
@@ -70,54 +65,59 @@ SharedMemory *ls_sharedMemConnect(char *name)
     SharedMemory *Result = NULL;
     
     //NOTE:Committed pages cannot be decommitted or freed.
-    HANDLE mappedFile = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, 1, name);
-    
+    HANDLE mappedFile = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, 1, name);
     void *beginOfData = MapViewOfFile(mappedFile, FILE_MAP_ALL_ACCESS, 0, 0, 0);
     Result            = (SharedMemory *)beginOfData;
     
     return Result;
 }
 
-void ls_sharedMemPush(SharedMemory *mem, void *payload, u64 sizeInBytes)
+u32 ls_sharedMemAdvanceCursor(SharedMemory *mem, u32 cursor)
 {
-    if(sizeInBytes == 0) return;
+    u8 *byteData       = (u8 *)mem + sizeof(SharedMemory);
+    const u32 sentinelSize = sizeof(u8);
+    u32 lastSlotOffset = mem->payloadSize*(mem->maxPayloads-1 + sentinelSize);
     
-    SharedMemoryMessage *msg = (SharedMemoryMessage *)(((u8 *)(mem->data)) + mem->writeCursor);
+    u32 newCursor = cursor + mem->payloadSize + sentinelSize;
+    if(newCursor >= lastSlotOffset) { newCursor = 0; }
     
-    if(msg->payloadSize == 0)
+    return newCursor;
+}
+
+b32 ls_sharedMemPush(SharedMemory *mem, void *payload)
+{
+    u8 *byteData             = (u8 *)mem + sizeof(SharedMemory);
+    SharedMemoryMessage *msg = (SharedMemoryMessage *)(byteData + mem->writeCursor);
+    
+    if(msg->sentinel == 0)
     {
         _mm_sfence();
         
-        AssertMsg(FALSE, "Shit\n");
+        ls_memcpy(payload, &msg->payload, mem->payloadSize);
+        msg->sentinel = 1;
+        mem->writeCursor = ls_sharedMemAdvanceCursor(mem, mem->writeCursor);
         
-        msg->payloadSize = sizeInBytes;
-        ls_memcpy(payload, msg->payload, sizeInBytes);
-        mem->writeCursor = ls_sharedMemAdvanceCursor(mem->writeCursor, mem->maxSize);
+        return TRUE;
     }
     
-    return;
+    return FALSE;
 }
 
-template <typename T>
-void ls_sharedMemPush(SharedMemory *mem, T *payload)
+b32 ls_sharedMemPop(SharedMemory *mem, void *payload)
 {
-    ls_sharedMemPush(mem, payload, sizeof(T));
-}
-
-u32 ls_sharedMemPop(SharedMemory *mem, void *payload)
-{
-    SharedMemoryMessage *msg = (SharedMemoryMessage *)(((u8 *)(mem->data)) + mem->readCursor);
+    u8 *byteData             = (u8 *)mem + sizeof(SharedMemory);
+    SharedMemoryMessage *msg = (SharedMemoryMessage *)(byteData + mem->readCursor);
     
-    if(msg->payloadSize == 0) return 0;
+    if(msg->sentinel == 0) { return FALSE; }
     
-    ls_memcpy(msg->payload, payload, msg->payloadSize);
-    u32 readSize = msg->payloadSize;
+    ls_memcpy(&msg->payload, payload, mem->payloadSize);
+    u32 readSize = mem->payloadSize;
     
-    ls_zeroMem(msg->payload, msg->payloadSize);
-    msg->payloadSize = 0;
-    mem->readCursor = ls_sharedMemAdvanceCursor(mem->readCursor, mem->maxSize);
+    ls_zeroMem(&msg->payload, readSize);
+    msg->sentinel = 0;
+    mem->readCursor = ls_sharedMemAdvanceCursor(mem, mem->readCursor);
     
-    return readSize;
+    return TRUE;
 }
 
 #endif //LS_SHARED_MEMORY_IMPLEMENTATION
