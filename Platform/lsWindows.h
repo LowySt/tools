@@ -30,12 +30,10 @@ typedef void GLvoid;
 
 struct WindowInfo;
 
-extern "C" s32    ls_printf(const char *fmt, ...);
-extern "C" s32    ls_sprintf(char *dest, u32 buffSize, const char *fmt, ...);
-extern "C" void   ls_memcpy(void *src, void *dest, size_t size);
-extern "C" void   ls_zeroMem(void *mem, size_t size);
-extern "C" void   ___ls_printStackTraceAssert();
-
+s32    ls_printf(const char *fmt, ...);
+s32    ls_sprintf(char *dest, u32 buffSize, const char *fmt, ...);
+void   ls_memcpy(void *src, void *dest, size_t size);
+void   ls_zeroMem(void *mem, size_t size);
 
 struct windowsDate
 {

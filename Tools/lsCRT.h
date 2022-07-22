@@ -4,15 +4,10 @@
 #ifdef _DEBUG
 
 #define CAT(a,b) a##b
-#define CAT2(a,b) CAT(a,b)
+#define CAT2(a,b) CAT(a,#b)
 #define CAT3(a,b,c) CAT2(a,CAT2(b,c))
-/*
-#define AssertMsg(condition, msg) if(!(condition)) {            \
-char *outString = CAT3("[ASSERT]", __FUNCTION__, ": "); \
-windows_WriteConsole(outString, ls_len(outString));     \
-windows_WriteConsole(msg, ls_len(msg));                 \
-DebugBreak(); }
-*/
+
+#define DEBUG_LOC __FILE__ " : " __FUNCTION__
 
 void __internal_AssertMsg(const char * funcHeader, const char* message);
 #define AssertMsg(condition, msg) { if(!(condition)) __internal_AssertMsg(CAT3("[ASSERT]", __FUNCTION__, ": "), msg); }
@@ -72,6 +67,7 @@ void __internal_AssertMsg(const char * funcHeader, const char* message);
 
 #include "lsString.h"
 #include "lsMath.h"
+#include "lsSharedMemory.h"
 
 
 /*For Variadic Functions*/
@@ -137,113 +133,112 @@ linuxDate linux_GetDate(b32);
 
 #endif
 
-extern "C"
-{
-    ////////////////////////////////////////////////////
-    //	STRING FUNCTIONS
-    ////////////////////////////////////////////////////
-    
-    u32     ls_len(char *s);
-    char    ls_lowerCase(char c);
-    b32     ls_isWritable(char c);
-    b32	 ls_isANumber(char c);
-    b32     ls_isWhitespace(char c);
-    char	ls_itoc(s64 x);
-    u32	 ls_ctoi(char c);
-    
-    //NOTE: On heap
-    char   *ls_itoa(s64 x);
-    char   *ls_ftoa(f64 x);
-    
-    //NOTE: On stack
-    u32    ls_itoa_t(s64 x, char *buff, u32 buffMax);
-    u32    ls_ftoa_t(f64 x, char *buff, u32 buffMax);
-    
-    char   *ls_strstr(char *a, char *b);
-    s64     ls_atoi(char *s, u32 len);
-    f32     ls_atof(char *s, u32 len);
-    s32     ls_strcmp(char *a, char *b);
-    s32     ls_strncmp(char *a, char *b, u32 n);
-    
-    //TODO: Add precision Modifiers to Floating Point Printing
-    s32     ls_vsprintf(char *dest, u32 buffSize, const char *fmt, va_list argList);
-    s32 	ls_sprintf(char *dest, u32 buffSize, const char *format, ...);
-    s32     ls_vprintf(const char *fmt, va_list argList);
-    s32 	ls_printf(const char *format, ...);
-    char    ls_getc();
-    
-    
-    ////////////////////////////////////////////////////
-    //	FILE MANIPULATION FUNCTIONS
-    ////////////////////////////////////////////////////
-    
-    void ls_getFileNameFromPath(char *Path, char *out);
-    void ls_getFileExtension(char *Path, char *out);
-    
-    //If bytesToRead is set to 0 the entire file will be read.
-    u64  ls_readFile(char *Path, char **Dest, u32 bytesToRead);
-    u64  ls_ReadFileByOffset(char *Path, char **Dest, u64 offset, u32 bytesToRead);
-    u64  ls_writeFile(char *Path, void *Source, u32 bytesToWrite, b32 append);
-    b32  ls_fileExists(char *AbsPath);
-    u32  ls_countFilesInDir(char *Dir);
-    u32  ls_countFilesInDirByExt(char *Dir, char *ext);
-    u32  ls_countFilesInDirRecursive(char *Dir);
-    u32  ls_getFileNamesInDir(char *Dir, char ***names, u32 **namesLen);
-    u32  ls_getFileNamesInDirByExt(char *Dir, char *ext, char ***names, u32 **namesLen);
-    u32  ls_getFileNamesInDirRecursive(char *Dir, char ***names, u32 **namesLen);
-    u32  ls_getFilePathsInDirRecursive(char *Dir, char ***names, u32 **namesLen);
-    u32  ls_getFullPathName(char *name, char *buff, u32 buffMaxSize);
-    
-    ////////////////////////////////////////////////////
-    //	GENERAL PURPOSE SYSTEM FUNCTIONS
-    ////////////////////////////////////////////////////
-    
-    /* The resolution depends on the OS:
-  In Windows the epoch is January 1st, 1601 (UTC) and the value is
-  returned in microseconds (even tough resoultion is 100-nanoseconds intervals)
-  In Linux the epoch is ***  and the value is returned in *** */
-    u64 ls_getTimeSinceEpochInMicrosec();
-    u64 ls_getTimeSinceEpochIn100Nanosec();
-    
-    u32 ls_getUnix32Time(); //NOTE: In seconds
-    u64 ls_getUnix64Time(); //NOTE: In seconds
-    
-    /* If false UTC time is returned instead */
-    Date ls_getDateTime(b32 local);
-    
-    void ls_sleep(u64 milliseconds);
-    
-    ////////////////////////////////////////////////////
-    //	MEMORY FUNCTIONS
-    ////////////////////////////////////////////////////
-    
-    void  ls_memcpy(void *src, void *dest, size_t size);
-    void  ls_memset(void *src, u8 v, size_t numBytes);
-    b32   ls_memcmp(void *a, void *b, size_t size);
-    void  ls_zeroMem(void *mem, size_t size);
-    void  ls_zeroMemASM(void *mem, size_t size);
-    void *ls_alloc(u64 size);
-    void *ls_realloc(void *originalMem, u64 oldSize, u64 newSize);
-    void  ls_free(void *p);
-    
-    u32 ls_bitReverse(u32 a); //NOTE: This doesn't belong anywhere else?
-    
-    ////////////////////////////////////////////////////
-    //	INTRINSICS
-    ////////////////////////////////////////////////////
-    
-    f32 Log2(u64 value);
-    f32 Log10(u64 value);
-    u32 Log10i(u64 value);
-    u32 LeadingZeros32(u32 value);
-    u32 LeadingZeros64(u64 value);
-    u32 HighestBitIdx32(u32 value);
-    u32 HighestBitIdx64(u64 value);
-    u16 ByteSwap16(u16 value);
-    u32 ByteSwap32(u32 value);
-    u64 ByteSwap64(u64 value);
-    f64 Ceil(f64 v);
-}
+////////////////////////////////////////////////////
+//	STRING FUNCTIONS
+////////////////////////////////////////////////////
+
+u32     ls_len(char *s);
+char    ls_lowerCase(char c);
+b32     ls_isWritable(char c);
+b32	 ls_isANumber(char c);
+b32     ls_isWhitespace(char c);
+char	ls_itoc(s64 x);
+u32	 ls_ctoi(char c);
+
+//NOTE: On heap
+char   *ls_itoa(s64 x);
+char   *ls_ftoa(f64 x);
+
+//NOTE: On stack
+u32    ls_itoa_t(s64 x, char *buff, u32 buffMax);
+u32    ls_ftoa_t(f64 x, char *buff, u32 buffMax);
+
+char   *ls_strstr(char *a, char *b);
+s64     ls_atoi(char *s, u32 len);
+f32     ls_atof(char *s, u32 len);
+s32     ls_strcmp(char *a, char *b);
+s32     ls_strncmp(char *a, char *b, u32 n);
+
+//TODO: Add precision Modifiers to Floating Point Printing
+s32     ls_vsprintf(char *dest, u32 buffSize, const char *fmt, va_list argList);
+s32 	ls_sprintf(char *dest, u32 buffSize, const char *format, ...);
+s32     ls_vprintf(const char *fmt, va_list argList);
+s32 	ls_printf(const char *format, ...);
+char    ls_getc();
+
+
+////////////////////////////////////////////////////
+//	FILE MANIPULATION FUNCTIONS
+////////////////////////////////////////////////////
+
+void ls_getFileNameFromPath(char *Path, char *out);
+void ls_getFileExtension(char *Path, char *out);
+
+//If bytesToRead is set to 0 the entire file will be read.
+u64  ls_readFile(char *Path, char **Dest, u32 bytesToRead);
+u64  ls_ReadFileByOffset(char *Path, char **Dest, u64 offset, u32 bytesToRead);
+u64  ls_writeFile(char *Path, void *Source, u32 bytesToWrite, b32 append);
+b32  ls_fileExists(char *AbsPath);
+u32  ls_countFilesInDir(char *Dir);
+u32  ls_countFilesInDirByExt(char *Dir, char *ext);
+u32  ls_countFilesInDirRecursive(char *Dir);
+u32  ls_getFileNamesInDir(char *Dir, char ***names, u32 **namesLen);
+u32  ls_getFileNamesInDirByExt(char *Dir, char *ext, char ***names, u32 **namesLen);
+u32  ls_getFileNamesInDirRecursive(char *Dir, char ***names, u32 **namesLen);
+u32  ls_getFilePathsInDirRecursive(char *Dir, char ***names, u32 **namesLen);
+u32  ls_getFullPathName(char *name, char *buff, u32 buffMaxSize);
+
+////////////////////////////////////////////////////
+//	GENERAL PURPOSE SYSTEM FUNCTIONS
+////////////////////////////////////////////////////
+
+/* The resolution depends on the OS:
+In Windows the epoch is January 1st, 1601 (UTC) and the value is
+returned in microseconds (even tough resoultion is 100-nanoseconds intervals)
+In Linux the epoch is ***  and the value is returned in *** */
+u64 ls_getTimeSinceEpochInMicrosec();
+u64 ls_getTimeSinceEpochIn100Nanosec();
+
+u32 ls_getUnix32Time(); //NOTE: In seconds
+u64 ls_getUnix64Time(); //NOTE: In seconds
+
+/* If false UTC time is returned instead */
+Date ls_getDateTime(b32 local);
+
+void ls_sleep(u64 milliseconds);
+
+////////////////////////////////////////////////////
+//	MEMORY FUNCTIONS
+////////////////////////////////////////////////////
+
+void  ls_memcpy(void *src, void *dest, size_t size);
+void  ls_memset(void *src, u8 v, size_t numBytes);
+b32   ls_memcmp(void *a, void *b, size_t size);
+void  ls_zeroMem(void *mem, size_t size);
+void  ls_zeroMemASM(void *mem, size_t size);
+void *ls_alloc(u64 size);
+void *ls_alloc(u64 size, const char *loc);
+void *ls_realloc(void *originalMem, u64 oldSize, u64 newSize);
+void  ls_free(void *p);
+
+u32 ls_bitReverse(u32 a); //NOTE: This doesn't belong anywhere else?
+
+////////////////////////////////////////////////////
+//	INTRINSICS
+////////////////////////////////////////////////////
+
+f32 Log2(u64 value);
+f32 Log10(u64 value);
+u32 Log10i(u64 value);
+u32 LeadingZeros32(u32 value);
+u32 LeadingZeros64(u64 value);
+u32 HighestBitIdx32(u32 value);
+u32 HighestBitIdx64(u64 value);
+u16 ByteSwap16(u16 value);
+u32 ByteSwap32(u32 value);
+u64 ByteSwap64(u64 value);
+f64 Ceil(f64 v);
+
 
 #define ARRAY_IDX_NOT_FOUND (u32)-1
 template<typename T>
@@ -1448,6 +1443,48 @@ void *ls_alloc(u64 size)
     return linux_memAlloc(size);
 #endif
 }
+
+//@TODO: Modify ls_alloc to automatically check if the returned pointer is null.
+void *ls_alloc(u64 size, const char *loc)
+{
+#if _DEBUG
+    struct AllocationMessage
+    {
+        u64  size;
+        u32  locSize;
+        char loc[256];
+    };
+    
+    static b32 TryConnect    = TRUE;
+    static SharedMemory *mem = NULL;
+    //TODO: Create a allocation message to send to the memory viewer
+    if(TryConnect)
+    {
+        mem = ls_sharedMemInit("LowyMemoryViewer", sizeof(AllocationMessage), 1024);
+        TryConnect = FALSE;
+    }
+    
+    if(mem)
+    {
+        u32 locSize = ls_len((char *)loc);
+        AssertMsg(locSize < 256, "locSize > 256. This is annoying and bad.");
+        AllocationMessage msg = { size, locSize };
+        ls_memcpy((void *)loc, msg.loc, locSize);
+        
+        ls_sharedMemPush(mem, &msg);
+    }
+    
+#endif
+    
+#ifdef LS_PLAT_WINDOWS
+    return windows_memAlloc(size);
+#endif
+    
+#ifdef LS_PLAT_LINUX
+    return linux_memAlloc(size);
+#endif
+}
+
 
 void *ls_realloc(void *originalMem, u64 oldSize, u64 newSize)
 {
