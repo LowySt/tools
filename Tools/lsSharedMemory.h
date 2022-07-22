@@ -48,7 +48,7 @@ SharedMemory *ls_sharedMemInit(char *name, u64 payloadSize, u64 maxPayloads)
     SharedMemory *Result = NULL;
     
     //NOTE: We add enough space for the Shared Memory structure itself, duplicated at the beginning of the memory.
-    u64 maxSize = maxPayloads*sizeof(SharedMemoryMessage) + sizeof(SharedMemory);
+    u64 maxSize = maxPayloads*payloadSize + sizeof(SharedMemory);
     
     u32 highOrd = (u32)((maxSize & 0xFFFFFFFF00000000LL) >> 32);
     u32 lowOrd  = (u32)maxSize;
@@ -85,9 +85,13 @@ SharedMemory *ls_sharedMemConnect(char *name)
     
     //NOTE:Committed pages cannot be decommitted or freed.
     HANDLE mappedFile = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, 1, name);
-    void *beginOfData = MapViewOfFile(mappedFile, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-    Result            = (SharedMemory *)beginOfData;
+    if(!mappedFile) { return Result; }
+    if(GetLastError() != ERROR_ALREADY_EXISTS) { CloseHandle(mappedFile); return Result; }
     
+    void *beginOfData = MapViewOfFile(mappedFile, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+    if(!beginOfData) { return Result; }
+    
+    Result = (SharedMemory *)beginOfData;
     return Result;
 }
 
