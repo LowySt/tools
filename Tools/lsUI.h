@@ -4,10 +4,33 @@
 #include "lsWindows.h"
 #include "lsGraphics.h"
 #include "lsCRT.h"
+
+
+//NOTE: Is this good? Allowing implementation if it is not used in the
+//      main file?
+#ifndef LS_MATH_IMPLEMENTATION
+#define LS_MATH_IMPLEMENTATION
 #include "lsMath.h"
-#include "lsString.h"
-#include "lsInput.h"
+#else
+#include "lsMath.h"
+#endif
+
+#ifndef LS_STACK_IMPLEMENTATION
+#define LS_STACK_IMPLEMENTATION
 #include "lsStack.h"
+#else
+#include "lsStack.h"
+#endif
+
+#ifndef LS_STRING_IMPLEMENTATION
+#define LS_STRING_IMPLEMENTATION
+#include "lsString.h"
+#undef LS_STRING_IMPLEMENTATION
+#else
+#include "lsString.h"
+#endif
+
+#include "lsInput.h"
 
 #define RGBA(r,g,b,a)  (u32)((a<<24)|(r<<16)|(g<<8)|b)
 #define RGB(r,g,b)     (u32)((0xFF<<24)|(r<<16)|(g<<8)|b)
@@ -353,7 +376,8 @@ struct ___threadCtx
 
 
 
-HWND       ls_uiCreateWindow(HINSTANCE MainInstance, u8 *drawBuffer, UIContext *c);
+HWND       ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c);
+HWND       ls_uiCreateWindow(UIContext *c);
 UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, RenderCallback cb);
 
 void       ls_uiFrameBegin(UIContext *c);
@@ -726,6 +750,19 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c)
 
 HWND ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c)
 {
+    __ui_RegisterWindow(MainInstance);
+    
+    UserInput.Keyboard.getClipboard = windows_GetClipboard;
+    UserInput.Keyboard.setClipboard = windows_SetClipboard;
+    
+    c->MainWindow = __ui_CreateWindow(MainInstance, c);
+    
+    return c->MainWindow;
+}
+
+HWND ls_uiCreateWindow(UIContext *c)
+{
+    HINSTANCE MainInstance = NULL;
     __ui_RegisterWindow(MainInstance);
     
     UserInput.Keyboard.getClipboard = windows_GetClipboard;
