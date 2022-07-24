@@ -4,7 +4,7 @@
 #ifdef _DEBUG
 
 #define CAT(a,b) a##b
-#define CAT2(a,b) CAT(a,#b)
+#define CAT2(a,b) CAT(a,b)
 #define CAT3(a,b,c) CAT2(a,CAT2(b,c))
 
 #define DEBUG_LOC __FILE__ " : " __FUNCTION__
