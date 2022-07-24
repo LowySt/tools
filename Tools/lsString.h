@@ -144,6 +144,9 @@ b32        ls_unistrAsciiAreEqual(unistring a, string b);
 void       ls_unistrSet(unistring *toSet, unistring source);
 
 unistring  ls_unistrFromAscii(char *s);
+unistring  ls_unistrFromAscii(char *s, u32 len);
+void       ls_unistrFromAscii_t(unistring *dst, char *src);
+void       ls_unistrFromAscii_t(unistring *dst, char *src, u32 len);
 unistring  ls_unistrFromUTF32(const char32_t *s);
 unistring  ls_unistrFromInt(s64 x);
 void       ls_unistrFromInt_t(unistring *s, s64 x);
@@ -1412,9 +1415,8 @@ void ls_unistrSet(unistring *toSet, unistring source)
 }
 
 
-unistring ls_unistrFromAscii(char *s)
+unistring ls_unistrFromAscii(char *s, u32 len)
 {
-    u32 len = ls_len(s);
     unistring Result = ls_unistrAlloc(len);
     
     for(u32 i = 0; i < len; i++) { Result.data[i] = (u32)s[i]; }
@@ -1422,6 +1424,25 @@ unistring ls_unistrFromAscii(char *s)
     
     return Result;
 }
+
+unistring ls_unistrFromAscii(char *s)
+{
+    u32 len = ls_len(s);
+    return ls_unistrFromAscii(s, len);
+}
+
+void ls_unistrFromAscii_t(unistring *dst, char *src, u32 len)
+{
+    for(u32 i = 0; i < len; i++) { dst->data[i] = (u32)src[i]; }
+    dst->len = len;
+}
+
+void ls_unistrFromAscii_t(unistring *dst, char *src)
+{
+    u32 len = ls_len(src);
+    ls_unistrFromAscii_t(dst, src, len);
+}
+
 
 unistring ls_unistrFromUTF32(const char32_t *s)
 {
@@ -1979,7 +2000,7 @@ void ls_unistrConcatOn(unistring s1, unistring s2, unistring *out)
 {
     AssertMsg(out, "Output unistring ptr is null\n");
     AssertMsg(out->data, "Output unistring data is null\n");
-    AssertMsg((out->size < (s1.len + s2.len)), "Output unistring is too small to fit inputs\n");
+    AssertMsg((out->size > (s1.len + s2.len)), "Output unistring is too small to fit inputs\n");
     
     if(s1.len) { ls_memcpy(s1.data, out->data, s1.len*4); }
     if(s2.len) { ls_memcpy(s2.data, out->data + s1.len, s2.len*4); }
