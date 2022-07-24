@@ -93,7 +93,7 @@ struct UILPane
 
 struct UIContext;
 
-enum UIButtonStyle { UIBUTTON_TEXT, UIBUTTON_TEXT_NOBORDER, UIBUTTON_BMP };
+enum UIButtonStyle { UIBUTTON_TEXT, UIBUTTON_TEXT_NOBORDER, UIBUTTON_NO_TEXT, UIBUTTON_BMP };
 
 typedef b32(*ButtonProc)(UIContext *cxt, void *data);
 struct UIButton
@@ -236,17 +236,6 @@ const char* RenderCommandTypeAsString[] = {
     "UI_RC_RECT",
     "UI_RC_MENU",
     "UI_RC_BACKGROUND",
-    
-    "UI_RC_FRAG_OFF",
-    
-    "UI_RC_FRAG_TEXTBOX",
-    "UI_RC_FRAG_BUTTON",
-    "UI_RC_FRAG_LISTBOX",
-    "UI_RC_FRAG_LISTBOX_ARR",
-    "UI_RC_FRAG_SLIDER",
-    "UI_RC_FRAG_RECT",
-    "UI_RC_FRAG_MENU",
-    "UI_RC_FRAG_BACKGROUND",
 };
 
 enum RenderCommandType
@@ -264,18 +253,6 @@ enum RenderCommandType
     UI_RC_RECT,
     UI_RC_MENU,
     UI_RC_BACKGROUND,
-    
-    UI_RC_FRAG_OFF,
-    
-    UI_RC_FRAG_TEXTBOX,
-    UI_RC_FRAG_LABEL,
-    UI_RC_FRAG_BUTTON,
-    UI_RC_FRAG_LISTBOX,
-    UI_RC_FRAG_LISTBOX_ARR,
-    UI_RC_FRAG_SLIDER,
-    UI_RC_FRAG_RECT,
-    UI_RC_FRAG_MENU,
-    UI_RC_FRAG_BACKGROUND,
 };
 
 struct RenderCommand
@@ -1003,7 +980,6 @@ __ls_RenderRect ls_uiQuadrantFromPoint(UIContext *c, s32 x, s32 y, u32 *idx)
 void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
 {
     AssertMsg(command.type != UI_RC_INVALID,  "Uninitialized Render Command?\n");
-    AssertMsg(command.type != UI_RC_FRAG_OFF, "Offset as Render Command?\n");
     
     __ls_RenderRect commandRect = { command.x, command.y, command.w, command.h };
     
@@ -1067,6 +1043,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
             
         } break;
         
+#if 0
         case 4:
         {
             u32 i1, i2, i3, i4;
@@ -1180,6 +1157,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
             }
             
         } break;
+#endif
         
         default: { AssertMsg(FALSE, "Thread count not supported\n"); } return;
     }
@@ -2070,15 +2048,30 @@ inline
 s32 ls_uiSelectFontByFontSize(UIContext *c, UIFontSize fontSize)
 { 
     AssertMsg(c->fonts, "No fonts were loaded\n");
-    c->currFont = &c->fonts[fontSize]; return c->currFont->pixelHeight; 
+    c->currFont = &c->fonts[fontSize]; return c->currFont->pixelHeight;
+}
+
+UIButton ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *userData)
+{
+    UIButton Result = {s, {}, 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
+    return Result;
+}
+
+UIButton ls_uiButtonInit(UIButtonStyle s, unistring text, ButtonProc onClick, ButtonProc onHold, void *userData)
+{
+    UIButton Result = {s, text, 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
+    return Result;
 }
 
 //TODO:Button autosizing width
+
 //TODO:Menus use buttons, but also claim Focus, which means I can't use the global focus trick to avoid input
 //     handling between overlapping elements.
 //     I don't think the menu should deal with things like this [It shouldn't hold the close button first,
 //     and it also shouldn't use 'normal' buttons for its drop down sub-menus, so... basically @MenuIsShit
 //     and I wanna redo it completely.
+
+//TODO:Ways to force buttons to stay selected. Maybe make a versatile checkbox?
 b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer = 0)
 {
     b32 inputUse = FALSE;
@@ -3274,29 +3267,37 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 {
                     UIButton *button = curr->button;
                     
-                    s32 strHeight = ls_uiSelectFontByFontSize(c, FS_SMALL);
-                    
                     if(button->style == UIBUTTON_TEXT)
                     {
                         ls_uiBorderedRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, bkgColor);
                         
-                        s32 strWidth = ls_uiGlyphStringLen(c, button->name);
-                        s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
-                        s32 strHeight = c->currFont->pixelHeight;
-                        s32 yOff      = strHeight*0.25; //TODO: @FontDescent
-                        
-                        ls_uiGlyphString(c, xPos+xOff, yPos+yOff, minX, maxX, minY, maxY, button->name, textColor);
+                        if(button->name.data)
+                        {
+                            s32 strHeight = ls_uiSelectFontByFontSize(c, FS_SMALL);
+                            s32 strWidth = ls_uiGlyphStringLen(c, button->name);
+                            s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
+                            s32 yOff      = strHeight*0.25; //TODO: @FontDescent
+                            
+                            ls_uiGlyphString(c, xPos+xOff, yPos+yOff, minX, maxX, minY, maxY, button->name, textColor);
+                        }
                     }
                     else if(button->style == UIBUTTON_TEXT_NOBORDER)
                     {
                         ls_uiRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, bkgColor);
                         
-                        s32 strWidth = ls_uiGlyphStringLen(c, button->name);
-                        s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
-                        s32 strHeight = c->currFont->pixelHeight;
-                        s32 yOff      = strHeight*0.25; //TODO: @FontDescent
-                        
-                        ls_uiGlyphString(c, xPos+xOff, yPos+yOff, minX, maxX, minY, maxY, button->name, textColor);
+                        if(button->name.data)
+                        {
+                            s32 strHeight = ls_uiSelectFontByFontSize(c, FS_SMALL);
+                            s32 strWidth = ls_uiGlyphStringLen(c, button->name);
+                            s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
+                            s32 yOff      = strHeight*0.25; //TODO: @FontDescent
+                            
+                            ls_uiGlyphString(c, xPos+xOff, yPos+yOff, minX, maxX, minY, maxY, button->name, textColor);
+                        }
+                    }
+                    else if(button->style == UIBUTTON_NO_TEXT)
+                    {
+                        ls_uiRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, bkgColor);
                     }
                     else if(button->style == UIBUTTON_BMP)
                     {
@@ -3392,7 +3393,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 case UI_RC_RECT:
                 {
                     //NOTE: here current text color is being used improperly for the border color
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, c->backgroundColor, curr->textColor);
+                    ls_uiBorderedRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, bkgColor, textColor);
                 } break;
                 
                 default: { 
