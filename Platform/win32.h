@@ -827,6 +827,14 @@ SYNCHRONIZE)
         // System Structures
         //
         
+        typedef struct _IMAGEHLP_LINE {
+            DWORD    SizeOfStruct; 
+            PVOID    Key; 
+            DWORD    LineNumber; 
+            PCHAR    FileName; 
+            u64      Address; 
+        } IMAGEHLP_LINE, *PIMAGEHLP_LINE, IMAGEHLP_LINE64, *PIMAGEHLP_LINE64;
+        
         typedef struct _SYMBOL_INFO {
             ULONG   SizeOfStruct;
             ULONG   TypeIndex;
@@ -2352,6 +2360,7 @@ WS_SYSMENU)
                                          PVOID  *BackTrace, PULONG BackTraceHash);
         BOOL       SymInitialize(HANDLE hProcess, PCSTR UserSearchPath, BOOL fInvadeProcess);
         BOOL       SymFromAddr(HANDLE hProcess, u64 Address, u64 *Displacement, PSYMBOL_INFO Symbol);
+        BOOL       SymGetLineFromAddr64(HANDLE hProcess, u64 qwAddr, PDWORD pdwDisplacement, PIMAGEHLP_LINE64 Line64);
         
         BOOL       GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
         VOID       GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);

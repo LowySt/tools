@@ -217,7 +217,7 @@ b32   ls_memcmp(void *a, void *b, size_t size);
 void  ls_zeroMem(void *mem, size_t size);
 void  ls_zeroMemASM(void *mem, size_t size);
 void *ls_alloc(u64 size);
-void *ls_alloc(u64 size, const char *loc);
+void *ls_alloc(u64 size, char *loc);
 void *ls_realloc(void *originalMem, u64 oldSize, u64 newSize);
 void  ls_free(void *p);
 
@@ -1316,6 +1316,85 @@ void ls_sleep(u64 milliseconds)
 ////////////////////////////////////////////////////
 
 #if _DEBUG
+u32 __internal_GetStackTraceUntil(char *out, u32 maxLen, char *lastFuncName, b32 fullPath = FALSE)
+{
+    const u32 maxFramesToCapture = 128;
+    void *frames[maxFramesToCapture];
+    u16   frameCount;
+    SYMBOL_INFO  *symbol;
+    IMAGEHLP_LINE64 imgHelp = {};
+    
+    HANDLE process = GetCurrentProcess();
+    SymInitialize(process, NULL, TRUE);
+    
+    const u32 framesToSkip = 2;
+    frameCount           = RtlCaptureStackBackTrace(framesToSkip, maxFramesToCapture, frames, NULL);
+    symbol               = (SYMBOL_INFO *)ls_alloc(sizeof(SYMBOL_INFO) + 256 * sizeof(char));
+    symbol->MaxNameLen   = 255;
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+    
+    u32 outIndex = 0;
+    for(u32 i = 0; i < frameCount; i++)
+    {
+        SymFromAddr(process, (u64)(frames[i]), 0, symbol);
+        
+        if(fullPath)
+        {
+            char lineNumBuff[32] = {};
+            DWORD displacement = 0;
+            SymGetLineFromAddr64(process, (u64)(frames[i]), &displacement, &imgHelp);
+            
+            u32 fileNameLen = ls_len(imgHelp.FileName);
+            u32 lineNumLen  = ls_itoa_t(imgHelp.LineNumber, lineNumBuff, 32);
+            
+            if((ls_strncmp(symbol->Name, lastFuncName, symbol->NameLen) == 0) || 
+               (outIndex + 1 + symbol->NameLen + 1 + fileNameLen + 2 + lineNumLen > maxLen))
+            {
+                if(outIndex < maxLen) { out[outIndex] = '\n'; }
+                break;
+            }
+            
+            ls_memcpy(imgHelp.FileName, out + outIndex, fileNameLen);
+            outIndex += fileNameLen;
+            
+            ls_memcpy(":", out + outIndex, 1);
+            outIndex += 1;
+            
+            ls_memcpy(symbol->Name, out + outIndex, symbol->NameLen);
+            outIndex += symbol->NameLen;
+            
+            out[outIndex] = '(';
+            outIndex += 1;
+            
+            ls_memcpy(lineNumBuff, out + outIndex, lineNumLen);
+            outIndex += lineNumLen;
+            
+            out[outIndex] = ')';
+            outIndex += 1;
+            
+            out[outIndex] = '\n';
+            outIndex += 1;
+        }
+        else
+        {
+            if((ls_strncmp(symbol->Name, lastFuncName, symbol->NameLen) == 0) || 
+               (outIndex + 1 + symbol->NameLen > maxLen))
+            {
+                if(outIndex < maxLen) { out[outIndex] = '\n'; }
+                break;
+            }
+            
+            ls_memcpy(symbol->Name, out + outIndex, symbol->NameLen);
+            outIndex += symbol->NameLen;
+            
+            out[outIndex] = '\n';
+            outIndex += 1;
+        }
+    }
+    
+    return outIndex;
+}
+
 void __internal_AssertMsg(const char * funcHeader, const char* message)
 {
     void *frames[8];
@@ -1445,14 +1524,14 @@ void *ls_alloc(u64 size)
 }
 
 //@TODO: Modify ls_alloc to automatically check if the returned pointer is null.
-void *ls_alloc(u64 size, const char *loc)
+void *ls_alloc(u64 size, char *mainName)
 {
 #if _DEBUG
     struct AllocationMessage
     {
         u64  size;
         u32  locSize;
-        char loc[256];
+        char loc[2048];
     };
     
     static b32 TryConnect    = TRUE;
@@ -1466,11 +1545,8 @@ void *ls_alloc(u64 size, const char *loc)
     
     if(mem)
     {
-        u32 locSize = ls_len((char *)loc);
-        AssertMsg(locSize < 256, "locSize > 256. This is annoying and bad.");
-        AllocationMessage msg = { size, locSize };
-        ls_memcpy((void *)loc, msg.loc, locSize);
-        
+        AllocationMessage msg = { size };
+        msg.locSize = __internal_GetStackTraceUntil(msg.loc, 2048, mainName, TRUE);
         ls_sharedMemPush(mem, &msg);
     }
     
