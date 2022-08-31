@@ -19,7 +19,7 @@ struct keyMap
     u8 N0 : 1, N1 : 1, N2 : 1, N3 : 1, N4 : 1;
     u8 N5 : 1, N6 : 1, N7 : 1, N8 : 1, N9 : 1;                  // 48 + 10 = 58
     
-    u8 Enter : 1, Shift : 1, Control : 1, Alt : 1;              // 58 +  4 = 62
+    u8 Enter : 1, Shift : 1, Control : 1, RAlt : 1;             // 58 +  4 = 62
     
     u8 LArrow : 1, RArrow : 1, UArrow : 1, DArrow : 1;          // 62 +  4 = 66
     

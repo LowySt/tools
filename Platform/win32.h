@@ -3065,6 +3065,7 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         LONG_PTR GetWindowLongPtrA(HWND hWnd, int  nIndex);
         LONG_PTR GetWindowLongPtrW(HWND hWnd, int  nIndex);
         
+        BOOL     EnableWindow(HWND hWnd, BOOL bEnable);
         BOOL     PostMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
         VOID     PostQuitMessage(int nExitCode);
         BOOL     DestroyWindow(HWND hWnd);
@@ -3475,6 +3476,34 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         
         
 #pragma endregion
+        
+        /*
+ * System Menu Command Values
+ */
+#define SC_SIZE         0xF000
+#define SC_MOVE         0xF010
+#define SC_MINIMIZE     0xF020
+#define SC_MAXIMIZE     0xF030
+#define SC_NEXTWINDOW   0xF040
+#define SC_PREVWINDOW   0xF050
+#define SC_CLOSE        0xF060
+#define SC_VSCROLL      0xF070
+#define SC_HSCROLL      0xF080
+#define SC_MOUSEMENU    0xF090
+#define SC_KEYMENU      0xF100
+#define SC_ARRANGE      0xF110
+#define SC_RESTORE      0xF120
+#define SC_TASKLIST     0xF130
+#define SC_SCREENSAVE   0xF140
+#define SC_HOTKEY       0xF150
+#define SC_DEFAULT      0xF160
+#define SC_MONITORPOWER 0xF170
+#define SC_CONTEXTHELP  0xF180
+#define SC_SEPARATOR    0xF00F
+#define SCF_ISSECURE    0x00000001
+        
+#define GET_SC_WPARAM(wParam) ((int)wParam & 0xFFF0)
+        
         
         /*
          * SetWindowPos Flags

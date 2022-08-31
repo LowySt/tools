@@ -4,31 +4,9 @@
 #include "lsWindows.h"
 #include "lsGraphics.h"
 #include "lsCRT.h"
-
-
-//NOTE: Is this good? Allowing implementation if it is not used in the
-//      main file?
-#ifndef LS_MATH_IMPLEMENTATION
-#define LS_MATH_IMPLEMENTATION
 #include "lsMath.h"
-#else
-#include "lsMath.h"
-#endif
-
-#ifndef LS_STACK_IMPLEMENTATION
-#define LS_STACK_IMPLEMENTATION
 #include "lsStack.h"
-#else
-#include "lsStack.h"
-#endif
-
-#ifndef LS_STRING_IMPLEMENTATION
-#define LS_STRING_IMPLEMENTATION
 #include "lsString.h"
-#undef LS_STRING_IMPLEMENTATION
-#else
-#include "lsString.h"
-#endif
 
 #include "lsInput.h"
 
@@ -195,21 +173,43 @@ struct UISlider
     Color rColor;
 };
 
+struct UIMenuItem
+{
+    unistring  name;
+    
+    Color textColor;
+    Color bkgColor;
+    
+    b32 isHot;
+    ButtonProc onClick;
+    void       *userData;
+};
+
+struct UISubMenu
+{
+    unistring name;
+    Array<UIMenuItem> items;
+    
+    b32 isHot;
+};
 
 //TODO: Very Shitty implementation of Menus
 struct UIMenu
 {
-    UIButton  closeWindow;
-    UIButton  minimize;
+    UIButton          closeWindow;
+    UIButton          minimize;
     
-    b32 isOpen;
-    s32 openIdx;
-    Array<UIButton> items;
+    Array<UISubMenu>  subMenus;
+    b32               isOpen;
+    s32               openIdx;
     
-    UIMenu *sub;            //NOTE: There is 1 sub for every item
-    u32     maxSub;
+    Array<UIMenuItem> items;
+    
+    s32               itemWidth;
+    
+    //TODO: Add bkgColor and textColor
 };
-struct __UImenuDataPass { UIMenu *menu; s32 idx; };
+
 
 enum RenderCommandExtra
 {
@@ -229,6 +229,7 @@ enum RenderCommandExtra
 const char* RenderCommandTypeAsString[] = {
     "UI_RC_INVALID",
     "UI_RC_TEXTBOX",
+    "UI_RC_LABEL",
     "UI_RC_BUTTON",
     "UI_RC_LISTBOX",
     "UI_RC_LISTBOX_ARR",
@@ -388,7 +389,6 @@ void       ls_uiTextBoxClear(UIContext *cxt, UITextBox *box);
 void       ls_uiTextBoxSet(UIContext *cxt, UITextBox *box, unistring s);
 b32        ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h);
 
-//void       ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, Color bkgColor, UIArrowSide s);
 void       ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, s32 minX, s32 maxX, s32 minY, s32 maxY, Color bkgColor, UIArrowSide s);
 
 u32        ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, char *s);
@@ -401,10 +401,11 @@ void       ls_uiSliderChangeValueBy(UIContext *cxt, UISlider *f, s32 valueDiff);
 s32        ls_uiSliderGetValue(UIContext *cxt, UISlider *f);
 b32        ls_uiSlider(UIContext *cxt, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h);
 
-b32        ls_uiMenuDefaultOnClick(UIContext *cxt, void *data);
-void       ls_uiMenuAddItem(UIMenu *menu, UIButton b);
-void       ls_uiMenuAddSub(UIMenu *menu, UIMenu sub, s32 idx);
-b32        ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h);
+void       ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub);
+void       ls_uiMenuAddSub(UIContext *c, UIMenu *menu, char32_t *name);
+void       ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonProc onClick, void *userData);
+void       ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name, ButtonProc onClick, void *data);
+b32        ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer);
 
 void       ls_uiRender(UIContext *c);
 
@@ -428,6 +429,10 @@ void    *closeButtBackbuff;
 
 HDC  WindowDC;
 HDC  BackBufferDC;
+
+#if _DEBUG
+static u64 __debug_frameNumber = 0;
+#endif
 
 LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 {
@@ -547,6 +552,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                 case VK_HOME:    KeySetAndRepeat(keyMap::Home, rep);      break;
                 case VK_END:     KeySetAndRepeat(keyMap::End, rep);       break;
                 case VK_CONTROL: KeySetAndRepeat(keyMap::Control, rep);   break;
+                case VK_MENU:    KeySetAndRepeat(keyMap::RAlt, rep);      break;
                 case VK_SHIFT:   KeySetAndRepeat(keyMap::Shift, rep);     break; //TODO: Differentiate L/R Shift
                 
                 case 'A':        KeySetAndRepeat(keyMap::A, rep);         break;
@@ -583,6 +589,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                 case VK_HOME:    KeyUnset(keyMap::Home);      break;
                 case VK_END:     KeyUnset(keyMap::End);       break;
                 case VK_CONTROL: KeyUnset(keyMap::Control);   break;
+                case VK_MENU:    KeyUnset(keyMap::RAlt);      break;
                 case VK_SHIFT:   KeyUnset(keyMap::Shift);     break; //TODO: Differentiate L/R Shift
                 
                 case 'A':        KeyUnset(keyMap::A);         break;
@@ -612,7 +619,6 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             Mouse->isLeftPressed = FALSE;
             
             c->isDragging = FALSE;
-            BOOL success = ReleaseCapture();
         } break;
         
         case WM_RBUTTONDOWN:
@@ -885,6 +891,10 @@ void ls_uiFrameBegin(UIContext *c)
 void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
 {
     static u32 lastFrameTime = 0;
+    
+#ifdef _DEBUG
+    __debug_frameNumber += 1;
+#endif
     
     RegionTimerEnd(c->frameTime);
     u32 frameTimeMs = RegionTimerGet(c->frameTime);
@@ -1799,24 +1809,39 @@ void ls_uiBackground(UIContext *c)
     }
 }
 
-void ls_uiBitmap(UIContext *cxt, s32 xPos, s32 yPos, u32 *data, s32 w, s32 h)
+void ls_uiBitmap(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, s32 minX, s32 maxX, s32 minY, s32 maxY, u32 *data)
 {
-    AssertMsg(FALSE, "bitmap drawing not implemented yet.\n It's missing thread boundaries, and SIMD\n");
-    UIScissor::UIRect *scRect = cxt->scissor.currRect;
+    s32 startY = yPos;
+    if(startY < minY) { h -= (minY-startY); startY = minY; }
     
-    u32 *At = (u32 *)cxt->drawBuffer;
+    s32 startX = xPos;
+    if(startX < minX) { w -= (minX-startX); startX = minX; }
     
-    for(s32 y = yPos, eY = 0; y < yPos+h; y++, eY++)
+    if(startX+w > maxX) { w = maxX-startX+1; }
+    if(startY+h > maxY) { h = maxY-startY+1; }
+    
+    u32 *At = (u32 *)c->drawBuffer;
+    
+    for(s32 y = startY, eY = 0; y < yPos+h; y++, eY++)
     {
-        for(s32 x = xPos, eX = 0; x < xPos+w; x++, eX++)
+        AssertMsg(y <= maxY, "Should never happen. Height was precomputed\n");
+        
+        for(s32 x = startX, eX = 0; x < xPos+w; x++, eX++)
         {
-            if(x < 0 || x >= cxt->width)  continue;
-            if(y < 0 || y >= cxt->height) continue;
+            AssertMsg(x <= maxX, "Should never happen. Width was precomputed\n");
             
-            if(x < scRect->x || x >= scRect->x+scRect->w) continue;
-            if(y < scRect->y || y >= scRect->y+scRect->h) continue;
+            if(x < 0 || x >= c->width)  continue;
+            if(y < 0 || y >= c->height) continue;
             
-            At[y*cxt->width + x] = data[eY*w + eX];
+            //At[y*c->width + x] = data[eY*w + eX];
+            
+            Color src = data[eY*w + eX];
+            Color base = At[y*c->width + x];
+            
+            u8 sourceA = GetAlpha(src);
+            
+            Color blendedColor = ls_uiAlphaBlend(src, base, sourceA);
+            At[y*c->width + x] = blendedColor;
         }
     }
 }
@@ -2932,6 +2957,9 @@ b32 ls_uiSlider(UIContext *cxt, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32
     
     if(slider->style == SL_BOX)
     {
+        //NOTE: hotness needs to be logically re-checked every frame, else it always stays on.
+        slider->isHot = FALSE;
+        
         slider->currValue = ((slider->maxValue - slider->minValue) * slider->currPos) + slider->minValue;
         s32 slidePos = w*slider->currPos;
         
@@ -2966,93 +2994,123 @@ b32 ls_uiSlider(UIContext *cxt, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32
     return hasAnsweredToInput;
 }
 
+inline void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub)
+{ menu->subMenus.push(sub); }
 
-//NOTETODO: This is bad. Either it's a real default, then it should be auto set, or it's not
-//          then it shouldn't be here!
-b32 ls_uiMenuDefaultOnClick(UIContext *cxt, void *data)
-{
-    b32 inputUse = FALSE;
-    
-    __UImenuDataPass *pass = (__UImenuDataPass *)data;
-    
-    UIMenu *menu  = pass->menu;
-    
-    menu->isOpen  = !menu->isOpen;
-    menu->openIdx = pass->idx;
-    
-    return inputUse;
+void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, char32_t *name)
+{ 
+    UISubMenu newSub = {};
+    newSub.name = ls_unistrFromUTF32(name);
+    menu->subMenus.push(newSub);
 }
 
-void ls_uiMenuAddItem(UIMenu *menu, UIButton b)
+void ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonProc onClick, void *userData)
 {
-    if(b.onClick == ls_uiMenuDefaultOnClick)
-    {
-        //TODO: I hate having to allocate data for this. I also need a way to deallocate it!
-        //      @Leak @Memory
-        __UImenuDataPass *pass = (__UImenuDataPass *)ls_alloc(sizeof(__UImenuDataPass));
-        pass->menu = menu;
-        pass->idx = menu->items.count;
-        b.data = pass;
-    }
+    UIMenuItem newItem = {};
     
-    menu->items.push(b);
+    newItem.name       = ls_unistrFromUTF32(name);
+    newItem.onClick    = onClick;
+    newItem.userData   = userData;
+    newItem.textColor  = c->textColor;
+    
+    sub->items.push(newItem);
 }
 
-//TODO This is completely unnecessary
-void ls_uiMenuAddSub(UIMenu *menu, UIMenu sub, s32 idx)
-{ menu->sub[idx] = sub; }
+void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name, ButtonProc onClick, void *userData)
+{
+    UIMenuItem newItem = {};
+    
+    newItem.name       = ls_unistrFromUTF32(name);
+    newItem.onClick    = onClick;
+    newItem.userData   = userData;
+    newItem.textColor  = c->textColor;
+    
+    menu->subMenus[subIdx].items.push(newItem);
+}
 
-//TODO: @MenuIsShit it shouldn't use buttons like this, and shouldn't hold the close button hostage.
-b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h)
+b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
 {
     b32 inputUse = FALSE;
-    
-    if(LeftClickIn(x, y, w, h)) {
-        c->currentFocus = (u64 *)menu;
-        c->focusWasSetThisFrame = TRUE;
-    }
     
     if(c->currentFocus != (u64 *)menu) { menu->isOpen = FALSE; }
     
-    RenderCommand commandFirst = { UI_RC_RECT, x, y, w, h };
-    commandFirst.bkgColor  = c->backgroundColor;
-    commandFirst.textColor = RGBg(110); //TODO: Hardcoded
-    ls_uiPushRenderCommand(c, commandFirst, 1);
+    s32 subY = y;
+    s32 subW = menu->itemWidth;
+    s32 subH = h;
     
-    ls_uiButton(c, &menu->closeWindow, x+w-20, y+2, 16, 16, 2);
-    
-    s32 xOff = 100;
-    for(u32 i = 0; i < menu->items.count; i++)
+    for(u32 i = 0; i < menu->subMenus.count; i++)
     {
-        UIButton *currItem = &menu->items[i];
-        ls_uiButton(c, currItem, x+xOff, y+1, 100, 19, 2);
-        xOff += 100;
-    }
-    
-    if(menu->isOpen == TRUE)
-    {
-        UIButton *openItem = &menu->items[menu->openIdx];
-        UIMenu *openSub = menu->sub + menu->openIdx;
+        UISubMenu *sub = menu->subMenus.getPointer(i);
+        sub->isHot = FALSE;
         
-        AssertMsg(openItem, "The item doesn't exist\n");
-        AssertMsg(openSub, "The sub-menu doesn't exist\n");
+        s32 subX = x + (i*menu->itemWidth);
         
-        s32 yPos      = y-20;
-        s32 height = openSub->items.count*20;
-        
-        RenderCommand command = { UI_RC_RECT, 100 + x + 100*menu->openIdx, y-height-2, 102, height+3 };
-        command.bkgColor  = c->backgroundColor;
-        command.textColor = c->borderColor;
-        ls_uiPushRenderCommand(c, command, 1);
-        
-        //TODO: Store the xPos of every menu item.
-        for(u32 i = 0; i < openSub->items.count; i++)
+        if(menu->isOpen && menu->openIdx == i)
         {
-            UIButton *currItem = &openSub->items[i];
-            inputUse = ls_uiButton(c, currItem, 100 + 100*menu->openIdx, yPos, 100, 20, 2);
-            yPos -= 21;
+            for(u32 j = 0; j < sub->items.count; j++)
+            {
+                UIMenuItem *currItem = sub->items.getPointer(j);
+                currItem->isHot    = FALSE;
+                
+                s32 itemX = subX;
+                s32 itemY = subY - (subH*(j+1));
+                
+                if(MouseInRect(itemX, itemY, menu->itemWidth, subH-1)) 
+                { 
+                    currItem->isHot = TRUE;
+                    
+                    if(LeftClick) {
+                        c->currentFocus = (u64 *)menu;
+                        c->focusWasSetThisFrame = TRUE;
+                        
+                        //NOTETODO: mouseCapture vs focus????
+                        c->mouseCapture = (u64 *)menu;
+                        if(currItem->onClick) { currItem->onClick(c, currItem->userData); }
+                        inputUse = TRUE;
+                    }
+                }
+            }
+        }
+        
+        if(MouseInRect(subX, subY, subW, subH))
+        {
+            sub->isHot = TRUE;
+            if(LeftClick) {
+                c->currentFocus = (u64 *)menu;
+                c->focusWasSetThisFrame = TRUE;
+                
+                menu->isOpen  = TRUE;
+                menu->openIdx = i;
+                break;
+            }
         }
     }
+    
+    //NOTE: Items HAVE to come after submenus
+    for(u32 i = 0; i < menu->items.count; i++)
+    {
+        UIMenuItem *item = menu->items.getPointer(i);
+        
+        s32 realIndex = i+menu->subMenus.count;
+        s32 subX = x + (realIndex*menu->itemWidth);
+        
+        if(LeftClickIn(subX, subY, subW, subH)) {
+            item->isHot = TRUE;
+            item->onClick(c, item->userData);
+            inputUse = TRUE;
+        }
+    }
+    
+    s32 closeX    = x + w - menu->closeWindow.bmpW - 6;
+    s32 minimizeX = closeX - menu->closeWindow.bmpW - 6;
+    inputUse |= ls_uiButton(c, &menu->closeWindow, closeX, y + 2, menu->closeWindow.bmpW, menu->closeWindow.bmpH);
+    inputUse |= ls_uiButton(c, &menu->minimize, minimizeX, y + 2, menu->closeWindow.bmpW, menu->closeWindow.bmpH);
+    
+    RenderCommand command = { UI_RC_MENU, x, y, w, h };
+    command.menu          = menu;
+    command.bkgColor      = c->backgroundColor;
+    command.textColor     = c->textColor;
+    ls_uiPushRenderCommand(c, command, zLayer);
     
     return inputUse;
 }
@@ -3308,7 +3366,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     }
                     else if(button->style == UIBUTTON_BMP)
                     {
-                        //ls_uiBitmap(c, xPos, yPos, (u32 *)button->bmpData, button->bmpW, button->bmpH);
+                        ls_uiBitmap(c, xPos, yPos, button->bmpW, button->bmpH, minX, maxX, minY, maxY, (u32 *)button->bmpData);
                     }
                     else { AssertMsg(FALSE, "Unhandled button style"); }
                     
@@ -3390,10 +3448,54 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     textColor = SetAlpha(textColor, opacity);
                     
                     ls_uiGlyphString(c, xPos+xOff, yPos + yOff, minX, maxX, minY, maxY, slider->text, textColor);
+                } break;
+                
+                case UI_RC_MENU:
+                {
+                    UIMenu *menu = curr->menu;
+                    ls_uiBorderedRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, bkgColor, c->widgetColor);
                     
-                    //NOTETODO: The isHot is a hack to grow the slider as long as
-                    //          the mouse is on top of it. Is it fine for logic to be here in render?
-                    slider->isHot = FALSE;
+                    s32 subY = yPos;
+                    s32 subW = menu->itemWidth;
+                    s32 subH = h;
+                    
+                    for(u32 subIdx = 0; subIdx < menu->subMenus.count; subIdx++)
+                    {
+                        UISubMenu *sub = menu->subMenus.getPointer(subIdx);
+                        
+                        s32 subX = xPos + (subIdx*menu->itemWidth);
+                        
+                        s32 strWidth = ls_uiGlyphStringLen(c, sub->name);
+                        s32 xOff = (subW - strWidth) / 2;
+                        s32 yOff = 5;
+                        
+                        Color subColor = sub->isHot ? c->highliteColor : bkgColor;
+                        ls_uiBorderedRect(c, subX, subY, subW, subH, minX, maxX, minY, maxY, subColor, c->widgetColor);
+                        ls_uiGlyphString(c, subX+xOff, subY+yOff, minX, maxX, minY, maxY, sub->name, textColor);
+                        
+                        if(menu->isOpen && (menu->openIdx == subIdx))
+                        {
+                            u32 openSubHeight = subH*sub->items.count;
+                            ls_uiBorderedRect(c, subX, subY-openSubHeight, subW, openSubHeight+1, minX, maxX, minY, maxY, bkgColor, c->widgetColor);
+                            
+                            u32 currY = subY-subH;
+                            for(u32 itemIdx = 0; itemIdx < sub->items.count; itemIdx++)
+                            {
+                                UIMenuItem *item = sub->items.getPointer(itemIdx);
+                                
+                                strWidth = ls_uiGlyphStringLen(c, item->name);
+                                xOff = (subW - strWidth) / 2;
+                                
+                                if(item->isHot) {
+                                    ls_uiRect(c, subX, currY, subW, subH, minX, maxX, minY, maxY, c->highliteColor);
+                                }
+                                
+                                ls_uiGlyphString(c, subX+xOff, currY+yOff, minX, maxX, minY, maxY, item->name, c->textColor);
+                                
+                                currY -= subH;
+                            }
+                        }
+                    }
                     
                 } break;
                 
