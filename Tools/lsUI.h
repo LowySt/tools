@@ -617,8 +617,6 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             c->hasReceivedInput = TRUE;
             
             Mouse->isLeftPressed = FALSE;
-            
-            c->isDragging = FALSE;
         } break;
         
         case WM_RBUTTONDOWN:
@@ -3038,7 +3036,29 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     s32 subW = menu->itemWidth;
     s32 subH = h;
     
-    for(u32 i = 0; i < menu->subMenus.count; i++)
+    s32 subCount  = menu->subMenus.count;
+    s32 itemCount = menu->items.count;
+    
+    s32 closeX    = x + w - menu->closeWindow.bmpW - 6;
+    s32 minimizeX = closeX - menu->closeWindow.bmpW - 6;
+    
+    s32 dragX = x + ((subCount+itemCount)*subW);
+    
+    if(LeftClickIn(dragX, y, minimizeX-dragX, h))
+    {
+        c->isDragging = TRUE;
+        ls_uiFocusChange(c, 0);
+        
+        //NOTETODO: Maybe find a way to move platform specific code away?
+        POINT currMouse = {};
+        GetCursorPos(&currMouse);
+        c->prevMousePosX = currMouse.x;
+        c->prevMousePosY = currMouse.y;
+        
+        goto uiMenuRenderLabel;
+    }
+    
+    for(u32 i = 0; i < subCount; i++)
     {
         UISubMenu *sub = menu->subMenus.getPointer(i);
         sub->isHot = FALSE;
@@ -3087,7 +3107,7 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     }
     
     //NOTE: Items HAVE to come after submenus
-    for(u32 i = 0; i < menu->items.count; i++)
+    for(u32 i = 0; i < itemCount; i++)
     {
         UIMenuItem *item = menu->items.getPointer(i);
         
@@ -3101,8 +3121,9 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
         }
     }
     
-    s32 closeX    = x + w - menu->closeWindow.bmpW - 6;
-    s32 minimizeX = closeX - menu->closeWindow.bmpW - 6;
+    //NOTE: goto label jump to avoid annoying mega-nesting ifs.
+    uiMenuRenderLabel:
+    
     inputUse |= ls_uiButton(c, &menu->closeWindow, closeX, y + 2, menu->closeWindow.bmpW, menu->closeWindow.bmpH);
     inputUse |= ls_uiButton(c, &menu->minimize, minimizeX, y + 2, menu->closeWindow.bmpW, menu->closeWindow.bmpH);
     
