@@ -177,9 +177,6 @@ struct UIMenuItem
 {
     unistring  name;
     
-    Color textColor;
-    Color bkgColor;
-    
     b32 isHot;
     ButtonProc onClick;
     void       *userData;
@@ -327,6 +324,9 @@ struct UIContext
     
     RenderGroup renderGroups[RENDER_GROUP_COUNT];
     
+    HDC  WindowDC;
+    HDC  BackBufferDC;
+    
     CONDITION_VARIABLE startRender;
     CRITICAL_SECTION crit;
     
@@ -423,13 +423,6 @@ void       ls_uiRender(UIContext *c);
 //IMPORTANT NOTE
 Input UserInput = {};
 
-HBITMAP  closeButton;
-HDC      closeButtonDC;
-void    *closeButtBackbuff;
-
-HDC  WindowDC;
-HDC  BackBufferDC;
-
 #if _DEBUG
 static u64 __debug_frameNumber = 0;
 #endif
@@ -479,12 +472,12 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             BitmapInfo.bmiHeader.biBitCount = 32;
             BitmapInfo.bmiHeader.biCompression = BI_RGB;
             
-            StretchDIBits(BackBufferDC, 0, 0, c->windowWidth, c->windowHeight,
+            StretchDIBits(c->BackBufferDC, 0, 0, c->windowWidth, c->windowHeight,
                           0, 0, c->windowWidth, c->windowHeight,
                           c->drawBuffer, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
             
-            Result = BitBlt(WindowDC, r.left, r.top, r.right, r.bottom,
-                            BackBufferDC, 0, 0, SRCCOPY);
+            Result = BitBlt(c->WindowDC, r.left, r.top, r.right, r.bottom,
+                            c->BackBufferDC, 0, 0, SRCCOPY);
             
             if(Result == 0) {
                 DWORD Err = GetLastError();
@@ -661,7 +654,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
     return Result;
 }
 
-void __ui_RegisterWindow(HINSTANCE MainInstance)
+void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
 {
     
     u32 prop = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
@@ -672,7 +665,7 @@ void __ui_RegisterWindow(HINSTANCE MainInstance)
     WindowClass.style = prop;
     WindowClass.lpfnWndProc = ls_uiWindowProc;
     WindowClass.hInstance = MainInstance;
-    WindowClass.lpszClassName = "WndClass";
+    WindowClass.lpszClassName = name;
     WindowClass.hCursor = cursor;
     
     if (!RegisterClassA(&WindowClass))
@@ -682,7 +675,7 @@ void __ui_RegisterWindow(HINSTANCE MainInstance)
     }
 }
 
-HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c)
+HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowName)
 {
     u32 style = LS_THIN_BORDER | LS_POPUP;// | LS_VISIBLE; //| LS_OVERLAPPEDWINDOW;
     BOOL Result;
@@ -697,9 +690,11 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c)
     if(spaceX < 0) { spaceX = 0; }
     if(spaceY < 0) { spaceY = 0; }
     
+    //NOTE: We repliacate windowName in both the windowClass name and the actual window name, to avoid conflict
+    //      when creating multiple windows under the same process.
     HWND WindowHandle;
-    if ((WindowHandle = CreateWindowExA(0, "WndClass",
-                                        "PCMan", style,
+    if ((WindowHandle = CreateWindowExA(0, windowName,
+                                        windowName, style,
                                         spaceX, spaceY, //CW_USEDEFAULT, CW_USEDEFAULT,
                                         c->windowWidth, c->windowHeight,
                                         0, 0, MainInstance, c)) == nullptr)
@@ -717,11 +712,11 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c)
     BackBufferInfo.bmiHeader.biBitCount = 32;
     BackBufferInfo.bmiHeader.biCompression = BI_RGB;
     
-    WindowDC           = GetDC(WindowHandle);
-    BackBufferDC       = CreateCompatibleDC(WindowDC);
-    HBITMAP DibSection = CreateDIBSection(BackBufferDC, &BackBufferInfo,
+    c->WindowDC           = GetDC(WindowHandle);
+    c->BackBufferDC       = CreateCompatibleDC(c->WindowDC);
+    HBITMAP DibSection = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
                                           DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
-    SelectObject(BackBufferDC, DibSection);
+    SelectObject(c->BackBufferDC, DibSection);
     
     c->windowPosX = (s16)spaceX;
     c->windowPosY = (s16)spaceY; //NOTE:TODO: Hardcoded!!
@@ -729,27 +724,27 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c)
     return WindowHandle;
 }
 
-HWND ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c)
+HWND ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, const char *name)
 {
-    __ui_RegisterWindow(MainInstance);
+    __ui_RegisterWindow(MainInstance, name);
     
     UserInput.Keyboard.getClipboard = windows_GetClipboard;
     UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
-    c->MainWindow = __ui_CreateWindow(MainInstance, c);
+    c->MainWindow = __ui_CreateWindow(MainInstance, c, name);
     
     return c->MainWindow;
 }
 
-HWND ls_uiCreateWindow(UIContext *c)
+HWND ls_uiCreateWindow(UIContext *c, const char *name)
 {
     HINSTANCE MainInstance = NULL;
-    __ui_RegisterWindow(MainInstance);
+    __ui_RegisterWindow(MainInstance, name);
     
     UserInput.Keyboard.getClipboard = windows_GetClipboard;
     UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
-    c->MainWindow = __ui_CreateWindow(MainInstance, c);
+    c->MainWindow = __ui_CreateWindow(MainInstance, c, name);
     
     return c->MainWindow;
 }
@@ -3002,6 +2997,15 @@ void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, char32_t *name)
     menu->subMenus.push(newSub);
 }
 
+void ls_uiMenuAddItem(UIContext *c, UIMenu *menu, char32_t *name, ButtonProc onClick, void *userData)
+{
+    UIMenuItem newItem = {};
+    newItem.name       = ls_unistrFromUTF32(name);
+    newItem.onClick    = onClick;
+    newItem.userData   = userData;
+    menu->items.push(newItem);
+}
+
 void ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonProc onClick, void *userData)
 {
     UIMenuItem newItem = {};
@@ -3009,7 +3013,6 @@ void ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonPro
     newItem.name       = ls_unistrFromUTF32(name);
     newItem.onClick    = onClick;
     newItem.userData   = userData;
-    newItem.textColor  = c->textColor;
     
     sub->items.push(newItem);
 }
@@ -3021,7 +3024,6 @@ void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name,
     newItem.name       = ls_unistrFromUTF32(name);
     newItem.onClick    = onClick;
     newItem.userData   = userData;
-    newItem.textColor  = c->textColor;
     
     menu->subMenus[subIdx].items.push(newItem);
 }
@@ -3111,17 +3113,22 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     for(u32 i = 0; i < itemCount; i++)
     {
         UIMenuItem *item = menu->items.getPointer(i);
+        item->isHot      = FALSE;
         
-        s32 realIndex = i+menu->subMenus.count;
+        
+        s32 realIndex = i + subCount;
         s32 subX = x + (realIndex*menu->itemWidth);
         
-        if(LeftClickIn(subX, subY, subW, subH)) {
+        if(MouseInRect(subX, subY, subW, subH)) {
             item->isHot = TRUE;
-            item->onClick(c, item->userData);
-            inputUse = TRUE;
             
-            ls_uiFocusChange(c, 0);
-            menu->isOpen = FALSE;
+            if(LeftClick)
+            {
+                ls_uiFocusChange(c, 0);
+                menu->isOpen = FALSE;
+                item->onClick(c, item->userData);
+                inputUse = TRUE;
+            }
         }
     }
     
@@ -3520,6 +3527,25 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                                 currY -= subH;
                             }
                         }
+                    }
+                    
+                    
+                    for(u32 itemIdx = 0; itemIdx < menu->items.count; itemIdx++)
+                    {
+                        UIMenuItem *item = menu->items.getPointer(itemIdx);
+                        
+                        s32 realIndex = itemIdx + menu->subMenus.count;
+                        s32 itemX = xPos + (realIndex*menu->itemWidth);
+                        
+                        s32 strWidth = ls_uiGlyphStringLen(c, item->name);
+                        s32 xOff = (subW - strWidth) / 2;
+                        s32 yOff = 5;
+                        
+                        Color itemColor = item->isHot ? c->highliteColor : bkgColor;
+                        ls_uiBorderedRect(c, itemX, subY, subW, subH, 
+                                          minX, maxX, minY, maxY, itemColor, c->widgetColor);
+                        
+                        ls_uiGlyphString(c, itemX+xOff, subY+yOff, minX, maxX, minY, maxY, item->name, c->textColor);
                     }
                     
                 } break;
