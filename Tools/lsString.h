@@ -1446,6 +1446,8 @@ void ls_unistrFromAscii_t(unistring *dst, char *src)
 
 unistring ls_unistrFromUTF32(const char32_t *s)
 {
+    if(s == NULL) { return {}; }
+    
     u32 len = 0;
     u32 *At = (u32 *)s;
     while(*At) { len += 1; At += 1; }
