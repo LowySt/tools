@@ -1527,6 +1527,7 @@ void *ls_alloc(u64 size)
 void *ls_alloc(u64 size, char *mainName)
 {
 #if _DEBUG
+#ifdef LS_SHARED_MEMORY_IMPLEMENTATION
     struct AllocationMessage
     {
         u64  size;
@@ -1550,7 +1551,8 @@ void *ls_alloc(u64 size, char *mainName)
         ls_sharedMemPush(mem, &msg);
     }
     
-#endif
+#endif //LS_SHARED_MEMORY_IMPLEMENTATION
+#endif //_DEBUG
     
 #ifdef LS_PLAT_WINDOWS
     return windows_memAlloc(size);
