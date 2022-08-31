@@ -3080,13 +3080,14 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
                     currItem->isHot = TRUE;
                     
                     if(LeftClick) {
-                        c->currentFocus = (u64 *)menu;
-                        c->focusWasSetThisFrame = TRUE;
-                        
                         //NOTETODO: mouseCapture vs focus????
                         c->mouseCapture = (u64 *)menu;
                         if(currItem->onClick) { currItem->onClick(c, currItem->userData); }
                         inputUse = TRUE;
+                        
+                        ls_uiFocusChange(c, 0);
+                        menu->isOpen = FALSE;
+                        
                     }
                 }
             }
@@ -3118,6 +3119,9 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
             item->isHot = TRUE;
             item->onClick(c, item->userData);
             inputUse = TRUE;
+            
+            ls_uiFocusChange(c, 0);
+            menu->isOpen = FALSE;
         }
     }
     
