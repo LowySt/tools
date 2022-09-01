@@ -43,26 +43,6 @@ struct KeyboardInput
     ClipboardFunc setClipboard;
 };
 
-#define KeySet(k)       (UserInput.Keyboard.currentState.k = 1)
-#define KeyUnset(k)     (UserInput.Keyboard.currentState.k = 0)
-#define KeyPress(k)     (UserInput.Keyboard.currentState.k == 1 && UserInput.Keyboard.prevState.k == 0)
-#define KeyHeld(k)      (UserInput.Keyboard.currentState.k == 1 && UserInput.Keyboard.prevState.k == 1)
-
-#define KeySetAndRepeat(k, rp) (UserInput.Keyboard.currentState.k = 1); \
-if(rp) { (UserInput.Keyboard.repeatState.k = 1); }
-
-#define KeyRepeat(k)    (UserInput.Keyboard.currentState.k == 1 && UserInput.Keyboard.repeatState.k == 1)
-
-#define KeyPressOrRepeat(k) (KeyPress(k) || KeyRepeat(k))
-
-
-#define HasPrintableKey() (UserInput.Keyboard.hasPrintableKey == TRUE)
-#define GetPrintableKey() (UserInput.Keyboard.keyCodepoint)
-#define ClearPrintableKey() (UserInput.Keyboard.hasPrintableKey = FALSE)
-
-#define GetClipboard(b,l) (UserInput.Keyboard.getClipboard(b,l))
-#define SetClipboard(b,l) (UserInput.Keyboard.setClipboard(b,l))
-
 struct MouseInput
 {
     s32 currPosX, currPosY;
@@ -76,40 +56,6 @@ struct MouseInput
     b32 wasRightPressed;
 };
 
-
-#define MouseInRect(xP,yP,w,h) (((UserInput.Mouse.currPosX >= xP) && (UserInput.Mouse.currPosX <= xP+w)) && \
-((UserInput.Mouse.currPosY >= yP) && (UserInput.Mouse.currPosY <= yP+h)))
-
-
-
-#define LeftClick    ((UserInput.Mouse.isLeftPressed && !UserInput.Mouse.wasLeftPressed))
-#define MiddleClick  ((UserInput.Mouse.isMiddlePressed && !UserInput.Mouse.wasMiddlePressed))
-#define RightClick   ((UserInput.Mouse.isRightPressed && !UserInput.Mouse.wasRightPressed))
-
-#define LeftHold     ((UserInput.Mouse.isLeftPressed && UserInput.Mouse.wasLeftPressed))
-#define MiddleHold   ((UserInput.Mouse.isMiddlePressed && UserInput.Mouse.wasMiddlePressed))
-#define RightHold    ((UserInput.Mouse.isRightPressed && UserInput.Mouse.wasRightPressed))
-
-#define LeftUp       ((!UserInput.Mouse.isLeftPressed && UserInput.Mouse.wasLeftPressed))
-#define MiddleUp     ((!UserInput.Mouse.isMiddlePressed && UserInput.Mouse.wasMiddlePressed))
-#define RightUp      ((!UserInput.Mouse.isRightPressed && UserInput.Mouse.wasRightPressed))
-
-#define LeftClear    ((!UserInput.Mouse.isLeftPressed && !UserInput.Mouse.wasLeftPressed))
-#define MiddleClear  ((!UserInput.Mouse.isMiddlePressed && !UserInput.Mouse.wasMiddlePressed))
-#define RightClear   ((!UserInput.Mouse.isRightPressed && !UserInput.Mouse.wasRightPressed))
-
-
-#define LeftClickIn(x,y,w,h)    (LeftClick   && MouseInRect(x, y, w, h))
-#define MiddleClickIn(x,y,w,h)  (MiddleClick && MouseInRect(x, y, w, h))
-#define RightClickIn(x,y,w,h)   (RightClick  && MouseInRect(x, y, w, h))
-
-#define LeftHoldIn(x,y,w,h)     (LeftHold   && MouseInRect(x, y, w, h))
-#define MiddleHoldIn(x,y,w,h)   (MiddleHold && MouseInRect(x, y, w, h))
-#define RightHoldIn(x,y,w,h)    (RightHold  && MouseInRect(x, y, w, h))
-
-#define LeftUpIn(x,y,w,h)       (LeftUp   && MouseInRect(x, y, w, h))
-#define MiddleUpIn(x,y,w,h)     (MiddleUp && MouseInRect(x, y, w, h))
-#define RightUpIn(x,y,w,h)      (RightUp  && MouseInRect(x, y, w, h))
 
 
 struct Input

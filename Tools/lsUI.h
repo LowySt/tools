@@ -10,6 +10,61 @@
 
 #include "lsInput.h"
 
+#define KeySet(k)       (UserInput->Keyboard.currentState.k = 1)
+#define KeyUnset(k)     (UserInput->Keyboard.currentState.k = 0)
+#define KeyPress(k)     (UserInput->Keyboard.currentState.k == 1 && UserInput->Keyboard.prevState.k == 0)
+#define KeyHeld(k)      (UserInput->Keyboard.currentState.k == 1 && UserInput->Keyboard.prevState.k == 1)
+
+#define KeySetAndRepeat(k, rp) (UserInput->Keyboard.currentState.k = 1); \
+if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
+
+#define KeyRepeat(k)    (UserInput->Keyboard.currentState.k == 1 && UserInput->Keyboard.repeatState.k == 1)
+
+#define KeyPressOrRepeat(k) (KeyPress(k) || KeyRepeat(k))
+
+
+#define HasPrintableKey() (UserInput->Keyboard.hasPrintableKey == TRUE)
+#define GetPrintableKey() (UserInput->Keyboard.keyCodepoint)
+#define ClearPrintableKey() (UserInput->Keyboard.hasPrintableKey = FALSE)
+
+#define GetClipboard(b,l) (UserInput->Keyboard.getClipboard(b,l))
+#define SetClipboard(b,l) (UserInput->Keyboard.setClipboard(b,l))
+
+#define MouseInRect(xP,yP,w,h) (((UserInput->Mouse.currPosX >= xP) && (UserInput->Mouse.currPosX <= xP+w)) && \
+((UserInput->Mouse.currPosY >= yP) && (UserInput->Mouse.currPosY <= yP+h)))
+
+#define LeftClick    ((UserInput->Mouse.isLeftPressed && !UserInput->Mouse.wasLeftPressed))
+#define MiddleClick  ((UserInput->Mouse.isMiddlePressed && !UserInput->Mouse.wasMiddlePressed))
+#define RightClick   ((UserInput->Mouse.isRightPressed && !UserInput->Mouse.wasRightPressed))
+
+#define LeftHold     ((UserInput->Mouse.isLeftPressed && UserInput->Mouse.wasLeftPressed))
+#define MiddleHold   ((UserInput->Mouse.isMiddlePressed && UserInput->Mouse.wasMiddlePressed))
+#define RightHold    ((UserInput->Mouse.isRightPressed && UserInput->Mouse.wasRightPressed))
+
+#define LeftUp       ((!UserInput->Mouse.isLeftPressed && UserInput->Mouse.wasLeftPressed))
+#define MiddleUp     ((!UserInput->Mouse.isMiddlePressed && UserInput->Mouse.wasMiddlePressed))
+#define RightUp      ((!UserInput->Mouse.isRightPressed && UserInput->Mouse.wasRightPressed))
+
+#define LeftClear    ((!UserInput->Mouse.isLeftPressed && !UserInput->Mouse.wasLeftPressed))
+#define MiddleClear  ((!UserInput->Mouse.isMiddlePressed && !UserInput->Mouse.wasMiddlePressed))
+#define RightClear   ((!UserInput->Mouse.isRightPressed && !UserInput->Mouse.wasRightPressed))
+
+
+#define LeftClickIn(x,y,w,h)    (LeftClick   && MouseInRect(x, y, w, h))
+#define MiddleClickIn(x,y,w,h)  (MiddleClick && MouseInRect(x, y, w, h))
+#define RightClickIn(x,y,w,h)   (RightClick  && MouseInRect(x, y, w, h))
+
+#define LeftHoldIn(x,y,w,h)     (LeftHold   && MouseInRect(x, y, w, h))
+#define MiddleHoldIn(x,y,w,h)   (MiddleHold && MouseInRect(x, y, w, h))
+#define RightHoldIn(x,y,w,h)    (RightHold  && MouseInRect(x, y, w, h))
+
+#define LeftUpIn(x,y,w,h)       (LeftUp   && MouseInRect(x, y, w, h))
+#define MiddleUpIn(x,y,w,h)     (MiddleUp && MouseInRect(x, y, w, h))
+#define RightUpIn(x,y,w,h)      (RightUp  && MouseInRect(x, y, w, h))
+
+
+
+
 #define RGBA(r,g,b,a)  (u32)((a<<24)|(r<<16)|(g<<8)|b)
 #define RGB(r,g,b)     (u32)((0xFF<<24)|(r<<16)|(g<<8)|b)
 #define RGBg(v)        (u32)((0xFF<<24)|(v<<16)|(v<<8)|v)
@@ -330,11 +385,17 @@ struct UIContext
     CONDITION_VARIABLE startRender;
     CRITICAL_SECTION crit;
     
+    //IMPORTANT NOTE:
+    // As of right now lsUI DEPENDS on Input.
+    // I don't know if this is the right choice. I guess I'll discover it.
+    Input UserInput = {};
+    
+    
     RenderCallback renderFunc = NULL;
     u32 dt;
     RegionTimer frameTime = {};
     
-    HWND MainWindow;
+    HWND Window;
     
     s32 windowPosX, windowPosY;
     s32 windowWidth = 1280, windowHeight = 860;
@@ -401,8 +462,10 @@ void       ls_uiSliderChangeValueBy(UIContext *cxt, UISlider *f, s32 valueDiff);
 s32        ls_uiSliderGetValue(UIContext *cxt, UISlider *f);
 b32        ls_uiSlider(UIContext *cxt, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h);
 
+UIButton   ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 height);
 void       ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub);
 void       ls_uiMenuAddSub(UIContext *c, UIMenu *menu, char32_t *name);
+void       ls_uiMenuAddItem(UIContext *c, UIMenu *menu, char32_t *name, ButtonProc onClick, void *userData);
 void       ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonProc onClick, void *userData);
 void       ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name, ButtonProc onClick, void *data);
 b32        ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer);
@@ -415,14 +478,6 @@ void       ls_uiRender(UIContext *c);
 #ifdef LS_UI_IMPLEMENTATION
 
 
-//IMPORTANT NOTE:
-//
-// As of right now lsUI DEPENDS on Input.
-// I don't know if this is the right choice. I guess I'll discover it.
-//
-//IMPORTANT NOTE
-Input UserInput = {};
-
 #if _DEBUG
 static u64 __debug_frameNumber = 0;
 #endif
@@ -431,8 +486,9 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 {
     LRESULT Result = 0;
     
-    MouseInput *Mouse = &UserInput.Mouse;
-    UIContext *c = 0;
+    UIContext *c      = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);;
+    MouseInput *Mouse = &c->UserInput.Mouse;
+    Input *UserInput  = &c->UserInput;
     
     switch (msg)
     {
@@ -448,12 +504,30 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             CREATESTRUCTA *CreateStruct = (CREATESTRUCTA *)l;
             c = (UIContext *)CreateStruct->lpCreateParams;
             SetWindowLongPtrA(h, GWLP_USERDATA, (LONG_PTR)c);
+            c->hasReceivedInput = TRUE;
         } break;
+        
+        case WM_ACTIVATE:
+        {
+            if(w == WA_INACTIVE) { 
+                //SendMessageA(c->MainWindow, WM_LBUTTONUP, 0, 0);
+                //TODO: Maybe NULL everything in the deactivated window? Input should not matter there anymore
+                c->UserInput.Keyboard.currentState    = {};
+                c->UserInput.Keyboard.prevState       = {};
+                c->UserInput.Keyboard.repeatState     = {};
+                c->UserInput.Keyboard.hasPrintableKey = FALSE;
+                
+                c->UserInput.Mouse.isLeftPressed    = FALSE;
+                c->UserInput.Mouse.wasLeftPressed   = FALSE;
+                c->UserInput.Mouse.isMiddlePressed  = FALSE;
+                c->UserInput.Mouse.wasMiddlePressed = FALSE;
+                c->UserInput.Mouse.isRightPressed   = FALSE;
+                c->UserInput.Mouse.wasRightPressed  = FALSE;
+            }
+        }
         
         case WM_PAINT:
         {
-            c = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
-            
             PAINTSTRUCT ps = {};
             RECT r;
             
@@ -489,8 +563,6 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_CHAR:
         {
-            c = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
-            
             c->hasReceivedInput = TRUE;
             
             b32 wasPressed = (l >> 30) & 0x1;
@@ -503,16 +575,16 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             {
                 if(!wasPressed || repeat > 0)
                 {
-                    UserInput.Keyboard.hasPrintableKey = TRUE;
-                    UserInput.Keyboard.keyCodepoint    = w;
+                    UserInput->Keyboard.hasPrintableKey = TRUE;
+                    UserInput->Keyboard.keyCodepoint    = w;
                 }
             }
             else if(w == 13) //NOTETODO: Hack to input a '\n' when Enter ('\r') is pressed.
             {
                 if(!wasPressed || repeat > 0)
                 {
-                    UserInput.Keyboard.hasPrintableKey = TRUE;
-                    UserInput.Keyboard.keyCodepoint    = 10;
+                    UserInput->Keyboard.hasPrintableKey = TRUE;
+                    UserInput->Keyboard.keyCodepoint    = 10;
                 }
             }
             
@@ -520,8 +592,6 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_KEYDOWN:
         {
-            c = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
-            
             c->hasReceivedInput = TRUE;
             
             //Repeat is the first 16 bits of the LPARAM. Bits [0-15];
@@ -560,8 +630,6 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_KEYUP:
         {
-            c = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
-            
             c->hasReceivedInput = TRUE;
             
             switch(w)
@@ -596,8 +664,6 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_LBUTTONDOWN:
         {
-            c = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
-            
             c->hasReceivedInput = TRUE;
             
             Mouse->isLeftPressed = TRUE;
@@ -605,8 +671,6 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_LBUTTONUP:
         {
-            c = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
-            
             c->hasReceivedInput = TRUE;
             
             Mouse->isLeftPressed = FALSE;
@@ -614,36 +678,30 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_RBUTTONDOWN:
         { 
-            c = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
-            
             c->hasReceivedInput = TRUE;
             Mouse->isRightPressed = TRUE; 
         } break;
         
         case WM_RBUTTONUP:
         { 
-            c = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
-            
             c->hasReceivedInput = TRUE; 
             Mouse->isRightPressed = FALSE; 
         } break;
         
         case WM_MOUSEMOVE:
         {
-            c = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
-            
             POINTS currMouseClient = *((POINTS *)&l);
             Mouse->currPosX = currMouseClient.x;
             Mouse->currPosY = c->windowHeight - currMouseClient.y;
             
             c->hasReceivedInput = TRUE;
             
-            //TODO:NOTE: Page says to return 0, but DO i HAVE to?
+            //NOTE: MSDN says to return 0
+            return 0;
         } break;
         
         case WM_DESTROY:
         {
-            c = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
             if(c->onDestroy) { c->onDestroy(c); }
             ExitProcess(0);
         } break;
@@ -728,12 +786,12 @@ HWND ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, const char *name)
 {
     __ui_RegisterWindow(MainInstance, name);
     
-    UserInput.Keyboard.getClipboard = windows_GetClipboard;
-    UserInput.Keyboard.setClipboard = windows_SetClipboard;
+    c->UserInput.Keyboard.getClipboard = windows_GetClipboard;
+    c->UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
-    c->MainWindow = __ui_CreateWindow(MainInstance, c, name);
+    c->Window = __ui_CreateWindow(MainInstance, c, name);
     
-    return c->MainWindow;
+    return c->Window;
 }
 
 HWND ls_uiCreateWindow(UIContext *c, const char *name)
@@ -741,12 +799,12 @@ HWND ls_uiCreateWindow(UIContext *c, const char *name)
     HINSTANCE MainInstance = NULL;
     __ui_RegisterWindow(MainInstance, name);
     
-    UserInput.Keyboard.getClipboard = windows_GetClipboard;
-    UserInput.Keyboard.setClipboard = windows_SetClipboard;
+    c->UserInput.Keyboard.getClipboard = windows_GetClipboard;
+    c->UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
-    c->MainWindow = __ui_CreateWindow(MainInstance, c, name);
+    c->Window = __ui_CreateWindow(MainInstance, c, name);
     
-    return c->MainWindow;
+    return c->Window;
 }
 
 void ls_uiRender__(UIContext *c, u32 threadID);
@@ -774,7 +832,7 @@ DWORD ls_uiRenderThreadProc(void *param)
 
 void __ui_default_windows_render_callback(UIContext *c)
 {
-    InvalidateRect(c->MainWindow, NULL, TRUE);
+    InvalidateRect(c->Window, NULL, TRUE);
 }
 
 
@@ -845,17 +903,17 @@ void ls_uiFrameBegin(UIContext *c)
     
     RegionTimerBegin(c->frameTime);
     
-    UserInput.Keyboard.prevState = UserInput.Keyboard.currentState;
-    UserInput.Keyboard.repeatState = {};
+    c->UserInput.Keyboard.prevState = c->UserInput.Keyboard.currentState;
+    c->UserInput.Keyboard.repeatState = {};
     
-    UserInput.Keyboard.hasPrintableKey = FALSE;
-    UserInput.Keyboard.keyCodepoint    = 0;
+    c->UserInput.Keyboard.hasPrintableKey = FALSE;
+    c->UserInput.Keyboard.keyCodepoint    = 0;
     
-    UserInput.Mouse.prevPosX         = UserInput.Mouse.currPosX;
-    UserInput.Mouse.prevPosY         = UserInput.Mouse.currPosY;
-    UserInput.Mouse.wasLeftPressed   = UserInput.Mouse.isLeftPressed;
-    UserInput.Mouse.wasRightPressed  = UserInput.Mouse.isRightPressed;
-    UserInput.Mouse.wasMiddlePressed = UserInput.Mouse.isMiddlePressed;
+    c->UserInput.Mouse.prevPosX         = c->UserInput.Mouse.currPosX;
+    c->UserInput.Mouse.prevPosY         = c->UserInput.Mouse.currPosY;
+    c->UserInput.Mouse.wasLeftPressed   = c->UserInput.Mouse.isLeftPressed;
+    c->UserInput.Mouse.wasRightPressed  = c->UserInput.Mouse.isRightPressed;
+    c->UserInput.Mouse.wasMiddlePressed = c->UserInput.Mouse.isMiddlePressed;
     
     c->focusWasSetThisFrame = FALSE;
     c->lastFocus            = c->currentFocus;
@@ -870,7 +928,8 @@ void ls_uiFrameBegin(UIContext *c)
     
     // Process Input
     MSG Msg;
-    while (PeekMessageA(&Msg, NULL, 0, 0, PM_REMOVE))
+    //while (PeekMessageA(&Msg, NULL, 0, 0, PM_REMOVE))
+    while (PeekMessageA(&Msg, c->Window, 0, 0, PM_REMOVE))
     {
         TranslateMessage(&Msg);
         DispatchMessageA(&Msg);
@@ -878,7 +937,46 @@ void ls_uiFrameBegin(UIContext *c)
     
     //NOTE: Window starts hidden, and then is shown after the first frame, 
     //      to avoid flashing because initially the frame buffer is all white.
-    if(isStartup) { ShowWindow(c->MainWindow, SW_SHOW); isStartup = FALSE; c->hasReceivedInput = TRUE; }
+    if(isStartup) { ShowWindow(c->Window, SW_SHOW); isStartup = FALSE; c->hasReceivedInput = TRUE; }
+}
+
+void ls_uiFrameBeginChild(UIContext *c)
+{
+    static b32 isStartup = TRUE;
+    
+    RegionTimerBegin(c->frameTime);
+    
+    c->UserInput.Keyboard.prevState = c->UserInput.Keyboard.currentState;
+    c->UserInput.Keyboard.repeatState = {};
+    
+    c->UserInput.Keyboard.hasPrintableKey = FALSE;
+    c->UserInput.Keyboard.keyCodepoint    = 0;
+    
+    c->UserInput.Mouse.prevPosX         = c->UserInput.Mouse.currPosX;
+    c->UserInput.Mouse.prevPosY         = c->UserInput.Mouse.currPosY;
+    c->UserInput.Mouse.wasLeftPressed   = c->UserInput.Mouse.isLeftPressed;
+    c->UserInput.Mouse.wasRightPressed  = c->UserInput.Mouse.isRightPressed;
+    c->UserInput.Mouse.wasMiddlePressed = c->UserInput.Mouse.isMiddlePressed;
+    
+    c->focusWasSetThisFrame = FALSE;
+    c->lastFocus            = c->currentFocus;
+    if(c->nextFrameFocusChange == TRUE)
+    {
+        c->currentFocus = c->nextFrameFocus;
+        c->lastFocus    = c->currentFocus;
+        c->nextFrameFocusChange = FALSE;
+    }
+    
+    c->hasReceivedInput = FALSE;
+    
+    MSG Msg;
+    while (PeekMessageA(&Msg, c->Window, 0, 0, PM_REMOVE))
+    {
+        TranslateMessage(&Msg);
+        DispatchMessageA(&Msg);
+    }
+    
+    if(isStartup) { isStartup = FALSE; c->hasReceivedInput = TRUE; }
 }
 
 void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
@@ -898,8 +996,27 @@ void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
     }
     
     RegionTimerEnd(c->frameTime);
-    c->dt = RegionTimerGet(c->frameTime); //frameTimeMs;
+    c->dt = RegionTimerGet(c->frameTime);
     lastFrameTime = c->dt;
+}
+
+void ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs)
+{
+    static u32 lastFrameTime = 0;
+    
+    RegionTimerEnd(c->frameTime);
+    u32 frameTimeMs = RegionTimerGet(c->frameTime);
+    if(frameTimeMs < frameTimeTargetMs)
+    {
+        u32 deltaTimeInMs = frameTimeTargetMs - frameTimeMs;
+        Sleep(deltaTimeInMs);
+    }
+    
+    RegionTimerEnd(c->frameTime);
+    c->dt = RegionTimerGet(c->frameTime);
+    lastFrameTime = c->dt;
+    
+    return;
 }
 
 inline void ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f)
@@ -2099,6 +2216,8 @@ UIButton ls_uiButtonInit(UIButtonStyle s, unistring text, ButtonProc onClick, Bu
 //TODO:Ways to force buttons to stay selected. Maybe make a versatile checkbox?
 b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer = 0)
 {
+    Input *UserInput = &c->UserInput;
+    
     b32 inputUse = FALSE;
     
     Color bkgColor = c->widgetColor;
@@ -2177,6 +2296,7 @@ void ls_uiTextBoxSet(UIContext *c, UITextBox *box, unistring s)
 //TODO: In small boxes the newline fucks up rendering of the caret
 b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
 {
+    Input *UserInput = &c->UserInput;
     b32 inputUse = FALSE;
     
     if(LeftClickIn(xPos, yPos, w, h) && (box->isReadonly == FALSE) && ls_uiHasCapture(c, 0)) {
@@ -2218,7 +2338,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         return realOffset;
     };
     
-    auto handleSelection = [box](s32 direction) {
+    auto handleSelection = [UserInput, box](s32 direction) {
         
         AssertMsg((direction == -1) || (direction == 1) || (direction == -2) || (direction == 2), 
                   "Invalid direction passed to handleSelection\n");
@@ -2839,6 +2959,7 @@ inline void ls_uiListBoxRemoveEntry(UIContext *cxt, UIListBox *list, u32 index)
 
 b32 ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer = 0)
 {
+    Input *UserInput = &c->UserInput;
     b32 inputUse = FALSE;
     
     const s32 arrowBoxWidth = 24;
@@ -2924,7 +3045,7 @@ UISlider ls_uiSliderInit(char32_t *name, s32 maxVal, s32 minVal, f64 currPos, Sl
     return Result;
 }
 
-void ls_uiSliderChangeValueBy(UIContext *cxt, UISlider *f, s32 valueDiff)
+void ls_uiSliderChangeValueBy(UIContext *c, UISlider *f, s32 valueDiff)
 {
     s32 newValue = f->currValue + valueDiff;
     
@@ -2937,15 +3058,17 @@ void ls_uiSliderChangeValueBy(UIContext *cxt, UISlider *f, s32 valueDiff)
     return;
 }
 
-s32 ls_uiSliderGetValue(UIContext *cxt, UISlider *f)
+s32 ls_uiSliderGetValue(UIContext *c, UISlider *f)
 {
     return ((f->maxValue - f->minValue) * f->currPos) + f->minValue;
 }
 
 //TODO: The things are rendered in a logical order, but that makes the function's flow very annoying
 //      going in and out of if blocks to check hot/held and style.
-b32 ls_uiSlider(UIContext *cxt, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h)
+b32 ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h)
 {
+    Input *UserInput = &c->UserInput;
+    
     if(LeftUp) { slider->isHeld = FALSE; }
     
     if(slider->style == SL_BOX)
@@ -2956,10 +3079,10 @@ b32 ls_uiSlider(UIContext *cxt, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32
         slider->currValue = ((slider->maxValue - slider->minValue) * slider->currPos) + slider->minValue;
         s32 slidePos = w*slider->currPos;
         
-        if(MouseInRect(xPos + slidePos-5, yPos, 10, h) && !(cxt->mouseCapture != 0 && cxt->mouseCapture != (u64 *)slider))
+        if(MouseInRect(xPos + slidePos-5, yPos, 10, h) && !(c->mouseCapture != 0 && c->mouseCapture != (u64 *)slider))
         {
             slider->isHot = TRUE;
-            if(LeftHold) { slider->isHeld = TRUE; cxt->mouseCapture = (u64 *)slider; }
+            if(LeftHold) { slider->isHeld = TRUE; c->mouseCapture = (u64 *)slider; }
         }
     }
     else if(slider->style == SL_LINE)
@@ -2968,7 +3091,7 @@ b32 ls_uiSlider(UIContext *cxt, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32
     b32 hasAnsweredToInput = FALSE;
     
     if(slider->isHeld) { 
-        s32 deltaX = (UserInput.Mouse.prevPosX - UserInput.Mouse.currPosX);//*cxt->dt;
+        s32 deltaX = (c->UserInput.Mouse.prevPosX - c->UserInput.Mouse.currPosX);//*c->dt;
         
         f64 fractionMove = (f64)deltaX / (f64)w;
         
@@ -2982,9 +3105,20 @@ b32 ls_uiSlider(UIContext *cxt, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32
     RenderCommand command = { UI_RC_SLIDER, xPos, yPos, w, h };
     command.slider = slider;
     
-    ls_uiPushRenderCommand(cxt, command, 0);
+    ls_uiPushRenderCommand(c, command, 0);
     
     return hasAnsweredToInput;
+}
+
+UIButton ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 height)
+{
+    UIButton result = {};
+    result.style    = UIBUTTON_BMP;
+    result.bmpData  = bitmapData;
+    result.bmpW     = width;
+    result.bmpH     = height;
+    result.onClick  = onClick;
+    return result;
 }
 
 inline void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub)
@@ -3030,6 +3164,7 @@ void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name,
 
 b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
 {
+    Input *UserInput = &c->UserInput;
     b32 inputUse = FALSE;
     
     if(c->currentFocus != (u64 *)menu) { menu->isOpen = FALSE; }
@@ -3135,8 +3270,14 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     //NOTE: goto label jump to avoid annoying mega-nesting ifs.
     uiMenuRenderLabel:
     
-    inputUse |= ls_uiButton(c, &menu->closeWindow, closeX, y + 2, menu->closeWindow.bmpW, menu->closeWindow.bmpH);
-    inputUse |= ls_uiButton(c, &menu->minimize, minimizeX, y + 2, menu->closeWindow.bmpW, menu->closeWindow.bmpH);
+    
+    //NOTE: Only render when the bitmap is set!
+    if(menu->closeWindow.bmpData)
+        inputUse |= ls_uiButton(c, &menu->closeWindow, closeX, y + 2, menu->closeWindow.bmpW, menu->closeWindow.bmpH);
+    
+    if(menu->minimize.bmpData)
+        inputUse |= ls_uiButton(c, &menu->minimize, minimizeX, y + 2, menu->closeWindow.bmpW, menu->closeWindow.bmpH);
+    
     
     RenderCommand command = { UI_RC_MENU, x, y, w, h };
     command.menu          = menu;
