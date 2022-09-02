@@ -148,6 +148,7 @@ unistring  ls_unistrFromAscii(char *s, u32 len);
 void       ls_unistrFromAscii_t(unistring *dst, char *src);
 void       ls_unistrFromAscii_t(unistring *dst, char *src, u32 len);
 unistring  ls_unistrFromUTF32(const char32_t *s);
+void       ls_unistrFromUTF32_t(unistring *dst, const char32_t *s);
 unistring  ls_unistrFromInt(s64 x);
 void       ls_unistrFromInt_t(unistring *s, s64 x);
 void       ls_unistrFromF64_t(unistring *s, f64 x);
@@ -208,13 +209,6 @@ s32        ls_unistrToAscii_t(unistring *s, char *buff, u32 buffMaxLen);
 s64        ls_unistrToInt(unistring s);
 
 b32        ls_utf32IsNumber(u32 c);
-
-#if 0 //TODO:Fix this?
-//Operator
-b32     operator==(unistring s1, unistring s2);
-b32     operator!=(unistring s1, unistring s2);
-#endif
-
 
 //Create/Destroy
 view  ls_viewCreate(string s);
@@ -1443,7 +1437,6 @@ void ls_unistrFromAscii_t(unistring *dst, char *src)
     ls_unistrFromAscii_t(dst, src, len);
 }
 
-
 unistring ls_unistrFromUTF32(const char32_t *s)
 {
     if(s == NULL) { return {}; }
@@ -1457,6 +1450,35 @@ unistring ls_unistrFromUTF32(const char32_t *s)
     Result.len = len;
     
     return Result;
+}
+
+void ls_unistrFromUTF32_t(unistring *dst, const char32_t *s)
+{
+    AssertMsg(dst, "Destination unistring pointer is null\n");
+    if(s == NULL) { return; }
+    
+    u32 len = 0;
+    u32 *At = (u32 *)s;
+    while(*At) { len += 1; At += 1; }
+    
+    if(dst->data == 0)
+    {
+        u32 allocSize = (16 + len);
+        
+        dst->data = (u32 *)ls_alloc(allocSize*sizeof(u32));
+        dst->size = allocSize;
+    }
+    
+    if(dst->size < len)
+    {
+        u32 growAmount = (dst->size - len + 32);
+        ls_unistrGrow(dst, growAmount);
+    }
+    
+    ls_memcpy((void *)s, dst->data, len*sizeof(u32));
+    dst->len = len;
+    
+    return;
 }
 
 unistring ls_unistrConstant(const char32_t *p)
