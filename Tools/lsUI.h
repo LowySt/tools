@@ -441,12 +441,15 @@ Color      ls_uiAlphaBlend(Color source, Color dest, u8 alpha);
 Color      ls_uiAlphaBlend(Color source, Color dest);
 Color      ls_uiRGBAtoARGB(Color c);
 
+UIButton   ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *userData);
+UIButton   ls_uiButtonInit(UIButtonStyle s, unistring text, ButtonProc onClick, ButtonProc onHold, void *userData);
 b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
 
 void       ls_uiLabel(UIContext *cxt, unistring label, s32 xPos, s32 yPos, s32 zLayer);
 void       ls_uiLabel(UIContext *cxt, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer);
 
 void       ls_uiTextBoxClear(UIContext *cxt, UITextBox *box);
+void       ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s);
 void       ls_uiTextBoxSet(UIContext *cxt, UITextBox *box, unistring s);
 b32        ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h);
 
@@ -2008,6 +2011,10 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
                              s32 minX, s32 maxX, s32 minY, s32 maxY,
                              s32 cIdx, Color textColor, Color invTextColor)
 {
+    AssertMsg(c, "Context is null\n");
+    AssertMsg(box, "TextBox is null\n");
+    AssertMsg(c->currFont, "Current Font is null\n");
+    
     //NOTETODO Hacky shit.
     const s32 lineHeight = 18;
     
@@ -2112,6 +2119,9 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
 //      Maybe instead make glyphstring only do 1 line at a time and push line responsibility outside?
 void ls_uiGlyphString(UIContext *c, s32 xPos, s32 yPos, s32 minX, s32 maxX, s32 minY, s32 maxY, unistring text, Color textColor)
 {
+    AssertMsg(c, "Context is null\n");
+    AssertMsg(c->currFont, "Current Font is null\n");
+    
     s32 currXPos = xPos;
     s32 currYPos = yPos;
     for(u32 i = 0; i < text.len; i++)
@@ -2137,6 +2147,9 @@ void ls_uiGlyphString(UIContext *c, s32 xPos, s32 yPos, s32 minX, s32 maxX, s32 
 //      Maybe instead make glyphstring only do 1 line at a time and push line responsibility outside?
 s32 ls_uiGlyphStringLen(UIContext *c, unistring text)
 {
+    AssertMsg(c, "Context is null\n");
+    AssertMsg(c->currFont, "Current Font is null\n");
+    
     s32 totalLen = 0;
     for(u32 i = 0; i < text.len; i++)
     {
@@ -2156,6 +2169,9 @@ s32 ls_uiGlyphStringLen(UIContext *c, unistring text)
 
 s32 ls_uiGlyphStringFit(UIContext *c, unistring text, s32 maxLen)
 {
+    AssertMsg(c, "Context is null\n");
+    AssertMsg(c->currFont, "Current Font is null\n");
+    
     s32 totalLen = 0;
     for(s32 i = text.len-1; i > 0; i--)
     {
@@ -2196,6 +2212,13 @@ s32 ls_uiSelectFontByFontSize(UIContext *c, UIFontSize fontSize)
 UIButton ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *userData)
 {
     UIButton Result = {s, {}, 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
+    return Result;
+}
+
+UIButton ls_uiButtonInit(UIButtonStyle s, const char32_t *text, ButtonProc onClick, ButtonProc onHold, void *userData)
+{
+    
+    UIButton Result = {s, ls_unistrFromUTF32(text), 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
     return Result;
 }
 
@@ -2283,6 +2306,13 @@ void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
     box->viewBeginIdx   = 0;
     box->viewEndIdx     = 0;
 }
+
+void ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s)
+{
+    ls_unistrFromUTF32_t(&box->text, s);
+    box->viewEndIdx = box->text.len;
+}
+
 
 void ls_uiTextBoxSet(UIContext *c, UITextBox *box, unistring s)
 {
