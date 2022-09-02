@@ -41,7 +41,8 @@ extern "C"
     void   ls_bufferAddDouble(buffer *buff, f64 v);
     
     //NOTE: AddData includes serializes the length, AddDataClean does NOT.
-    void   ls_bufferAddData(buffer *buff, void *data, u32 len);
+    void   ls_bufferAddData8(buffer *buff, void *data, u8 len);
+    void   ls_bufferAddData32(buffer *buff, void *data, u32 len);
     void   ls_bufferAddDataClean(buffer *buff, void *data, u32 len);
     
     u8     ls_bufferPeekByte(buffer *buff);
@@ -51,8 +52,9 @@ extern "C"
     f32    ls_bufferPeekFloat(buffer *buff);
     f64    ls_bufferPeekDouble(buffer *buff);
     
-    u32    ls_bufferPeekData(buffer *buff, void *dataOut);
-    void   ls_bufferPeekDataClean(buffer *buff, void *dataOut, u32 numBytes);
+    u32    ls_bufferPeekData8(buffer *buff, void **dataOut);
+    u32    ls_bufferPeekData32(buffer *buff, void **dataOut);
+    void   ls_bufferPeekDataClean(buffer *buff, void **dataOut, u32 numBytes);
     
     
     u8     ls_bufferReadByte(buffer *buff);
@@ -62,7 +64,8 @@ extern "C"
     f32    ls_bufferReadFloat(buffer *buff);
     f64    ls_bufferReadDouble(buffer *buff);
     
-    u32    ls_bufferReadData(buffer *buff, void *out);
+    u32    ls_bufferReadData8(buffer *buff, void *out);
+    u32    ls_bufferReadData32(buffer *buff, void *out);
     void   ls_bufferReadDataClean(buffer *buff, void *out, u32 numBytes);
     
     u8     ls_bufferPullByte(buffer *buff);
@@ -310,7 +313,22 @@ void ls_bufferAddDouble(buffer *buff, f64 v)
     buff->cursor += 8;
 }
 
-void ls_bufferAddData(buffer *buff, void *data, u32 len)
+void ls_bufferAddData8(buffer *buff, void *data, u8 len)
+{
+    AssertMsg(buff,       "Buffer pointer is null\n");
+    AssertMsg(buff->data, "Buffer data is null\n");
+    
+    ls_bufferAddByte(buff, len);
+    
+    if(buff->cursor + len > buff->size)
+    { ls_bufferGrow(buff, len + 4096); }
+    
+    u8 *At = (u8 *)buff->data + buff->cursor;
+    ls_memcpy(data, At, len);
+    buff->cursor += len;
+}
+
+void ls_bufferAddData32(buffer *buff, void *data, u32 len)
 {
     AssertMsg(buff,       "Buffer pointer is null\n");
     AssertMsg(buff->data, "Buffer data is null\n");
@@ -392,7 +410,24 @@ u64 ls_bufferPeekQWord(buffer *buff)
     return v;
 }
 
-u32 ls_bufferPeekData(buffer *buff, void *dataOut)
+u32 ls_bufferPeekData8(buffer *buff, void **dataOut)
+{
+    AssertMsg(buff,       "Buffer pointer is null\n");
+    AssertMsg(buff->data, "Buffer data is null\n");
+    AssertMsg(dataOut,    "Output buffer is null\n");
+    
+    u32 numBytes = ls_bufferPeekByte(buff);
+    
+    u8 *At = (u8 *)buff->data + (buff->cursor + 1);
+    
+    //NOTE Peek should never copy, only return the pointer into the data and the length.
+    //ls_memcpy(At, dataOut, numBytes);
+    *dataOut = (void *)At;
+    
+    return numBytes;
+}
+
+u32 ls_bufferPeekData32(buffer *buff, void **dataOut)
 {
     AssertMsg(buff,       "Buffer pointer is null\n");
     AssertMsg(buff->data, "Buffer data is null\n");
@@ -401,19 +436,25 @@ u32 ls_bufferPeekData(buffer *buff, void *dataOut)
     u32 numBytes = ls_bufferPeekDWord(buff);
     
     u8 *At = (u8 *)buff->data + (buff->cursor + 4);
-    ls_memcpy(At, dataOut, numBytes);
+    
+    //NOTE Peek should never copy, only return the pointer into the data and the length.
+    //ls_memcpy(At, dataOut, numBytes);
+    *dataOut = (void *)At;
     
     return numBytes;
 }
 
-void ls_bufferPeekDataClean(buffer *buff, void *dataOut, u32 numBytes)
+void ls_bufferPeekDataClean(buffer *buff, void **dataOut, u32 numBytes)
 {
     AssertMsg(buff,       "Buffer pointer is null\n");
     AssertMsg(buff->data, "Buffer data is null\n");
     AssertMsg(dataOut,    "Output buffer is null\n");
     
     u8 *At = (u8 *)buff->data + buff->cursor;
-    ls_memcpy(At, dataOut, numBytes);
+    
+    //NOTE Peek should never copy, only return the pointer into the data and the length.
+    //ls_memcpy(At, dataOut, numBytes);
+    *dataOut = (void *)At;
 }
 
 u8 ls_bufferReadByte(buffer *buff)
@@ -476,7 +517,22 @@ u64 ls_bufferReadQWord(buffer *buff)
     return v;
 }
 
-u32 ls_bufferReadData(buffer *buff, void *out)
+u32 ls_bufferReadData8(buffer *buff, void *out)
+{
+    AssertMsg(buff,       "Buffer pointer is null\n");
+    AssertMsg(buff->data, "Buffer data is null\n");
+    AssertMsg(out,        "Output buffer is null\n");
+    
+    u32 numBytes = ls_bufferReadByte(buff);
+    
+    u8 *At = (u8 *)buff->data + buff->cursor;
+    ls_memcpy(At, out, numBytes);
+    buff->cursor += numBytes;
+    
+    return numBytes;
+}
+
+u32 ls_bufferReadData32(buffer *buff, void *out)
 {
     AssertMsg(buff,       "Buffer pointer is null\n");
     AssertMsg(buff->data, "Buffer data is null\n");
