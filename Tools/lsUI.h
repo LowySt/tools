@@ -318,7 +318,7 @@ struct RenderCommand
     union
     {
         UITextBox *textBox;
-        char32_t  *label;
+        unistring  label;
         UIButton  *button;
         UIListBox *listBox;
         UISlider  *slider;
@@ -2283,7 +2283,7 @@ void ls_uiLabel(UIContext *c, unistring label, s32 xPos, s32 yPos, u32 zLayer = 
     s32 height = c->currFont->pixelHeight;
     
     RenderCommand command = { UI_RC_LABEL, xPos, yPos, width, height };
-    command.label = (char32_t*)label.data;
+    command.label = label;
     command.textColor = c->textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
 }
@@ -3448,8 +3448,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 
                 case UI_RC_LABEL:
                 {
-                    unistring label = ls_unistrConstant(curr->label);
-                    ls_uiGlyphString(c, xPos, yPos, minX, maxX, minY, maxY, label, textColor);
+                    ls_uiGlyphString(c, xPos, yPos, minX, maxX, minY, maxY, curr->label, textColor);
                 } break;
                 
                 case UI_RC_TEXTBOX:
