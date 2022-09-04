@@ -262,22 +262,6 @@ struct UIMenu
     //TODO: Add bkgColor and textColor
 };
 
-
-enum RenderCommandExtra
-{
-    UI_RCE_NULL,
-    
-    UI_RCE_LEFT,
-    UI_RCE_RIGHT,
-    UI_RCE_TOP,
-    UI_RCE_BOT,
-    
-    UI_RCE_TL,
-    UI_RCE_TR,
-    UI_RCE_BL,
-    UI_RCE_BR,
-};
-
 const char* RenderCommandTypeAsString[] = {
     "UI_RC_INVALID",
     "UI_RC_TEXTBOX",
@@ -327,8 +311,8 @@ struct RenderCommand
     
     Color bkgColor;
     Color textColor;
+    Color borderColor;
     
-    RenderCommandExtra extra;
     s32 oX, oY, oW, oH;
 };
 
@@ -440,6 +424,8 @@ Color      ls_uiLightenRGB(Color c, u32 factor);
 Color      ls_uiAlphaBlend(Color source, Color dest, u8 alpha);
 Color      ls_uiAlphaBlend(Color source, Color dest);
 Color      ls_uiRGBAtoARGB(Color c);
+
+void       ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
 
 UIButton   ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *userData);
 UIButton   ls_uiButtonInit(UIButtonStyle s, unistring text, ButtonProc onClick, ButtonProc onHold, void *userData);
@@ -1146,14 +1132,12 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
                 //Half in one, half in another.
                 
                 RenderCommand section = command;
-                section.extra = UI_RCE_LEFT;
                 section.minX = 0;
                 section.minY = 0;
                 section.maxX = (c->width / 2)-1;
                 section.maxY = c->height;
                 ls_stackPush(&c->renderGroups[0].RenderCommands[zLayer], (void *)&section);
                 
-                section.extra = UI_RCE_RIGHT;
                 section.minX = (c->width / 2);
                 section.minY = 0;
                 section.maxX = c->width;
@@ -1165,122 +1149,6 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
             }
             
         } break;
-        
-#if 0
-        case 4:
-        {
-            u32 i1, i2, i3, i4;
-            __ls_RenderRect p1 = ls_uiQuadrantFromPoint(c, command.x,             command.y,             &i1);
-            __ls_RenderRect p2 = ls_uiQuadrantFromPoint(c, command.x + command.w, command.y,             &i2);
-            __ls_RenderRect p3 = ls_uiQuadrantFromPoint(c, command.x,             command.y + command.h, &i3);
-            __ls_RenderRect p4 = ls_uiQuadrantFromPoint(c, command.x + command.w, command.y + command.h, &i4);
-            
-            //NOTE: The command is not fragged and lives in a single rect.
-            if((p1 == p2) && (p2 == p3) && (p3 == p4))
-            { ls_stackPush(&c->renderGroups[i1].RenderCommands[zLayer], (void *)&command); return; }
-            
-            //NOTE: Left Half, Right Half
-            else if((p1 == p3) && (p2 == p4))
-            {
-                RenderCommand section = command;
-                
-                section.type  = (RenderCommandType)(command.type + UI_RC_FRAG_OFF);
-                section.extra = UI_RCE_LEFT;
-                section.oX = command.x;
-                section.oY = command.y;
-                section.oW = command.w;
-                section.oH = command.h;
-                
-                section.x     = command.x;
-                section.w     = (c->width/2) - command.x;
-                
-                ls_stackPush(&c->renderGroups[i1].RenderCommands[zLayer], (void *)&section);
-                
-                section.extra = UI_RCE_RIGHT;
-                section.x     = c->width/2;
-                section.w     = command.w - section.w;
-                
-                ls_stackPush(&c->renderGroups[i2].RenderCommands[zLayer], (void *)&section);
-                return;
-            }
-            
-            //NOTE: Top Half, Bottom Half
-            else if((p1 == p2) && (p3 == p4))
-            {
-                RenderCommand section = command;
-                
-                section.type  = (RenderCommandType)(command.type + UI_RC_FRAG_OFF);
-                section.extra = UI_RCE_TOP;
-                section.oX = command.x;
-                section.oY = command.y;
-                section.oW = command.w;
-                section.oH = command.h;
-                
-                section.x     = command.x;
-                section.w     = command.w;
-                section.y     = c->height/2;
-                section.h     = command.h - (section.y - command.y);
-                
-                ls_stackPush(&c->renderGroups[i3].RenderCommands[zLayer], (void *)&section);
-                
-                section.extra = UI_RCE_BOT;
-                
-                section.x     = command.x;
-                section.w     = command.w;
-                section.y     = command.y;
-                section.h     = (c->height/2) - command.y;
-                
-                ls_stackPush(&c->renderGroups[i1].RenderCommands[zLayer], (void *)&section);
-                return;
-            }
-            
-            //NOTE: Final case where all quadrants share the quad.
-            else
-            {
-                RenderCommand section = command;
-                
-                section.type  = (RenderCommandType)(command.type + UI_RC_FRAG_OFF);
-                section.extra = UI_RCE_TL;
-                section.oX = command.x;
-                section.oY = command.y;
-                section.oW = command.w;
-                section.oH = command.h;
-                
-                section.x     = command.x;
-                section.w     = (c->width/2) - section.x;
-                section.y     = c->height/2;
-                section.h     = command.h - (section.y - command.y);
-                
-                ls_stackPush(&c->renderGroups[2].RenderCommands[zLayer], (void *)&section);
-                
-                section.extra = UI_RCE_TR;
-                section.x     = c->width/2;
-                section.w     = command.w - section.w;
-                section.y     = c->height/2;
-                section.h     = command.h - (section.y - command.y);
-                
-                ls_stackPush(&c->renderGroups[3].RenderCommands[zLayer], (void *)&section);
-                
-                section.extra = UI_RCE_BL;
-                section.x     = command.x;
-                section.w     = (c->width/2) - section.x;
-                section.y     = command.y;
-                section.h     = (c->height/2) - command.y;
-                
-                ls_stackPush(&c->renderGroups[0].RenderCommands[zLayer], (void *)&section);
-                
-                section.extra = UI_RCE_BR;
-                section.x     = c->width/2;
-                section.w     = command.w - section.w;
-                section.y     = command.y;
-                section.h     = (c->height/2) - command.y;
-                
-                ls_stackPush(&c->renderGroups[1].RenderCommands[zLayer], (void *)&section);
-                return;
-            }
-            
-        } break;
-#endif
         
         default: { AssertMsg(FALSE, "Thread count not supported\n"); } return;
     }
@@ -1537,196 +1405,60 @@ void ls_uiBorder(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, s32 minX, s32 m
 }
 
 inline
-void ls_uiBorderedRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h,
+void ls_uiBorderedRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
                        s32 minX, s32 maxX, s32 minY, s32 maxY)
 {
-    ls_uiBorder(cxt, xPos, yPos, w, h, minX, maxX, minY, maxY);
-    ls_uiFillRect(cxt, xPos+1, yPos+1, w-2, h-2, minX, maxX, minY, maxY, cxt->widgetColor);
+    ls_uiBorder(c, xPos, yPos, w, h, minX, maxX, minY, maxY);
+    ls_uiFillRect(c, xPos+1, yPos+1, w-2, h-2, minX, maxX, minY, maxY, c->widgetColor);
 }
 
 inline
-void ls_uiBorderedRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h, 
+void ls_uiBorderedRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
                        s32 minX, s32 maxX, s32 minY, s32 maxY, Color widgetColor)
 {
-    ls_uiBorder(cxt, xPos, yPos, w, h, minX, maxX, minY, maxY);
-    ls_uiFillRect(cxt, xPos+1, yPos+1, w-2, h-2, minX, maxX, minY, maxY, widgetColor);
+    ls_uiBorder(c, xPos, yPos, w, h, minX, maxX, minY, maxY);
+    ls_uiFillRect(c, xPos+1, yPos+1, w-2, h-2, minX, maxX, minY, maxY, widgetColor);
 }
 
 inline
-void ls_uiBorderedRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h,
+void ls_uiBorderedRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
                        s32 minX, s32 maxX, s32 minY, s32 maxY, Color widgetColor, Color borderColor)
 {
-    ls_uiBorder(cxt, xPos, yPos, w, h, minX, maxX, minY, maxY, borderColor);
-    ls_uiFillRect(cxt, xPos+1, yPos+1, w-2, h-2, minX, maxX, minY, maxY, widgetColor);
+    ls_uiBorder(c, xPos, yPos, w, h, minX, maxX, minY, maxY, borderColor);
+    ls_uiFillRect(c, xPos+1, yPos+1, w-2, h-2, minX, maxX, minY, maxY, widgetColor);
 }
 
 inline
-void ls_uiRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h, s32 minX, s32 maxX, s32 minY, s32 maxY)
+void ls_uiRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, s32 minX, s32 maxX, s32 minY, s32 maxY)
 {
-    ls_uiFillRect(cxt, xPos, yPos, w, h, minX, maxX, minY, maxY, cxt->widgetColor);
+    ls_uiFillRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, c->widgetColor);
 }
 
 inline
-void ls_uiRect(UIContext *cxt, s32 xPos, s32 yPos, s32 w, s32 h, s32 minX, s32 maxX, s32 minY, s32 maxY, Color widgetColor)
+void ls_uiRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, s32 minX, s32 maxX, s32 minY, s32 maxY, Color widgetColor)
 {
-    ls_uiFillRect(cxt, xPos, yPos, w, h, minX, maxX, minY, maxY, widgetColor);
+    ls_uiFillRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, widgetColor);
+}
+
+void ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer = 0)
+{
+    RenderCommand command = { UI_RC_RECT, x, y, w, h };
+    command.bkgColor    = bkgColor;
+    command.borderColor = borderColor;
+    
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
+void ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
+{
+    RenderCommand command = { UI_RC_RECT, x, y, w, h };
+    command.bkgColor    = c->widgetColor;
+    command.borderColor = c->borderColor;
+    
+    ls_uiPushRenderCommand(c, command, zLayer);
 }
 
 #if 0
-inline
-void ls_uiBorderFrag(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, RenderCommandExtra rce)
-{
-    Color C = c->borderColor;
-    
-    switch(rce)
-    {
-        case UI_RCE_LEFT:
-        {
-            ls_uiFillRect(c, xPos,     yPos,     w, 1, C);
-            ls_uiFillRect(c, xPos,     yPos+h-1, w, 1, C);
-            ls_uiFillRect(c, xPos,     yPos,     1, h, C);
-        } break;
-        
-        case UI_RCE_RIGHT:
-        {
-            ls_uiFillRect(c, xPos,     yPos,     w, 1, C);
-            ls_uiFillRect(c, xPos,     yPos+h-1, w, 1, C);
-            ls_uiFillRect(c, xPos+w-1, yPos,     1, h, C);
-        } break;
-        
-        case UI_RCE_TOP:
-        {
-            ls_uiFillRect(c, xPos,     yPos+h-1, w, 1, C);
-            ls_uiFillRect(c, xPos,     yPos,     1, h, C);
-            ls_uiFillRect(c, xPos+w-1, yPos,     1, h, C);
-        } break;
-        
-        case UI_RCE_BOT:
-        {
-            ls_uiFillRect(c, xPos,     yPos,     1, h, C);
-            ls_uiFillRect(c, xPos+w-1, yPos,     1, h, C);
-            ls_uiFillRect(c, xPos,     yPos,     w, 1, C);
-        } break;
-        
-        case UI_RCE_TL:
-        {
-            ls_uiFillRect(c, xPos,     yPos+h-1, w, 1, C);
-            ls_uiFillRect(c, xPos,     yPos,     1, h, C);
-        } break;
-        
-        case UI_RCE_TR:
-        {
-            ls_uiFillRect(c, xPos,     yPos+h-1, w, 1, C);
-            ls_uiFillRect(c, xPos+w-1, yPos,     1, h, C);
-        } break;
-        
-        case UI_RCE_BL:
-        {
-            ls_uiFillRect(c, xPos,     yPos,     w, 1, C);
-            ls_uiFillRect(c, xPos,     yPos,     1, h, C);
-        } break;
-        
-        case UI_RCE_BR:
-        {
-            ls_uiFillRect(c, xPos,     yPos,     w, 1, C);
-            ls_uiFillRect(c, xPos+w-1, yPos,     1, h, C);
-        } break;
-        
-        default: { AssertMsg(FALSE, "Unhandled rce case\n"); } break;
-    }
-}
-
-inline
-void ls_uiBorderedRectFrag(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
-                           Color widgetColor, Color borderColor, RenderCommandExtra rce)
-{
-    Color C = borderColor;
-    Color W = widgetColor;
-    
-    switch(rce)
-    {
-        case UI_RCE_LEFT:
-        {
-            ls_uiFillRect(c, xPos,     yPos,     w,   1,   C);
-            ls_uiFillRect(c, xPos,     yPos+h-1, w,   1,   C);
-            ls_uiFillRect(c, xPos,     yPos,     1,   h,   C);
-            ls_uiFillRect(c, xPos+1,   yPos+1,   w-1, h-2, W);
-        } break;
-        
-        case UI_RCE_RIGHT:
-        {
-            ls_uiFillRect(c, xPos,     yPos,     w,   1,   C);
-            ls_uiFillRect(c, xPos,     yPos+h-1, w,   1,   C);
-            ls_uiFillRect(c, xPos+w-1, yPos,     1,   h,   C);
-            ls_uiFillRect(c, xPos,     yPos+1,   w-1, h-2, W);
-        } break;
-        
-        case UI_RCE_TOP:
-        {
-            ls_uiFillRect(c, xPos,     yPos+h-1, w,   1,   C);
-            ls_uiFillRect(c, xPos,     yPos,     1,   h,   C);
-            ls_uiFillRect(c, xPos+w-1, yPos,     1,   h,   C);
-            ls_uiFillRect(c, xPos+1,   yPos,     w-2, h-1, W);
-        } break;
-        
-        case UI_RCE_BOT:
-        {
-            ls_uiFillRect(c, xPos,     yPos,     w,   1,   C);
-            ls_uiFillRect(c, xPos,     yPos,     1,   h,   C);
-            ls_uiFillRect(c, xPos+w-1, yPos,     1,   h,   C);
-            ls_uiFillRect(c, xPos+1,   yPos+1,   w-2, h-1, W);
-        } break;
-        
-        case UI_RCE_TL:
-        {
-            ls_uiFillRect(c, xPos,     yPos+h-1, w,   1,   C);
-            ls_uiFillRect(c, xPos,     yPos,     1,   h,   C);
-            ls_uiFillRect(c, xPos+1,   yPos,     w-1, h-2, W);
-        } break;
-        
-        case UI_RCE_TR:
-        {
-            ls_uiFillRect(c, xPos,     yPos+h-1, w,   1,   C);
-            ls_uiFillRect(c, xPos+w-1, yPos,     1,   h,   C);
-            ls_uiFillRect(c, xPos,     yPos,     w-2, h-2, W);
-        } break;
-        
-        case UI_RCE_BL:
-        {
-            ls_uiFillRect(c, xPos,     yPos,     w,   1,   C);
-            ls_uiFillRect(c, xPos,     yPos,     1,   h,   C);
-            ls_uiFillRect(c, xPos+1,   yPos+1,   w-1, h-1, W);
-        } break;
-        
-        case UI_RCE_BR:
-        {
-            ls_uiFillRect(c, xPos,     yPos,     w,   1,   C);
-            ls_uiFillRect(c, xPos+w-1, yPos,     1,   h,   C);
-            ls_uiFillRect(c, xPos,     yPos+1,   w-1, h-1, W);
-        } break;
-        
-        default: { AssertMsg(FALSE, "Unhandled rce case\n"); } break;
-    }
-}
-
-inline
-void ls_uiBorderedRectFrag(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, Color widgetColor, RenderCommandExtra rce)
-{
-    Color C = c->borderColor;
-    Color W = widgetColor;
-    
-    ls_uiBorderedRectFrag(c, xPos, yPos, w, h, W, C, rce);
-}
-
-inline
-void ls_uiBorderedRectFrag(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, RenderCommandExtra rce)
-{
-    Color C = c->borderColor;
-    Color W = c->widgetColor;
-    
-    ls_uiBorderedRectFrag(c, xPos, yPos, w, h, W, C, rce);
-}
-
 //NOTETODO Circle is not good. Not even working.
 void _ls_uiCircle(UIContext *cxt, s32 xPos, s32 yPos, s32 selRadius)
 {
@@ -2275,7 +2007,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h
     return inputUse;
 }
 
-void ls_uiLabel(UIContext *c, unistring label, s32 xPos, s32 yPos, u32 zLayer = 0)
+void ls_uiLabel(UIContext *c, unistring label, s32 xPos, s32 yPos, s32 zLayer = 0)
 {
     AssertMsg(c->currFont, "No font was selected before sizing a label\n");
     
@@ -2288,7 +2020,7 @@ void ls_uiLabel(UIContext *c, unistring label, s32 xPos, s32 yPos, u32 zLayer = 
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
-void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, u32 zLayer = 0)
+void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer = 0)
 {
     unistring lab = ls_unistrConstant(label);
     ls_uiLabel(c, lab, xPos, yPos, zLayer);
@@ -3430,18 +3162,19 @@ void ls_uiRender__(UIContext *c, u32 threadID)
         for(u32 commandIdx = 0; commandIdx < count; commandIdx++)
         {
             RenderCommand *curr = (RenderCommand *)ls_stackPop(currLayer);
-            s32 xPos        = curr->x;
-            s32 yPos        = curr->y;
-            s32 w           = curr->w;
-            s32 h           = curr->h;
+            s32 xPos          = curr->x;
+            s32 yPos          = curr->y;
+            s32 w             = curr->w;
+            s32 h             = curr->h;
             
-            s32 minX        = curr->minX;
-            s32 maxX        = curr->maxX;
-            s32 minY        = curr->minY;
-            s32 maxY        = curr->maxY;
+            s32 minX          = curr->minX;
+            s32 maxX          = curr->maxX;
+            s32 minY          = curr->minY;
+            s32 maxY          = curr->maxY;
             
-            Color bkgColor  = curr->bkgColor;
-            Color textColor = curr->textColor;
+            Color bkgColor    = curr->bkgColor;
+            Color borderColor = curr->borderColor;
+            Color textColor   = curr->textColor;
             
             switch(curr->type)
             {
@@ -3722,8 +3455,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 
                 case UI_RC_RECT:
                 {
-                    //NOTE: here current text color is being used improperly for the border color
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, bkgColor, textColor);
+                    ls_uiBorderedRect(c, xPos, yPos, w, h, minX, maxX, minY, maxY, bkgColor, borderColor);
                 } break;
                 
                 default: { 
