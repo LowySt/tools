@@ -58,6 +58,7 @@ string  ls_strInit(char *s);
 
 //NOTE: In this case the char * string lives on the STACK!
 string  ls_strConstant(char *p);
+string  ls_strConstant(const char *p);
 string  ls_strConstant(char *p, u32 len);
 string  ls_strConstChar(char *c);
 
@@ -336,6 +337,13 @@ void ls_strFreeArr(string *s, u32 arrSize)
 
 //TODO: This stack living string is always strange... 
 //      for example in printf it seemed to work not that good...
+string  ls_strConstant(const char *p)
+{
+    u32 len = ls_len((char *)p);
+    string s = {(char *)p, len, len};
+    return s;
+}
+
 string ls_strConstant(char *p)
 {
     u32 len = ls_len(p);
@@ -1364,10 +1372,7 @@ b32 ls_unistrAreEqual(unistring a, unistring b)
     if(a.len != b.len)   { return FALSE; }
     if(a.data == b.data) { return TRUE; }
     
-    b32 isDataEqual = ls_memcmp(a.data, b.data, a.len);
-    if(isDataEqual == TRUE) { return TRUE; }
-    
-    return FALSE;
+    return ls_memcmp(a.data, b.data, a.len*sizeof(u32));
 }
 
 b32 ls_unistrAsciiAreEqual(unistring a, string b)
