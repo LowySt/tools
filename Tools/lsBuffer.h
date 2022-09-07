@@ -121,9 +121,9 @@ buffer ls_bufferFromPtrArray(void *arr, u64 arrSize)
 {
     buffer Result = {};
     
-    u64 buffSize = arrSize + 4096; //NOTE: Over allocate so that more data fits easily
+    u64 buffSize = arrSize;
     Result.data = ls_alloc(buffSize);
-    ls_memcpy(arr,Result. data, arrSize);
+    ls_memcpy(arr, Result.data, arrSize);
     Result.size = buffSize;
     Result.cursor = 0;
     
@@ -134,7 +134,6 @@ buffer ls_bufferInitFromFile(string path)
 {
     buffer Result = {};
     
-    //TODO: Error checking
     u64 readSize = ls_readFile(path.data, (char **)&Result.data, 0);
     Result.size = readSize;
     
