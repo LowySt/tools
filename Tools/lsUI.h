@@ -2700,13 +2700,13 @@ inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, char *s)
     unistring text = ls_unistrFromAscii(s);
     UIListBoxItem item = { text, cxt->widgetColor, cxt->textColor };
     
-    return list->list.push(item);
+    return ls_arrayAppend(&list->list, item);
 }
 
 inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, unistring s)
 {
     UIListBoxItem item = { s, cxt->widgetColor, cxt->textColor };
-    return list->list.push(item); 
+    return ls_arrayAppend(&list->list, item);
 }
 
 inline void ls_uiListBoxRemoveEntry(UIContext *cxt, UIListBox *list, u32 index)
@@ -2716,7 +2716,8 @@ inline void ls_uiListBoxRemoveEntry(UIContext *cxt, UIListBox *list, u32 index)
     
     UIListBoxItem val = list->list[index];
     ls_unistrFree(&val.name);
-    list->list.remove(index);
+    //list->list.remove(index);
+    return ls_arrayRemove(&list->list, index);
 }
 
 b32 ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer = 0)
@@ -2753,7 +2754,7 @@ b32 ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h
             for(u32 i = 0; i < list->list.count; i++)
             {
                 s32 currY = yPos - (h*(i+1));
-                UIListBoxItem *currItem = list->list.getPointer(i);
+                UIListBoxItem *currItem = list->list + i;
                 
                 //TODO: The constant resetting is kinda stupid. Makes me think I should just not
                 //      have listbox items with their own colors. Never even used that feature.
@@ -2884,13 +2885,13 @@ UIButton ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 heig
 }
 
 inline void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub)
-{ menu->subMenus.push(sub); }
+{ ls_arrayAppend(&menu->subMenus, sub); }
 
 void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, char32_t *name)
 { 
     UISubMenu newSub = {};
     newSub.name = ls_unistrFromUTF32(name);
-    menu->subMenus.push(newSub);
+    ls_arrayAppend(&menu->subMenus, newSub);
 }
 
 void ls_uiMenuAddItem(UIContext *c, UIMenu *menu, char32_t *name, ButtonProc onClick, void *userData)
@@ -2899,7 +2900,7 @@ void ls_uiMenuAddItem(UIContext *c, UIMenu *menu, char32_t *name, ButtonProc onC
     newItem.name       = ls_unistrFromUTF32(name);
     newItem.onClick    = onClick;
     newItem.userData   = userData;
-    menu->items.push(newItem);
+    ls_arrayAppend(&menu->items, newItem);
 }
 
 void ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonProc onClick, void *userData)
@@ -2909,8 +2910,7 @@ void ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonPro
     newItem.name       = ls_unistrFromUTF32(name);
     newItem.onClick    = onClick;
     newItem.userData   = userData;
-    
-    sub->items.push(newItem);
+    ls_arrayAppend(&sub->items, newItem);
 }
 
 void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name, ButtonProc onClick, void *userData)
@@ -2920,8 +2920,7 @@ void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name,
     newItem.name       = ls_unistrFromUTF32(name);
     newItem.onClick    = onClick;
     newItem.userData   = userData;
-    
-    menu->subMenus[subIdx].items.push(newItem);
+    ls_arrayAppend(&menu->subMenus[subIdx].items, newItem);
 }
 
 b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
@@ -2959,7 +2958,7 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     
     for(u32 i = 0; i < subCount; i++)
     {
-        UISubMenu *sub = menu->subMenus.getPointer(i);
+        UISubMenu *sub = menu->subMenus + i;
         sub->isHot = FALSE;
         
         s32 subX = x + (i*menu->itemWidth);
@@ -2968,7 +2967,7 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
         {
             for(u32 j = 0; j < sub->items.count; j++)
             {
-                UIMenuItem *currItem = sub->items.getPointer(j);
+                UIMenuItem *currItem = sub->items + j;
                 currItem->isHot    = FALSE;
                 
                 s32 itemX = subX;
@@ -3009,7 +3008,7 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     //NOTE: Items HAVE to come after submenus
     for(u32 i = 0; i < itemCount; i++)
     {
-        UIMenuItem *item = menu->items.getPointer(i);
+        UIMenuItem *item = menu->items + i;
         item->isHot      = FALSE;
         
         
@@ -3244,7 +3243,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         for(u32 i = 0; i < list->list.count; i++)
                         {
                             s32 currY = yPos - (h*(i+1));
-                            UIListBoxItem *currItem = list->list.getPointer(i);
+                            UIListBoxItem *currItem = list->list + i;
                             
                             ls_uiRect(c, xPos+1, currY, w-2, h, minX, maxX, minY, maxY, currItem->bkgColor);
                             ls_uiGlyphString(c, xPos+10, yPos + vertOff - (h*(i+1)),
@@ -3396,7 +3395,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     
                     for(u32 subIdx = 0; subIdx < menu->subMenus.count; subIdx++)
                     {
-                        UISubMenu *sub = menu->subMenus.getPointer(subIdx);
+                        UISubMenu *sub = menu->subMenus + subIdx;
                         
                         s32 subX = xPos + (subIdx*menu->itemWidth);
                         
@@ -3416,7 +3415,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                             u32 currY = subY-subH;
                             for(u32 itemIdx = 0; itemIdx < sub->items.count; itemIdx++)
                             {
-                                UIMenuItem *item = sub->items.getPointer(itemIdx);
+                                UIMenuItem *item = sub->items + itemIdx;
                                 
                                 strWidth = ls_uiGlyphStringLen(c, item->name);
                                 xOff = (subW - strWidth) / 2;
@@ -3435,7 +3434,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     
                     for(u32 itemIdx = 0; itemIdx < menu->items.count; itemIdx++)
                     {
-                        UIMenuItem *item = menu->items.getPointer(itemIdx);
+                        UIMenuItem *item = menu->items + itemIdx;
                         
                         s32 realIndex = itemIdx + menu->subMenus.count;
                         s32 itemX = xPos + (realIndex*menu->itemWidth);
@@ -3471,8 +3470,6 @@ void ls_uiRender__(UIContext *c, u32 threadID)
     }
     
     c->renderGroups[threadID].isDone = TRUE;
-    
-    //c->renderFunc();
     
     return;
 }
