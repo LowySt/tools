@@ -9,13 +9,18 @@
 
 #define DEBUG_LOC __FILE__ " : " __FUNCTION__
 
-void __internal_AssertMsg(const char * funcHeader, const char* message);
+void __internal_AssertMsg(const char *funcHeader, const char *message);
 #define AssertMsg(condition, msg) { if(!(condition)) __internal_AssertMsg(CAT3("[ASSERT]", __FUNCTION__, ": "), msg); }
 
 #define Assert(condition) if(!(condition)){DebugBreak();}
+
+void __internal_logError(const char *funcHeader, const char *message);
+#define LogMsg(condition, msg) { if(!(condition)) __internal_logError(CAT3("[ERROR]", __FUNCTION__, ": "), msg); }
+
 #else
 #define AssertMsg(condition, msg) ((void)0);
 #define Assert(condition) ((void)0);
+#define LogMsg(condition, msg) ((void)0);
 
 #undef CAT
 #undef CAT2
@@ -239,113 +244,6 @@ u32 ByteSwap32(u32 value);
 u64 ByteSwap64(u64 value);
 f64 Ceil(f64 v);
 
-
-#define ARRAY_IDX_NOT_FOUND (u32)-1
-template<typename T>
-struct Array
-{
-    T *data;
-    u32 count;
-    u32 cap;
-    
-    Array()
-    { data = (T *)ls_alloc(32*sizeof(T)); count = 0; cap = 32; }
-    
-    T& operator[](u32 index)
-    {
-        AssertMsg(index < count, "Index out of bounds in Array<>\n"); //NOTE: Should this be a crash or an error?
-        return data[index];
-    }
-    
-    T* getPointer(u32 index)
-    {
-        AssertMsg(index < count, "Index out of bounds in Array<>\n"); //NOTE: Should this be a crash or an error?
-        return data + index;
-    }
-    
-    void copy(Array<T> *a)
-    {
-        if(data) { ls_free(data); }
-        
-        count = a->count;
-        cap = a->cap;
-        ls_memcpy(a->data, data, a->count);
-    }
-    
-    void grow(u32 amount)
-    {
-        data = (T *)ls_realloc(data, cap*sizeof(T), (cap + amount)*sizeof(T));
-        cap += amount;
-    }
-    
-    u32 push(T val)
-    {
-        if(count == cap) { grow(32); }
-        data[count++] = val;
-        
-        return (count - 1);
-    }
-    
-    void insert(T val, u32 index)
-    {
-        if(count == cap) { grow(32); }
-        size_t dataSize = sizeof(T);
-        
-        u32 numElements = count - index;
-        Assert(numElements <= cap);
-        
-        ls_memcpy(data + index, data + index + 1, numElements*dataSize);
-        count += 1;
-        data[index] = val;
-    }
-    
-    void set(T val, u32 index)
-    {
-        if(index > cap) { grow(index - cap + 1); }
-        data[index] = val;
-    }
-    
-    void remove(u32 index)
-    {
-        size_t dataSize = sizeof(T);
-        u32 numElements = count - index;
-        ls_memcpy(data + index + 1, data + index, numElements*dataSize);
-        count -= 1;
-    }
-    
-    b32 contains(T val)
-    {
-        for(u32 i = 0; i < count; i++)
-        {
-            if (data[i] == val) { return TRUE; }
-        }
-        
-        return FALSE;
-    }
-    
-    u32 getIdx(T val)
-    {
-        for(u32 i = 0; i < count; i++)
-        {
-            if (data[i] == val) { return i; }
-        }
-        
-        return (u32)-1;
-    }
-    
-    void clear()
-    { count = 0; }
-    
-    //NOTE:TODO: Can't have Arrays of complex data types, because the free would
-    //not work properly! (I would need to iteratively free every element,
-    //instead of single call.
-    void free()
-    {
-        ls_free(data);
-        count = 0;
-        cap = 0;
-    }
-};
 
 #endif //End of header
 
@@ -1427,6 +1325,13 @@ void __internal_AssertMsg(const char * funcHeader, const char* message)
     }
     
     DebugBreak();
+}
+
+void __internal_logError(const char *funcHeader, const char *message)
+{
+    windows_WriteConsole((char *)funcHeader, ls_len((char *)funcHeader));
+    windows_WriteConsole((char *)message, ls_len((char *)message));
+    windows_WriteConsole("\n", 1);
 }
 #endif
 
