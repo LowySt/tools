@@ -728,6 +728,7 @@ VOID CALLBACK FileIOCompletionRoutine(DWORD dwErrorCode, DWORD dwNumberOfBytesTr
 
 u64 windows_ReadFile(char *Path, char **Dest, u32 bytesToRead)
 {
+    char errorBuff[256] = {};
     DWORD Error = 0;
     HANDLE FileHandle = 0;
     LARGE_INTEGER FileSize = {};
@@ -735,8 +736,9 @@ u64 windows_ReadFile(char *Path, char **Dest, u32 bytesToRead)
     if ((FileHandle = CreateFileA(Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
     {
         Error = GetLastError();
-        ls_printf("%cs\n\n", Path);
-        ls_printf("When creating a file handle got error: %ld\n", Error);
+        ls_sprintf(errorBuff, 256, "When creating a file handle in path '%cs' got error: %d\n", Path, Error);
+        LogMsg(FALSE, errorBuff);
+        return 0;
     }
     
     u32 ToRead;
@@ -745,7 +747,9 @@ u64 windows_ReadFile(char *Path, char **Dest, u32 bytesToRead)
         if (GetFileSizeEx(FileHandle, &FileSize) == 0)
         {
             Error = GetLastError();
-            ls_printf("When getting file size got error: %ld\n", Error);
+            ls_sprintf(errorBuff, 256, "When retrieving file size in path %cs got error: %d\n", Path, Error);
+            LogMsg(FALSE, errorBuff);
+            return 0;
         }
         ToRead = FileSize.LowPart;
     }
@@ -760,12 +764,19 @@ u64 windows_ReadFile(char *Path, char **Dest, u32 bytesToRead)
     if (ReadFile(FileHandle, *Dest, ToRead, &BytesRead, NULL) == FALSE)
     {
         Error = GetLastError();
-        ls_printf("When Reading contents of a file got error: %ld\n", Error);
+        ls_sprintf(errorBuff, 256, "When reading file %cs got error: %d\n", Path, Error);
+        LogMsg(FALSE, errorBuff);
+        return 0;
     }
     else
     {
         if (BytesRead != ToRead)
-        { ls_printf("Bytes read when reading entire file don't equal the file size!!\n"); }
+        { 
+            ls_sprintf(errorBuff, 256, "Bytes read (%d) in file %cs don't equal file size (%d)\n", 
+                       BytesRead, Path, ToRead);
+            LogMsg(FALSE, errorBuff);
+            return 0;
+        }
     }
     
     if (CloseHandle(FileHandle) == FALSE)
@@ -835,7 +846,6 @@ u64 windows_WriteFile(char *Path, char *source, u32 bytesToWrite, b32 append)
 {
     DWORD Error = 0;
     HANDLE FileHandle = 0;
-    
     
     /* How do we open a file always, but append if we don't want to re-write it completely? */
     
