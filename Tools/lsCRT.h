@@ -17,10 +17,15 @@ void __internal_AssertMsg(const char *funcHeader, const char *message);
 void __internal_logError(const char *funcHeader, const char *message);
 #define LogMsg(condition, msg) { if(!(condition)) __internal_logError(CAT3("[ERROR]", __FUNCTION__, ": "), msg); }
 
+void __internal_logErrorF(const char *funcHeader, const char *msgFormat, ...);
+#define LogMsgF(condition, msgFormat, ...) \
+{ if(!(condition)) __internal_logErrorF(CAT3("[ERROR]", __FUNCTION__, ": "), msgFormat, __VA_ARGS__); }
+
 #else
 #define AssertMsg(condition, msg) ((void)0);
 #define Assert(condition) ((void)0);
 #define LogMsg(condition, msg) ((void)0);
+#define LogMsgF(condition, msg, ...) ((void)0);
 
 #undef CAT
 #undef CAT2
@@ -1333,7 +1338,24 @@ void __internal_logError(const char *funcHeader, const char *message)
     windows_WriteConsole((char *)message, ls_len((char *)message));
     windows_WriteConsole("\n", 1);
 }
-#endif
+
+void __internal_logErrorF(const char *funcHeader, const char *msgFormat, ...)
+{
+    va_list argList;
+    va_start(argList, msgFormat);
+    
+    char buff[512] = {};
+    
+    s32 msgLen = ls_vsprintf(buff, 512, msgFormat, argList);
+    
+    va_end(argList);
+    
+    windows_WriteConsole((char *)funcHeader, ls_len((char *)funcHeader));
+    windows_WriteConsole((char *)buff, msgLen);
+    windows_WriteConsole("\n", 1);
+}
+
+#endif //DEBUG
 
 void ls_memcpy(void *src, void *dest, size_t size)
 {
