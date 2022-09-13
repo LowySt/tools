@@ -55,6 +55,7 @@ void    ls_strFreeArr(string *s, u32 arrSize);
 
 //Manage
 string  ls_strInit(char *s);
+string  ls_strInit(const char *s);
 
 //NOTE: In this case the char * string lives on the STACK!
 string  ls_strConstant(char *p);
@@ -71,7 +72,7 @@ string  ls_strCopySubstr(string s, u32 beginIdx, u32 _endIdx = (u32)-1);
 //C Bullshit
 void    ls_strNullTerminate(string *s);
 char   *ls_strToCStr(string s);
-b32     ls_strToCStr_t(string s, char *buff, s32 buffSize);
+void    ls_strToCStr_t(string s, char *buff, s32 buffSize);
 
 
 //OperateOn
@@ -105,11 +106,11 @@ void    ls_strPrepend(string *s1, string s2);
 void    ls_strPrependChar(string *s, char c);
 void    ls_strPrependCStr(string *s, char *c);
 void    ls_strAppend(string *s1, string s2);
-void    ls_strAppendView(string *s1, view v);
-void    ls_strAppendChar(string *s1, char c);
-void    ls_strAppendCStr(string *s1, char *c);
-void    ls_strAppendNCStr(string *s1, char *c, u32 len);
-
+void    ls_strAppend(string *s1, view v);
+void    ls_strAppend(string *s1, char c);
+void    ls_strAppend(string *s1, char *c);
+void    ls_strAppend(string *s1, const char *c);
+void    ls_strAppend(string *s1, char *c, u32 len);
 
 //To/From Data
 b32     ls_strIsANumber(string s);
@@ -382,6 +383,17 @@ string ls_strInit(char *s)
     return Result;
 }
 
+string ls_strInit(const char *s)
+{
+    u32 len = ls_len((char *)s);
+    
+    string Result = ls_strAlloc(len);
+    ls_memcpy((void *)s, (void *)Result.data, len);
+    Result.len = len;
+    
+    return Result;
+}
+
 void ls_strClear(string *s)
 { s->len = 0; }
 
@@ -458,14 +470,12 @@ char *ls_strToCStr(string s)
     return result;
 }
 
-b32 ls_strToCStr_t(string s, char *buff, s32 buffSize)
+void ls_strToCStr_t(string s, char *buff, s32 buffSize)
 {
     AssertMsg(buffSize >= s.len+1, "C String Buff not large enough\n");
     
     ls_memcpy(s.data, buff, s.len);
     buff[s.len] = 0;
-    
-    return TRUE;
 }
 
 
@@ -531,7 +541,7 @@ void ls_strRmAllNonTextChar(string *s)
             }
         }
         
-        ls_strAppendChar(Result, c);
+        ls_strAppend(Result, c);
     }
     
     ls_free(s->data);
@@ -1013,7 +1023,7 @@ void ls_strAppend(string *s1, string s2)
     s1->len += s2.len;
 }
 
-void ls_strAppendView(string *s, view v)
+void ls_strAppend(string *s, view v)
 {
     AssertMsg(s, "Base string ptr is null\n");
     AssertMsg(s->data, "Base string data is null\n");
@@ -1028,7 +1038,7 @@ void ls_strAppendView(string *s, view v)
     s->len += v.s.len;
 }
 
-void ls_strAppendChar(string *s1, char c)
+void ls_strAppend(string *s1, char c)
 {
     AssertMsg(s1, "Base string ptr is null\n");
     AssertMsg(s1->data, "Base string data is null\n");
@@ -1040,17 +1050,27 @@ void ls_strAppendChar(string *s1, char c)
     s1->len += 1;
 }
 
-void ls_strAppendCStr(string *s1, char *c)
+void ls_strAppend(string *s1, char *c)
 {
     AssertMsg(s1, "Base string ptr is null\n");
     AssertMsg(s1->data, "Base string data is null\n");
     AssertMsg(c, "C String ptr is null\n");
     
     u32 len = ls_len(c);
-    ls_strAppendNCStr(s1, c, len);
+    ls_strAppend(s1, c, len);
 }
 
-void ls_strAppendNCStr(string *s1, char *c, u32 s2Len)
+void ls_strAppend(string *s1, const char *c)
+{
+    AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsg(s1->data, "Base string data is null\n");
+    AssertMsg(c, "C String ptr is null\n");
+    
+    u32 len = ls_len((char *)c);
+    ls_strAppend(s1, (char *)c, len);
+}
+
+void ls_strAppend(string *s1, char *c, u32 s2Len)
 {
     //NOTE: Do I want these asserts?
     AssertMsg(s1, "Base string ptr is null\n");
@@ -1147,7 +1167,7 @@ void ls_itosOn(s64 x, string *out)
 
 string ls_itoh(u64 x)
 {
-    string buffer = ls_strAlloc(32);
+    string buf = ls_strAlloc(32);
     string Result = ls_strAlloc(64);
     
     u8 *At = (u8 *)&x;
@@ -1158,64 +1178,64 @@ string ls_itoh(u64 x)
         
         switch(lowNybble)
         {
-            case 0:  ls_strAppendChar(&buffer, '0'); break;
-            case 1:  ls_strAppendChar(&buffer, '1'); break;
-            case 2:  ls_strAppendChar(&buffer, '2'); break;
-            case 3:  ls_strAppendChar(&buffer, '3'); break;
-            case 4:  ls_strAppendChar(&buffer, '4'); break;
-            case 5:  ls_strAppendChar(&buffer, '5'); break;
-            case 6:  ls_strAppendChar(&buffer, '6'); break;
-            case 7:  ls_strAppendChar(&buffer, '7'); break;
-            case 8:  ls_strAppendChar(&buffer, '8'); break;
-            case 9:  ls_strAppendChar(&buffer, '9'); break;
-            case 10: ls_strAppendChar(&buffer, 'A'); break;
-            case 11: ls_strAppendChar(&buffer, 'B'); break;
-            case 12: ls_strAppendChar(&buffer, 'C'); break;
-            case 13: ls_strAppendChar(&buffer, 'D'); break;
-            case 14: ls_strAppendChar(&buffer, 'E'); break;
-            case 15: ls_strAppendChar(&buffer, 'F'); break;
+            case 0:  ls_strAppend(&buf, '0'); break;
+            case 1:  ls_strAppend(&buf, '1'); break;
+            case 2:  ls_strAppend(&buf, '2'); break;
+            case 3:  ls_strAppend(&buf, '3'); break;
+            case 4:  ls_strAppend(&buf, '4'); break;
+            case 5:  ls_strAppend(&buf, '5'); break;
+            case 6:  ls_strAppend(&buf, '6'); break;
+            case 7:  ls_strAppend(&buf, '7'); break;
+            case 8:  ls_strAppend(&buf, '8'); break;
+            case 9:  ls_strAppend(&buf, '9'); break;
+            case 10: ls_strAppend(&buf, 'A'); break;
+            case 11: ls_strAppend(&buf, 'B'); break;
+            case 12: ls_strAppend(&buf, 'C'); break;
+            case 13: ls_strAppend(&buf, 'D'); break;
+            case 14: ls_strAppend(&buf, 'E'); break;
+            case 15: ls_strAppend(&buf, 'F'); break;
         }
         
         switch(highNybble)
         {
-            case 0:  ls_strAppendChar(&buffer, '0'); break;
-            case 1:  ls_strAppendChar(&buffer, '1'); break;
-            case 2:  ls_strAppendChar(&buffer, '2'); break;
-            case 3:  ls_strAppendChar(&buffer, '3'); break;
-            case 4:  ls_strAppendChar(&buffer, '4'); break;
-            case 5:  ls_strAppendChar(&buffer, '5'); break;
-            case 6:  ls_strAppendChar(&buffer, '6'); break;
-            case 7:  ls_strAppendChar(&buffer, '7'); break;
-            case 8:  ls_strAppendChar(&buffer, '8'); break;
-            case 9:  ls_strAppendChar(&buffer, '9'); break;
-            case 10: ls_strAppendChar(&buffer, 'A'); break;
-            case 11: ls_strAppendChar(&buffer, 'B'); break;
-            case 12: ls_strAppendChar(&buffer, 'C'); break;
-            case 13: ls_strAppendChar(&buffer, 'D'); break;
-            case 14: ls_strAppendChar(&buffer, 'E'); break;
-            case 15: ls_strAppendChar(&buffer, 'F'); break;
+            case 0:  ls_strAppend(&buf, '0'); break;
+            case 1:  ls_strAppend(&buf, '1'); break;
+            case 2:  ls_strAppend(&buf, '2'); break;
+            case 3:  ls_strAppend(&buf, '3'); break;
+            case 4:  ls_strAppend(&buf, '4'); break;
+            case 5:  ls_strAppend(&buf, '5'); break;
+            case 6:  ls_strAppend(&buf, '6'); break;
+            case 7:  ls_strAppend(&buf, '7'); break;
+            case 8:  ls_strAppend(&buf, '8'); break;
+            case 9:  ls_strAppend(&buf, '9'); break;
+            case 10: ls_strAppend(&buf, 'A'); break;
+            case 11: ls_strAppend(&buf, 'B'); break;
+            case 12: ls_strAppend(&buf, 'C'); break;
+            case 13: ls_strAppend(&buf, 'D'); break;
+            case 14: ls_strAppend(&buf, 'E'); break;
+            case 15: ls_strAppend(&buf, 'F'); break;
         }
         At++;
     }
     
-    buffer.data[buffer.len] = 0;
-    ls_strReverse(&buffer);
+    buf.data[buf.len] = 0;
+    ls_strReverse(&buf);
     
-    ls_strAppendCStr(&Result, (char*)"0x");
+    ls_strAppend(&Result, (char*)"0x");
     
     while(true)
     {
-        if(buffer.len == 2) { break; }
-        if((buffer.data[0] != '0') || (buffer.data[1] != '0'))
+        if(buf.len == 2) { break; }
+        if((buf.data[0] != '0') || (buf.data[1] != '0'))
         { break; }
         else
-        { ls_strRmSubstr(&buffer, 0, 1); }
+        { ls_strRmSubstr(&buf, 0, 1); }
     }
     
-    string P = ls_strConcat(Result, buffer);
+    string P = ls_strConcat(Result, buf);
     ls_strNullTerminate(&P);
     
-    ls_strFree(&buffer);
+    ls_strFree(&buf);
     ls_strFree(&Result);
     
     return P;
@@ -2405,7 +2425,8 @@ view ls_viewNextDelimiter(view v, char c)
         At++;
     }
     
-    AssertMsg(wordLen <= v.len, "Delimeter not found\n");
+    //NOTE: The delimeter was not found
+    if(wordLen >= v.len) return {};
     
     //NOTE: We don't keep the delimiter in the word
     //      But we skip it in the .next
