@@ -1,7 +1,7 @@
 #ifndef LS_HTTP_H
 #define LS_HTTP_H
 
-#include "..\win\win32.h"
+//#include "..\win\win32.h"
 
 #ifndef LS_CRT_H
 #include "tools\lsCRT.h"
@@ -11,9 +11,9 @@
 #define LS_HTTPS_PORT 443
 
 #ifdef LS_PLAT_WINDOWS
-typedef SOCKET http_socket;
+typedef SOCKET HTTPSocket;
 #elif LS_PLAT_LINUX
-typedef int http_socket;
+typedef int HTTPSocket;
 #endif
 
 /* ------------------ */
@@ -193,14 +193,20 @@ struct http_socketHints
     u32  optLen;
 };
 
-struct http_connInfo
+struct HTTPUri
 {
-    http_socket socket;
+    view scheme;
+    view authority;
+    view path;
+    view filename;
+};
+
+struct HTTPConnection
+{
+    HTTPSocket socket;
     struct sockaddr_storage address;
     
-    string serverName;
-    string filepath;
-    string filename;
+    HTTPUri uri;
 };
 
 enum http_MethodType
@@ -267,116 +273,116 @@ struct http_message
     u32 usedValues;
 };
 
-extern "C"
-{
-    /* ------------------ */
-    /* GENERAL CONNECTION */
-    /* ------------------ */
-    
-    void   ls_parseUrl(string url, http_connInfo *info);
-    
-    SOCKET ls_connectToServerByName(string _serverName, u32 port);
-    SOCKET ls_connectToServerByUrl(string url, http_connInfo *info, u32 port);
-    
-    s32    ls_getHeaderLength(char *content);
-    
-    char * ls_GET(string url, http_connInfo *info, u64 *bytesReturnedOut, char **headerOut);
-    
-    void ls_recieveAndProcessMessage(http_socket s);
-    
-    /*I Made these functions to be used on a server-side program.*/
-    http_connInfo ls_openAndBind(string hostname, string port, http_socketHints *hints);
-    s32 ls_setListenSocket(http_socket listener, u32 maxQueueSize);
-    http_socket ls_acceptConnection(http_socket listener, http_connInfo *info);
-};
 
+/* ------------------ */
+/* GENERAL CONNECTION */
+/* ------------------ */
+
+HTTPUri        ls_httpParseUrl(string url);
+
+HTTPSocket     ls_httpConnectByName(string serverNameString, u32 port);
+HTTPConnection ls_httpConnectByUrl(string url, u32 port);
+
+string         ls_httpGET(HTTPConnection info);
+
+#if 0
+s32            ls_getHeaderLength(char *content);
+
+/*I Made these functions to be used on a server-side program.*/
+void           ls_receiveAndProcessMessage(HTTPSocket s);
+HTTPConnection ls_openAndBind(string hostname, string port, http_socketHints *hints);
+s32            ls_setListenSocket(HTTPSocket listener, u32 maxQueueSize);
+HTTPSocket     ls_acceptConnection(HTTPSocket listener, HTTPConnection *info);
 #endif
+
+#endif //LS_HTTP_H
 
 #ifdef LS_HTTP_IMPLEMENTATION
 
 #ifdef LS_PLAT_WINDOWS
-void ls_wsaLogError(char *fName, s32 errorCode)
+void ls_wsaLogError(const char *fName, s64 errorCode)
 {
-    string buffer;
+#define WSA_INVALID_EVENT_NON_PTR 0
+    string buf;
     switch(errorCode)
     {
-        case WSA_IO_PENDING: buffer = ls_strInit("WSA: IO PENDING"); break;
-        case WSA_IO_INCOMPLETE: buffer = ls_strInit("WSA: IO INCOMPLETE"); break;
-        case WSA_INVALID_HANDLE: buffer = ls_strInit("WSA: INVALID HANDLE"); break;
-        case WSA_INVALID_PARAMETER: buffer = ls_strInit("WSA: INVALID PARAMETER"); break;
-        case WSA_NOT_ENOUGH_MEMORY: buffer = ls_strInit("WSA: NOT ENOUGH MEMORY"); break;
-        case WSA_OPERATION_ABORTED: buffer = ls_strInit("WSA: OPERATION ABORTED"); break;
-        case WSA_INVALID_EVENT: buffer = ls_strInit("WSA: INVALID EVENT"); break;
-        case WSA_MAXIMUM_WAIT_EVENTS: buffer = ls_strInit("WSA: MAX WAIT EVENTS"); break;
-        case WSA_WAIT_FAILED: buffer = ls_strInit("WSA: WAIT FAILED"); break;
-        //case WSA_WAIT_EVENT_0: buffer = ls_strInit("WSA: WAIT EVENT 0"); break;
-        case WSA_WAIT_IO_COMPLETION: buffer = ls_strInit("WSA: WAIT IO COMPLETION"); break;
-        case WSA_WAIT_TIMEOUT: buffer = ls_strInit("WSA: WAIT TIMEOUT"); break;
-        case WSAEINTR: buffer = ls_strInit("INTERRUPTED FUN CALL"); break;
-        case WSAEBADF: buffer = ls_strInit("WSA: FILE HANDLE NOT FOUND"); break;
-        case WSAEACCES: buffer = ls_strInit("WSA: PERMISSION DENIED"); break;
-        case WSAEFAULT: buffer = ls_strInit("WSA: BAD ADDRESS"); break;
-        case WSAEINVAL: buffer = ls_strInit("WSA: INVALID ARG"); break;
-        case WSAEMFILE: buffer = ls_strInit("WSA: TOO MANY OPEN FILES"); break;
-        case WSAEWOULDBLOCK: buffer = ls_strInit("WSA: RESOURCE TEMP. UNAVAIL."); break;
-        case WSAEINPROGRESS: buffer = ls_strInit("WSA: OPER. NOW IN PROGRESS"); break; 
-        case WSAEALREADY: buffer = ls_strInit("WSA: OPER. ALREADY IN PROGRESS"); break;
-        case WSAENOTSOCK: buffer = ls_strInit("WSA: SOCKET OPER. ON NON-SOCKET"); break;
-        case WSAEDESTADDRREQ: buffer = ls_strInit("WSA: DESTINATION ADDR. REQUIRED"); break;
-        case WSAEMSGSIZE: buffer = ls_strInit("WSA: MESSAGE TOO LONG"); break; 
-        case WSAEPROTOTYPE: buffer = ls_strInit("WSA: PROTOCOL WRONG TYPE FOR SOCKET"); break;
-        case WSAENOPROTOOPT: buffer = ls_strInit("WSA: BAD PROTOCOL OPTION"); break;
-        case WSAEPROTONOSUPPORT: buffer = ls_strInit("WSA: PROTOCOL NOT SUPPORTED"); break;
-        case WSAESOCKTNOSUPPORT: buffer = ls_strInit("WSA: SOCKET TYPE NOT SUPPORTED"); break; 
-        case WSAEOPNOTSUPP: buffer = ls_strInit("WSA: OPERATION NOT SUPPORTED"); break;
-        case WSAEPFNOSUPPORT: buffer = ls_strInit("WSA: PROTOCOL FAMILY NOT SUPPORTED"); break;
-        case WSAEAFNOSUPPORT: buffer = ls_strInit("WSA: ADDR.FAM. NOT SUPP. BY PROTO.FAM."); break;
-        case WSAEADDRINUSE: buffer = ls_strInit("WSA: ADDRESS ALREADY IN USE"); break;
-        case WSAEADDRNOTAVAIL: buffer = ls_strInit("WSA: CANNOT ASSIGN REQUESTED ADDRESS"); break;
-        case WSAENETDOWN: buffer = ls_strInit("WSA: NETWORK IS DOWN"); break;
-        case WSAENETUNREACH: buffer = ls_strInit("WSA: NETWORK IS UNREACHABLE"); break;
-        case WSAENETRESET: buffer = ls_strInit("WSA: NETWORK DROPPED CONN. ON RESET"); break;
-        case WSAECONNABORTED: buffer = ls_strInit("WSA: SOFTWARE CAUSED CONN. ABORT");  break;
-        case WSAECONNRESET: buffer = ls_strInit("WSA: CONNECTION RESET BY PEER"); break;
-        case WSAENOBUFS: buffer = ls_strInit("WSA: NO BUFFER SPACE AVAIL."); break;
-        case WSAEISCONN: buffer = ls_strInit("WSA: SOCKET IS ALREADY CONN."); break;
-        case WSAENOTCONN: buffer = ls_strInit("WSA: SOCKET IS NOT CONN."); break;
-        case WSAESHUTDOWN: buffer = ls_strInit("WSA: CANNOT SEND AFTER SOCKET SHUTDOWN"); break;
-        case WSAETOOMANYREFS: buffer = ls_strInit("WSA: TOO MANY REFERENCES"); break;
-        case WSAETIMEDOUT: buffer = ls_strInit("WSA: CONNECTION TIMED OUT"); break;
-        case WSAECONNREFUSED: buffer = ls_strInit("WSA: CONNECTION REFUSED"); break;
-        case WSAELOOP: buffer = ls_strInit("WSA: CANNOT TRANSLATE NAME"); break;
-        case WSAENAMETOOLONG: buffer = ls_strInit("WSA: NAME TOO LONG"); break;
-        case WSAEHOSTDOWN: buffer = ls_strInit("WSA: HOST IS DOWN"); break;
-        case WSAEHOSTUNREACH: buffer = ls_strInit("WSA: NO ROUTE TO HOST"); break;
-        case WSAENOTEMPTY: buffer = ls_strInit("WSA: DIRECTORY NOT EMPTY"); break;
-        case WSAEPROCLIM: buffer = ls_strInit("WSA: TOO MANY PROCESSES"); break;
-        case WSAEUSERS: buffer = ls_strInit("WSA: USER QUOTA EXCEEDED"); break;
-        case WSAEDQUOT: buffer = ls_strInit("WSA: DISK QUOTA EXCEEDED"); break;
-        case WSAESTALE: buffer = ls_strInit("WSA: STALE FILE HANDLE REF."); break;
-        case WSAEREMOTE: buffer = ls_strInit("WSA: ITEM IS REMOTE"); break;
-        case WSASYSNOTREADY: buffer = ls_strInit("WSA: NETWORK SUBSYS. IS UNAVAILABLE"); break;
-        case WSAVERNOTSUPPORTED: buffer = ls_strInit("WSA: WINSOCK DLL VER. OUT OF RANGE"); break;
-        case WSANOTINITIALISED: buffer = ls_strInit("WSA: WSAStartup() NOT YET PERFORMED"); break;
-        case WSAEDISCON: buffer = ls_strInit("WSA: GRACEFUL SHUTDOWN IN PROGRESS");  break;
-        case WSAENOMORE: buffer = ls_strInit("WSA: NO MORE RESULTS BY WSALookupServiceNext()"); break;
-        case WSAECANCELLED: buffer = ls_strInit("WSA: CALL HAS BEEN CANCELED"); break;
-        case WSAEINVALIDPROCTABLE: buffer = ls_strInit("WSA: INVALID PROC. TABLE");  break;
-        case WSAEINVALIDPROVIDER: buffer = ls_strInit("WSA: SERVICE PROVIDER IS INVALID"); break;
-        case WSAEPROVIDERFAILEDINIT: buffer = ls_strInit("WSA: SERVICE PROVIDER FAILED TO INIT."); break;
-        case WSASYSCALLFAILURE: buffer = ls_strInit("WSA: SYSTEM CALL FAILURE");  break;
-        case WSASERVICE_NOT_FOUND: buffer = ls_strInit("WSA: SERVICE NOT FOUND"); break;
-        case WSATYPE_NOT_FOUND: buffer = ls_strInit("WSA: CLASS TYPE NOT FOUND"); break;
-        case WSA_E_NO_MORE: buffer = ls_strInit("WSA: NO MORE RESULTS BY WSALookupServiceNext()"); break;
-        case WSA_E_CANCELLED: buffer = ls_strInit("WSA: CALL WAS CANCELLED"); break;
-        case WSAEREFUSED: buffer = ls_strInit("WSA: DATABASE QUERY WAS REFUSED"); break;
-        case WSAHOST_NOT_FOUND: buffer = ls_strInit("WSA: HOST NOT FOUND"); break;
-        case WSATRY_AGAIN: buffer = ls_strInit("WSA: NON-AUTHORITATIVE HOST NOT FOUND"); break;
-        case WSANO_RECOVERY: buffer = ls_strInit("WSA: NON RECOVERABLE ERROR DURING DATABASE LOOKUP"); break;
-        case WSANO_DATA: buffer = ls_strInit("WSA: VALID NAME, NO DATA RECORD OF REQUESTED TYPE"); break;
+        case WSA_IO_PENDING: buf = ls_strInit("WSA: IO PENDING"); break;
+        case WSA_IO_INCOMPLETE: buf = ls_strInit("WSA: IO INCOMPLETE"); break;
+        case WSA_INVALID_HANDLE: buf = ls_strInit("WSA: INVALID HANDLE"); break;
+        case WSA_INVALID_PARAMETER: buf = ls_strInit("WSA: INVALID PARAMETER"); break;
+        case WSA_NOT_ENOUGH_MEMORY: buf = ls_strInit("WSA: NOT ENOUGH MEMORY"); break;
+        case WSA_OPERATION_ABORTED: buf = ls_strInit("WSA: OPERATION ABORTED"); break;
+        case WSA_INVALID_EVENT_NON_PTR: buf = ls_strInit("WSA: INVALID EVENT"); break;
+        case WSA_MAXIMUM_WAIT_EVENTS: buf = ls_strInit("WSA: MAX WAIT EVENTS"); break;
+        case WSA_WAIT_FAILED: buf = ls_strInit("WSA: WAIT FAILED"); break;
+        //case WSA_WAIT_EVENT_0: buf = ls_strInit("WSA: WAIT EVENT 0"); break;
+        case WSA_WAIT_IO_COMPLETION: buf = ls_strInit("WSA: WAIT IO COMPLETION"); break;
+        case WSA_WAIT_TIMEOUT: buf = ls_strInit("WSA: WAIT TIMEOUT"); break;
+        case WSAEINTR: buf = ls_strInit("INTERRUPTED FUN CALL"); break;
+        case WSAEBADF: buf = ls_strInit("WSA: FILE HANDLE NOT FOUND"); break;
+        case WSAEACCES: buf = ls_strInit("WSA: PERMISSION DENIED"); break;
+        case WSAEFAULT: buf = ls_strInit("WSA: BAD ADDRESS"); break;
+        case WSAEINVAL: buf = ls_strInit("WSA: INVALID ARG"); break;
+        case WSAEMFILE: buf = ls_strInit("WSA: TOO MANY OPEN FILES"); break;
+        case WSAEWOULDBLOCK: buf = ls_strInit("WSA: RESOURCE TEMP. UNAVAIL."); break;
+        case WSAEINPROGRESS: buf = ls_strInit("WSA: OPER. NOW IN PROGRESS"); break; 
+        case WSAEALREADY: buf = ls_strInit("WSA: OPER. ALREADY IN PROGRESS"); break;
+        case WSAENOTSOCK: buf = ls_strInit("WSA: SOCKET OPER. ON NON-SOCKET"); break;
+        case WSAEDESTADDRREQ: buf = ls_strInit("WSA: DESTINATION ADDR. REQUIRED"); break;
+        case WSAEMSGSIZE: buf = ls_strInit("WSA: MESSAGE TOO LONG"); break; 
+        case WSAEPROTOTYPE: buf = ls_strInit("WSA: PROTOCOL WRONG TYPE FOR SOCKET"); break;
+        case WSAENOPROTOOPT: buf = ls_strInit("WSA: BAD PROTOCOL OPTION"); break;
+        case WSAEPROTONOSUPPORT: buf = ls_strInit("WSA: PROTOCOL NOT SUPPORTED"); break;
+        case WSAESOCKTNOSUPPORT: buf = ls_strInit("WSA: SOCKET TYPE NOT SUPPORTED"); break; 
+        case WSAEOPNOTSUPP: buf = ls_strInit("WSA: OPERATION NOT SUPPORTED"); break;
+        case WSAEPFNOSUPPORT: buf = ls_strInit("WSA: PROTOCOL FAMILY NOT SUPPORTED"); break;
+        case WSAEAFNOSUPPORT: buf = ls_strInit("WSA: ADDR.FAM. NOT SUPP. BY PROTO.FAM."); break;
+        case WSAEADDRINUSE: buf = ls_strInit("WSA: ADDRESS ALREADY IN USE"); break;
+        case WSAEADDRNOTAVAIL: buf = ls_strInit("WSA: CANNOT ASSIGN REQUESTED ADDRESS"); break;
+        case WSAENETDOWN: buf = ls_strInit("WSA: NETWORK IS DOWN"); break;
+        case WSAENETUNREACH: buf = ls_strInit("WSA: NETWORK IS UNREACHABLE"); break;
+        case WSAENETRESET: buf = ls_strInit("WSA: NETWORK DROPPED CONN. ON RESET"); break;
+        case WSAECONNABORTED: buf = ls_strInit("WSA: SOFTWARE CAUSED CONN. ABORT");  break;
+        case WSAECONNRESET: buf = ls_strInit("WSA: CONNECTION RESET BY PEER"); break;
+        case WSAENOBUFS: buf = ls_strInit("WSA: NO BUFFER SPACE AVAIL."); break;
+        case WSAEISCONN: buf = ls_strInit("WSA: SOCKET IS ALREADY CONN."); break;
+        case WSAENOTCONN: buf = ls_strInit("WSA: SOCKET IS NOT CONN."); break;
+        case WSAESHUTDOWN: buf = ls_strInit("WSA: CANNOT SEND AFTER SOCKET SHUTDOWN"); break;
+        case WSAETOOMANYREFS: buf = ls_strInit("WSA: TOO MANY REFERENCES"); break;
+        case WSAETIMEDOUT: buf = ls_strInit("WSA: CONNECTION TIMED OUT"); break;
+        case WSAECONNREFUSED: buf = ls_strInit("WSA: CONNECTION REFUSED"); break;
+        case WSAELOOP: buf = ls_strInit("WSA: CANNOT TRANSLATE NAME"); break;
+        case WSAENAMETOOLONG: buf = ls_strInit("WSA: NAME TOO LONG"); break;
+        case WSAEHOSTDOWN: buf = ls_strInit("WSA: HOST IS DOWN"); break;
+        case WSAEHOSTUNREACH: buf = ls_strInit("WSA: NO ROUTE TO HOST"); break;
+        case WSAENOTEMPTY: buf = ls_strInit("WSA: DIRECTORY NOT EMPTY"); break;
+        case WSAEPROCLIM: buf = ls_strInit("WSA: TOO MANY PROCESSES"); break;
+        case WSAEUSERS: buf = ls_strInit("WSA: USER QUOTA EXCEEDED"); break;
+        case WSAEDQUOT: buf = ls_strInit("WSA: DISK QUOTA EXCEEDED"); break;
+        case WSAESTALE: buf = ls_strInit("WSA: STALE FILE HANDLE REF."); break;
+        case WSAEREMOTE: buf = ls_strInit("WSA: ITEM IS REMOTE"); break;
+        case WSASYSNOTREADY: buf = ls_strInit("WSA: NETWORK SUBSYS. IS UNAVAILABLE"); break;
+        case WSAVERNOTSUPPORTED: buf = ls_strInit("WSA: WINSOCK DLL VER. OUT OF RANGE"); break;
+        case WSANOTINITIALISED: buf = ls_strInit("WSA: WSAStartup() NOT YET PERFORMED"); break;
+        case WSAEDISCON: buf = ls_strInit("WSA: GRACEFUL SHUTDOWN IN PROGRESS");  break;
+        case WSAENOMORE: buf = ls_strInit("WSA: NO MORE RESULTS BY WSALookupServiceNext()"); break;
+        case WSAECANCELLED: buf = ls_strInit("WSA: CALL HAS BEEN CANCELED"); break;
+        case WSAEINVALIDPROCTABLE: buf = ls_strInit("WSA: INVALID PROC. TABLE");  break;
+        case WSAEINVALIDPROVIDER: buf = ls_strInit("WSA: SERVICE PROVIDER IS INVALID"); break;
+        case WSAEPROVIDERFAILEDINIT: buf = ls_strInit("WSA: SERVICE PROVIDER FAILED TO INIT."); break;
+        case WSASYSCALLFAILURE: buf = ls_strInit("WSA: SYSTEM CALL FAILURE");  break;
+        case WSASERVICE_NOT_FOUND: buf = ls_strInit("WSA: SERVICE NOT FOUND"); break;
+        case WSATYPE_NOT_FOUND: buf = ls_strInit("WSA: CLASS TYPE NOT FOUND"); break;
+        case WSA_E_NO_MORE: buf = ls_strInit("WSA: NO MORE RESULTS BY WSALookupServiceNext()"); break;
+        case WSA_E_CANCELLED: buf = ls_strInit("WSA: CALL WAS CANCELLED"); break;
+        case WSAEREFUSED: buf = ls_strInit("WSA: DATABASE QUERY WAS REFUSED"); break;
+        case WSAHOST_NOT_FOUND: buf = ls_strInit("WSA: HOST NOT FOUND"); break;
+        case WSATRY_AGAIN: buf = ls_strInit("WSA: NON-AUTHORITATIVE HOST NOT FOUND"); break;
+        case WSANO_RECOVERY: buf = ls_strInit("WSA: NON RECOVERABLE ERROR DURING DATABASE LOOKUP"); break;
+        case WSANO_DATA: buf = ls_strInit("WSA: VALID NAME, NO DATA RECORD OF REQUESTED TYPE"); break;
     }
     
-    ls_printf("%s returned error %d: %s", fName, errorCode, buffer);
+    ls_printf("%s returned error %d: %s", fName, errorCode, buf);
 }
 #endif
 
@@ -494,7 +500,239 @@ void ls_setSockOpt(http_socketHints *hints, s32 *level, s32 *optName)
     }
 }
 
-s32 ls_setListenSocket(http_socket listener, u32 maxQueueSize)
+
+
+/* ------------------ */
+/* GENERAL CONNECTION */
+/* ------------------ */
+
+HTTPUri ls_httpParseUrl(string urlString)
+{
+    HTTPUri url = {};
+    
+    //TODO: Redo completely using views
+    view urlView = ls_viewCreate(urlString);
+    
+    view scheme = ls_viewNextDelimiter(urlView, ':');
+    url.scheme = scheme;
+    
+    view hasAuthority = ls_viewNextNChars(scheme, 2);
+    if(hasAuthority.s == "//")
+    {
+        //NOTE: Parse userinfo, host and port
+        view authority = ls_viewNextDelimiter(hasAuthority, '/');
+        view path = ls_viewNextLine(authority);
+        
+        url.authority = authority;
+        url.path = path;
+    }
+    else
+    {
+        view path = ls_viewNextLine(scheme);
+        url.path = path;
+    }
+    
+    return url;
+}
+
+// @TODO: Do I want to record the host name and save it 
+//in the http_connInfo struct?
+HTTPSocket ls_httpConnectByName(string serverNameString, u32 port)
+{
+    ADDRINFOA *addrInfo = NULL;
+    u32 addr;
+    //sockaddr_in *server;
+    HTTPSocket conn;
+    
+    char serverName[256] = {};
+    char portString[8]  = {};
+    
+    ls_strToCStr_t(serverNameString, serverName, 256);
+    ls_itoa_t(port, portString, 8);
+    
+    conn = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    
+    if(conn == INVALID_SOCKET)
+    { LogMsgF(FALSE, "When creating socket got error: %d\n", WSAGetLastError()); return NULL; }
+    
+    if(inet_addr(serverName) == INADDR_NONE)
+    { 
+        s32 success = getaddrinfo(serverName, portString, NULL, &addrInfo);
+        LogMsgF(success == 0, "When getting address info got error: %d", WSAGetLastError());
+        return 0;
+    }
+    else
+    {
+        char hostName[512] = {};
+        char serviceName[512] = {};
+        addr = inet_addr(serverName);
+        
+        sockaddr_in server = {};
+        server.sin_family = AF_INET;
+        server.sin_addr.s_addr = addr;
+        server.sin_port = htons(port);
+        
+        s32 success = getnameinfo((const sockaddr *)&server, sizeof(server), hostName, sizeof(hostName), serviceName, sizeof(serviceName), NULL);
+        success = getaddrinfo(hostName, portString, NULL, &addrInfo);
+    }
+    
+    if(addrInfo->ai_addr == NULL)
+    { 
+        closesocket(conn); 
+        LogMsg(FALSE, "Could not find address info.\n");
+        return 0;
+    }
+    /*
+    switch(addrInfo->ai_addr.sa_family)
+    {
+    case AF_INET:
+    {
+    server = (sockaddr_in *)&addrInfo->ai_addr;
+    }
+    break;
+    case AF_INET6:
+    {
+    //server = (sockaddr_in6 *) addrInfo->ai_addr;
+    }
+    break;
+    default:
+    ls_printf("Error: when casting sockaddr to sockaddr_in found unhandled sa_family.\n");
+    break;
+    }
+    */
+    //ls_memcpy(addrInfo->ai_addr, &server, sizeof(sockaddr_in));
+    
+    s32 success = connect(conn, addrInfo->ai_addr, sizeof(*(addrInfo->ai_addr)));
+    
+    if(success != 0)
+    {
+        LogMsgF(FALSE, "When connecting to server got error: %d\n", WSAGetLastError());
+        return NULL;
+    }
+    
+    freeaddrinfo(addrInfo);
+    
+    return conn;
+}
+
+HTTPConnection ls_httpConnectByUrl(string urlString, u32 port)
+{
+    HTTPConnection connection = {};
+    
+    connection.uri    = ls_httpParseUrl(urlString);
+    connection.socket = ls_httpConnectByName(connection.uri.authority.s, port);
+    
+    return connection;
+}
+
+
+string ls_httpGET(HTTPConnection info)
+{
+    /*
+    ///////////// send GET request /////////////
+    ls_sprintf(tmpBuffer, "GET %s HTTP/1.0", info->filepath.data);
+    string message = tmpBuffer;
+    message += "\r\n";
+    ls_sprintf(tmpBuffer, "Host: %s", info->serverName.data);
+    message += tmpBuffer;
+    message += "\r\n\r\n";
+    */
+    
+    /*@NOTE: HTTP/1.1 length of the answer might be specified by a 
+    * Content-Length  header, by Transfer-Encoding: chunked or by end-of-file. 
+    * And since HTTP/1.1 allows by default multiple requests over a single 
+    * connection (keep-alive) the simple approach of reading until the end might 
+    * cause your connection to stall because the server does not close the 
+    * connection and instead waits for a new request.
+    *
+    * If you would issue instead a HTTP/1.0 request you would not have to 
+    * deal with all these problems, i.e. no chunked mode and no keep-alive 
+    * by default. Then you could simply read until you get no more data.
+    */
+    
+    string message = ls_strConstant("GET /wiki/Database_Mostri HTTP/1.1");
+    
+    s32 bytesSent = send(info.socket, message.data, message.len, 0);
+    
+    LogMsg(bytesSent >= message.len, "The message was not fully sent.\n");
+    
+    if(bytesSent == SOCKET_ERROR)
+    {
+        LogMsgF(FALSE, "send() returned error code: %d", WSAGetLastError());
+        return {};
+    }
+    
+    
+    ls_printf("Buffer being sent:\n%s", message);
+    
+    ///////////// step 3 - get received bytes ////////////////
+    // Receive until the peer closes the connection
+    const int bufSize = 512;
+    char readBuffer[bufSize], tmpBuffer[bufSize];
+    
+    s64 totalBytesRead = 0;
+    char *tmpResult = 0;
+    while(1)
+    {
+        ls_zeroMem(readBuffer, bufSize);
+        s64 thisReadSize = recv(info.socket, readBuffer, bufSize, 0);
+        
+        if(thisReadSize == SOCKET_ERROR)
+        {
+            s32 errorCode = WSAGetLastError();
+            ls_printf("recv returned error code: %d", errorCode);
+            if(tmpResult) { ls_free(tmpResult); }
+            return {};
+        }
+        
+        if(thisReadSize <= 0) { break; }
+        
+        tmpResult = (char*)ls_realloc(tmpResult, 
+                                      totalBytesRead, thisReadSize+totalBytesRead);
+        
+        ls_memcpy(readBuffer, tmpResult+totalBytesRead, thisReadSize);
+        totalBytesRead += thisReadSize;
+    }
+    
+    string result = { tmpResult, (u32)totalBytesRead, (u32)totalBytesRead };
+    return result;
+    
+#if 0
+    s64 headerLen = ls_getHeaderLength(tmpResult);
+    
+    if(headerLen == -1) 
+    { ls_free(tmpResult); ls_printf("Error, recieved bogus data after the GET.\n"); return (char *)""; }
+    
+    u64 contenLen = totalBytesRead - headerLen;
+    
+    char *result = (char *)ls_alloc(sizeof(char) *(contenLen + 1));
+    
+    ls_memcpy(tmpResult+headerLen, result, contenLen);
+    result[contenLen] = 0;
+    
+    char *myTmp = (char *)ls_alloc(sizeof(char) * (headerLen + 1));
+    
+    //NOTETODO: Check 0 termination
+    ls_memcpy((void*)tmpResult, (void*)myTmp, headerLen);
+    myTmp[headerLen] = 0;
+    
+    ls_free(tmpResult);
+    *headerOut = myTmp;
+    
+    *bytesReturnedOut = contenLen;
+    
+    string returnVal = { result, contentLen+1, contentLen+1 };
+    
+    return returnVal;
+#endif
+}
+
+/* ------------------ */
+/* SERVER? CONNECTION */
+/* ------------------ */
+
+#if 0
+s32 ls_setListenSocket(HTTPSocket listener, u32 maxQueueSize)
 {
     s32 errorCode = listen(listener, maxQueueSize);
     if(errorCode == SOCKET_ERROR)
@@ -503,9 +741,9 @@ s32 ls_setListenSocket(http_socket listener, u32 maxQueueSize)
     return 0;
 }
 
-http_socket ls_acceptConnection(http_socket listener, http_connInfo *info)
+HTTPSocket ls_acceptConnection(HTTPSocket listener, HTTPConnection *info)
 {
-    http_socket Result;
+    HTTPSocket Result;
     s32 addrSize = sizeof(info->address);
     Result = accept(listener, ((struct sockaddr *)&(info->address)), &addrSize);
     
@@ -579,39 +817,43 @@ void ls_parseMsgHeaders(string *words, u32 numWords,  http_message *msg)
     { v->val[i] = words[i+1]; }
 }
 
-void ls_sendResponse(http_socket sock, http_message *Request)
+void ls_sendResponse(HTTPSocket sock, http_message *Request)
 {
     string msgBuffer = ls_strAlloc(512);
     string Space = ls_strInit(" ");
     string CRLF  = ls_strInit("\r\n");
     
     // Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
-    if(Request->httpVersion == 0x20) { ls_appendCStr(&msgBuffer, "HTTP/2"); }
-    else if(Request->httpVersion == 0x11) { ls_appendCStr(&msgBuffer, "HTTP/1.1"); }
-    else if(Request->httpVersion == 0x10) { ls_appendCStr(&msgBuffer, "HTTP/1.0"); }
+    if(Request->httpVersion == 0x20) { ls_strAppend(&msgBuffer, "HTTP/2"); }
+    else if(Request->httpVersion == 0x11) { ls_strAppend(&msgBuffer, "HTTP/1.1"); }
+    else if(Request->httpVersion == 0x10) { ls_strAppend(&msgBuffer, "HTTP/1.0"); }
     
-    ls_append(&msgBuffer, Space);
+    ls_strAppend(&msgBuffer, Space);
     
     // @TODO: Send Status Code Conditionally instead of hard-coded
-    ls_appendCStr(&msgBuffer, (char *)StatusCode[HTTP_SC_OK]);
-    ls_append(&msgBuffer, Space);
+    ls_strAppend(&msgBuffer, (char *)StatusCode[HTTP_SC_OK]);
+    ls_strAppend(&msgBuffer, Space);
     
     // Send Useless Reason Phrase
     
-    ls_appendCStr(&msgBuffer, "DontWannaCodeReasonPhrases");
-    ls_append(&msgBuffer, CRLF);
+    ls_strAppend(&msgBuffer, "DontWannaCodeReasonPhrases");
+    ls_strAppend(&msgBuffer, CRLF);
     
     //Testing General Header Keep-Alive
-    ls_appendCStr(&msgBuffer, "Keep-Alive: timeout=5, max=1000");
-    ls_append(&msgBuffer, CRLF);
+    ls_strAppend(&msgBuffer, "Keep-Alive: timeout=5, max=1000");
+    ls_strAppend(&msgBuffer, CRLF);
     
     // Entity Header
-    ls_appendCStr(&msgBuffer, "Content-Type: text/html");
-    ls_append(&msgBuffer, CRLF);
-    ls_append(&msgBuffer, CRLF);
+    ls_strAppend(&msgBuffer, "Content-Type: text/html");
+    ls_strAppend(&msgBuffer, CRLF);
+    ls_strAppend(&msgBuffer, CRLF);
     
     char *data;
     //u64 dataSize = ls_readFile("C:\\Users\\loren\\Desktop\\test.bmp", &data, 0);
+    
+    //TODO What the fuck am I supposed to do here?
+    
+#if 0
     
     u64 dataSize = ls_readFile("..\\code\\testPage.html", &data, 0);
     
@@ -626,11 +868,11 @@ void ls_sendResponse(http_socket sock, http_message *Request)
     { ls_wsaLogError("send", WSAGetLastError()); }
     
     //TODO: If bytesSent < msgBuffer.len do something.
-    
+#endif
     return;
 }
 
-void ls_recieveAndProcessMessage(http_socket sock)
+void ls_receiveAndProcessMessage(HTTPSocket sock)
 {
     u8 buff[1024] = {};
     int bytesRecieved = recv(sock, (char *)buff, sizeof(buff), NULL);
@@ -646,12 +888,12 @@ void ls_recieveAndProcessMessage(http_socket sock)
     
     u32 numOfLines = 0;
     string strBuff = { (char *)buff, sizeof(buff), sizeof(buff) }; //TODO:NOTE Is this good?
-    string *lines = ls_breakByLine(strBuff, &numOfLines);
+    string *lines = ls_strBreakByLine(strBuff, &numOfLines);
     
     string **words = (string **)ls_alloc(sizeof(string *)*numOfLines);
     u32 *numOfWords = (u32 *)ls_alloc(sizeof(u32)*numOfLines);
     for(u32 i = 0; i < numOfLines; i++)
-    { words[i] = ls_breakBySpace(lines[i], numOfWords + i); }
+    { words[i] = ls_strBreakBySpace(lines[i], numOfWords + i); }
     
     //Process Request Line
     u32 ReqLineIdx = 0;
@@ -689,9 +931,9 @@ void ls_recieveAndProcessMessage(http_socket sock)
     ls_sendResponse(sock, &Msg);
 }
 
-http_connInfo ls_openAndBind(string hostname, string port, http_socketHints *hints)
+HTTPConnection ls_openAndBind(string hostname, string port, http_socketHints *hints)
 {
-    struct http_connInfo Result = {}; 
+    HTTPConnection Result = {}; 
 #ifdef LS_PLAT_WINDOWS
     
     struct addrinfo addressInfo = {};
@@ -749,127 +991,12 @@ http_connInfo ls_openAndBind(string hostname, string port, http_socketHints *hin
     
 }
 
-/* ------------------ */
-/* GENERAL CONNECTION */
-/* ------------------ */
-
-void ls_parseUrl(string url, http_connInfo *info)
-{
-    u32 filepathIdx;
-    string localUrl = ls_copyStr(url);
-    
-    if (ls_substr(localUrl, 0, 6) == "http://")
-    { ls_removeSubstr(&localUrl, 0, 6); }
-    
-    if (ls_substr(localUrl, 0, 7) == "https://")
-    { ls_removeSubstr(&localUrl, 0, 7); }
-    
-    //filepathIdx = localUrl.leftFind("/");
-    filepathIdx = ls_strLeftFind(localUrl, '/');
-    if (filepathIdx < localUrl.len)
-    {
-        // Server name does not contain pending '/'
-        info->serverName = ls_substr(localUrl, 0, filepathIdx - 1);
-        info->filepath = ls_substr(localUrl, filepathIdx);
-        filepathIdx = ls_strRightFind(info->filepath, '/');
-        info->filename = ls_substr(info->filepath, filepathIdx + 1);
-    }
-    else
-    {
-        info->serverName = ls_copyStr(localUrl);
-        info->filepath = ls_strInit("/");
-        info->filename = ls_strInit("");
-    }
-    
-    ls_strFree(&localUrl);
-}
-
-// @TODO: Do I want to record the host name and save it 
-//in the http_connInfo struct?
-SOCKET ls_connectToServerByName(char *serverName, u32 port)
-{
-    ADDRINFOA *addrInfo = NULL;
-    u32 addr;
-    //sockaddr_in *server;
-    SOCKET conn;
-    
-    char *portString = ls_itoa(port);
-    
-    conn = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    
-    if(conn == INVALID_SOCKET) { return NULL; }
-    
-    if(inet_addr(serverName) == INADDR_NONE)
-    { 
-        s32 success = getaddrinfo(serverName, portString, NULL, &addrInfo);
-        
-        ls_free(portString);
-        int breakHere = 0;
-    }
-    else
-    {
-        char hostName[512] = {};
-        char serviceName[512] = {};
-        addr = inet_addr(serverName);
-        
-        sockaddr_in server = {};
-        server.sin_family = AF_INET;
-        server.sin_addr.s_addr = addr;
-        server.sin_port = htons(port);
-        
-        s32 success = getnameinfo((const sockaddr *)&server, sizeof(server), hostName, sizeof(hostName), serviceName, sizeof(serviceName), NULL);
-        success = getaddrinfo(hostName, portString, NULL, &addrInfo);
-    }
-    
-    if(addrInfo->ai_addr == NULL)
-    { closesocket(conn); return NULL; }
-    /*
-    switch(addrInfo->ai_addr.sa_family)
-    {
-    case AF_INET:
-    {
-    server = (sockaddr_in *)&addrInfo->ai_addr;
-    }
-    break;
-    case AF_INET6:
-    {
-    //server = (sockaddr_in6 *) addrInfo->ai_addr;
-    }
-    break;
-    default:
-    ls_printf("Error: when casting sockaddr to sockaddr_in found unhandled sa_family.\n");
-    break;
-    }
-    */
-    //ls_memcpy(addrInfo->ai_addr, &server, sizeof(sockaddr_in));
-    
-    s32 success = connect(conn, addrInfo->ai_addr, sizeof(*(addrInfo->ai_addr)));
-    
-    if(success != 0)
-    {
-        s32 error = WSAGetLastError();
-        ls_printf("When connecting to server got error: %d\n", error);
-        closesocket(conn);
-        return NULL;
-    }
-    
-    freeaddrinfo(addrInfo);
-    
-    return conn;
-}
-
-SOCKET ls_connectToServerByUrl(string url, http_connInfo *info, u32 port)
-{
-    ls_parseUrl(url, info);
-    char *serverName = info->serverName.data;
-    
-    info->socket = ls_connectToServerByName(serverName, port);
-    return info->socket;
-}
 
 s32 ls_getHeaderLength(char *content)
 {
-    char *srchStr1 = "\r\n\r\n", *srchStr2 = "\n\r\n\r";
+    //TODO: I don't understand this code.
+#if 0
+    const char *srchStr1 = "\r\n\r\n", *srchStr2 = "\n\r\n\r";
     u32 srchStrLen = 4;
     
     char *findPos;
@@ -892,109 +1019,10 @@ s32 ls_getHeaderLength(char *content)
         }
     }
     return offset;
+#endif
+    return 0;
 }
 
-char *ls_GET(SOCKET conn, http_connInfo *info, u64 *bytesReturnedOut, char **headerOut)
-{
-    const int bufSize = 512;
-    char readBuffer[bufSize], tmpBuffer[bufSize];
-    char *tmpResult = 0, *result = 0;
-    s64 totalBytesRead, thisReadSize, headerLen;
-    
-    /*
-    ///////////// send GET request /////////////
-    ls_sprintf(tmpBuffer, "GET %s HTTP/1.0", info->filepath.data);
-    string message = tmpBuffer;
-    message += "\r\n";
-    ls_sprintf(tmpBuffer, "Host: %s", info->serverName.data);
-    message += tmpBuffer;
-    message += "\r\n\r\n";
-    */
-    
-    /*@NOTE: HTTP/1.1 length of the answer might be specified by a 
-    * Content-Length  header, by Transfer-Encoding: chunked or by end-of-file. 
-    * And since HTTP/1.1 allows by default multiple requests over a single 
-    * connection (keep-alive) the simple approach of reading until the end might 
-    * cause your connection to stall because the server does not close the 
-    * connection and instead waits for a new request.
-    *
-    * If you would issue instead a HTTP/1.0 request you would not have to 
-    * deal with all these problems, i.e. no chunked mode and no keep-alive 
-    * by default. Then you could simply read until you get no more data.
-    */
-    
-    string message = ls_strInit("GET /1.0/stock/market/batch?"
-                                "symbols=aapl,fb,tsla&types=quote,news,chart&range=1"
-                                "m&last=5 HTTP/1.1\r\nHost"
-                                ": api.iextrading.com\r\n\r\n");
-    
-    s32 bytesSent = send(conn, message.data, message.len, 0);
-    
-    if(bytesSent < message.len)
-    {
-        ls_printf("Not sent Enough!\n\n");
-        int breakHere = 0;
-    }
-    if(bytesSent == SOCKET_ERROR)
-    {
-        s32 errorCode = WSAGetLastError();
-        ls_printf("recv returned error code: %d", errorCode);
-        return "";
-    }
-    
-    ls_printf("Buffer being sent:\n%s", message.data);
-    
-    ls_strFree(&message);
-    
-    ///////////// step 3 - get received bytes ////////////////
-    // Receive until the peer closes the connection
-    totalBytesRead = 0;
-    while(1)
-    {
-        ls_zeroMem(readBuffer, bufSize);
-        thisReadSize = recv(conn, readBuffer, bufSize, 0);
-        
-        if(thisReadSize == SOCKET_ERROR)
-        {
-            s32 errorCode = WSAGetLastError();
-            ls_printf("recv returned error code: %d", errorCode);
-            if(tmpResult) { ls_free(tmpResult); }
-            return "";
-        }
-        
-        if(thisReadSize <= 0) { break; }
-        
-        tmpResult = (char*)ls_realloc(tmpResult, 
-                                      totalBytesRead, thisReadSize+totalBytesRead);
-        
-        ls_memcpy(readBuffer, tmpResult+totalBytesRead, thisReadSize);
-        totalBytesRead += thisReadSize;
-    }
-    
-    headerLen = ls_getHeaderLength(tmpResult);
-    
-    if(headerLen == -1) 
-    { ls_free(tmpResult); ls_printf("Error, recieved bogus data after the GET.\n"); return ""; }
-    
-    u64 contenLen = totalBytesRead - headerLen;
-    
-    result = (char *)ls_alloc(sizeof(char) *(contenLen + 1));
-    
-    ls_memcpy(tmpResult+headerLen, result, contenLen);
-    result[contenLen] = 0;
-    
-    char *myTmp = (char *)ls_alloc(sizeof(char) * (headerLen + 1));
-    
-    //NOTETODO: Check 0 termination
-    ls_memcpy((void*)tmpResult, (void*)myTmp, headerLen);
-    myTmp[headerLen] = 0;
-    
-    ls_free(tmpResult);
-    *headerOut = myTmp;
-    
-    *bytesReturnedOut = contenLen;
-    
-    return(result);
-}
+#endif //#if 0
 
 #endif
