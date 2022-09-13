@@ -71,7 +71,7 @@ if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
 #define SetAlpha(v, a) (u32)((v & 0x00FFFFFF) | (((u32)a)<<24))
 #define GetAlpha(v)    ( u8)(((v) & 0xFF000000) >> 24)
 
-const     u32 THREAD_COUNT       = 0;
+const     u32 THREAD_COUNT       = 2;
 constexpr u32 RENDER_GROUP_COUNT = THREAD_COUNT == 0 ? 1 : THREAD_COUNT;
 
 typedef u32 Color;
