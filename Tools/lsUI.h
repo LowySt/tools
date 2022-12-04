@@ -133,7 +133,7 @@ struct UIButton
 {
     UIButtonStyle style;
     
-    unistring name;
+    utf32 name;
     u8 *bmpData;
     s32 bmpW, bmpH;
     
@@ -150,7 +150,7 @@ struct UIButton
 typedef b32(*TextBoxProc)(UIContext *, void *);
 struct UITextBox
 {
-    unistring text;
+    utf32 text;
     u32 maxLen;
     
     b32 isSingleLine;
@@ -186,7 +186,7 @@ enum UIArrowSide { UIA_LEFT, UIA_RIGHT, UIA_UP, UIA_DOWN };
 
 struct UIListBoxItem
 {
-    unistring name;
+    utf32 name;
     Color bkgColor;
     Color textColor;
 };
@@ -215,7 +215,7 @@ struct UISlider
     b32 isHot;
     b32 isHeld;
     
-    unistring text;
+    utf32 text;
     
     s32 currValue;
     s32 maxValue;
@@ -230,7 +230,7 @@ struct UISlider
 
 struct UIMenuItem
 {
-    unistring  name;
+    utf32 name;
     
     b32 isHot;
     ButtonProc onClick;
@@ -239,7 +239,7 @@ struct UIMenuItem
 
 struct UISubMenu
 {
-    unistring name;
+    utf32 name;
     Array<UIMenuItem> items;
     
     b32 isHot;
@@ -303,7 +303,7 @@ struct RenderCommand
     union
     {
         UITextBox *textBox;
-        unistring  label;
+        utf32      label;
         UIButton  *button;
         UIListBox *listBox;
         UISlider  *slider;
@@ -432,21 +432,21 @@ void       ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, C
 void       ls_uiHSeparator(UIContext *c, s32 y, u32 margins, u32 lineWidth, Color lineColor, s32 zLayer);
 
 UIButton   ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *userData);
-UIButton   ls_uiButtonInit(UIButtonStyle s, unistring text, ButtonProc onClick, ButtonProc onHold, void *userData);
+UIButton   ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold, void *userData);
 b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
 
-void       ls_uiLabel(UIContext *cxt, unistring label, s32 xPos, s32 yPos, s32 zLayer);
+void       ls_uiLabel(UIContext *cxt, utf32 label, s32 xPos, s32 yPos, s32 zLayer);
 void       ls_uiLabel(UIContext *cxt, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer);
 
 void       ls_uiTextBoxClear(UIContext *cxt, UITextBox *box);
 void       ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s);
-void       ls_uiTextBoxSet(UIContext *cxt, UITextBox *box, unistring s);
+void       ls_uiTextBoxSet(UIContext *cxt, UITextBox *box, utf32 s);
 b32        ls_uiTextBox(UIContext *cxt, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h);
 
 void       ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h, s32 minX, s32 maxX, s32 minY, s32 maxY, Color bkgColor, UIArrowSide s);
 
 u32        ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, char *s);
-u32        ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, unistring s);
+u32        ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, utf32 s);
 void       ls_uiListBoxRemoveEntry(UIContext *cxt, UIListBox *list, u32 index);
 b32        ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer);
 
@@ -1810,13 +1810,13 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
     s32 currYPos = yPos;
     u32 code    = 0;
     
-    unistring realString = { box->text.data + i, box->text.len - i, box->text.size - i };
+    utf32 realString = { box->text.data + i, box->text.len - i, box->text.size - i };
     uview lineView = ls_uviewCreate(realString);
     
     for(u32 lineIdx = 0; lineIdx < (box->lineCount+1-yOffset); lineIdx++)
     {
         lineView = ls_uviewNextLine(lineView);
-        unistring line = lineView.s;
+        utf32 line = lineView.s;
         
         i += xOffset;
         u32 lIdx = xOffset;
@@ -1876,7 +1876,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
 //      Maybe instead make glyphstring only do 1 line at a time and push line responsibility outside?
 void ls_uiGlyphString(UIContext *c, s32 xPos, s32 yPos, 
                       s32 minX, s32 maxX, s32 minY, s32 maxY, 
-                      unistring text, Color textColor)
+                      utf32 text, Color textColor)
 {
     AssertMsg(c, "Context is null\n");
     AssertMsg(c->currFont, "Current Font is null\n");
@@ -1903,7 +1903,7 @@ void ls_uiGlyphString(UIContext *c, s32 xPos, s32 yPos,
 
 void ls_uiGlyphString(UIContext *c, UIFont *font, s32 xPos, s32 yPos, 
                       s32 minX, s32 maxX, s32 minY, s32 maxY, 
-                      unistring text, Color textColor)
+                      utf32 text, Color textColor)
 {
     AssertMsg(c, "Context is null\n");
     AssertMsg(font, "Passed font is null\n");
@@ -1931,7 +1931,7 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
 //NOTE: Occupied pixel length of a glyph string
 //TODO: Take into consideration newlines inside a string.?
 //      Maybe instead make glyphstring only do 1 line at a time and push line responsibility outside?
-s32 ls_uiGlyphStringLen(UIContext *c, unistring text)
+s32 ls_uiGlyphStringLen(UIContext *c, utf32 text)
 {
     AssertMsg(c, "Context is null\n");
     AssertMsg(c->currFont, "Current Font is null\n");
@@ -1953,7 +1953,7 @@ s32 ls_uiGlyphStringLen(UIContext *c, unistring text)
     return totalLen;
 }
 
-s32 ls_uiGlyphStringLen(UIContext *c, UIFont *font, unistring text)
+s32 ls_uiGlyphStringLen(UIContext *c, UIFont *font, utf32 text)
 {
     AssertMsg(c, "Context is null\n");
     AssertMsg(font, "Passed Font is null\n");
@@ -1975,7 +1975,7 @@ s32 ls_uiGlyphStringLen(UIContext *c, UIFont *font, unistring text)
     return totalLen;
 }
 
-s32 ls_uiGlyphStringFit(UIContext *c, unistring text, s32 maxLen)
+s32 ls_uiGlyphStringFit(UIContext *c, utf32 text, s32 maxLen)
 {
     AssertMsg(c, "Context is null\n");
     AssertMsg(c->currFont, "Current Font is null\n");
@@ -1998,7 +1998,7 @@ s32 ls_uiGlyphStringFit(UIContext *c, unistring text, s32 maxLen)
     return 0;
 }
 
-s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, unistring text, s32 maxLen)
+s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
 {
     AssertMsg(c, "Context is null\n");
     AssertMsg(font, "Current Font is null\n");
@@ -2049,11 +2049,11 @@ UIButton ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold,
 UIButton ls_uiButtonInit(UIButtonStyle s, const char32_t *text, ButtonProc onClick, ButtonProc onHold, void *userData)
 {
     
-    UIButton Result = {s, ls_unistrFromUTF32(text), 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
+    UIButton Result = {s, ls_utf32FromUTF32(text), 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
     return Result;
 }
 
-UIButton ls_uiButtonInit(UIButtonStyle s, unistring text, ButtonProc onClick, ButtonProc onHold, void *userData)
+UIButton ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold, void *userData)
 {
     UIButton Result = {s, text, 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
     return Result;
@@ -2106,7 +2106,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h
     return inputUse;
 }
 
-void ls_uiLabel(UIContext *c, unistring label, s32 xPos, s32 yPos, s32 zLayer = 0)
+void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer = 0)
 {
     AssertMsg(c->currFont, "No font was selected before sizing a label\n");
     
@@ -2121,13 +2121,13 @@ void ls_uiLabel(UIContext *c, unistring label, s32 xPos, s32 yPos, s32 zLayer = 
 
 void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer = 0)
 {
-    unistring lab = ls_unistrConstant(label);
+    utf32 lab = ls_utf32Constant(label);
     ls_uiLabel(c, lab, xPos, yPos, zLayer);
 }
 
 void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
 {
-    ls_unistrClear(&box->text);
+    ls_utf32Clear(&box->text);
     
     box->caretIndex     = 0;
     box->isReadonly     = FALSE;
@@ -2140,14 +2140,14 @@ void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
 
 void ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s)
 {
-    ls_unistrFromUTF32_t(&box->text, s);
+    ls_utf32FromUTF32_t(&box->text, s);
     box->viewEndIdx = box->text.len;
 }
 
 
-void ls_uiTextBoxSet(UIContext *c, UITextBox *box, unistring s)
+void ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s)
 {
-    ls_unistrSet(&box->text, s);
+    ls_utf32Set(&box->text, s);
     box->viewEndIdx = box->text.len;
 }
 
@@ -2181,20 +2181,20 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             return 0;
         }
         
-        u32 beginOffset    = ls_unistrRightFind(box->text, index, (char32_t)'\n');
+        u32 beginOffset    = ls_utf32RightFind(box->text, index, (char32_t)'\n');
         
         s32 realOffset = beginOffset+1;
         if(beginOffset == -1) { realOffset = 0; }
         
         u32 lineLength     = index-realOffset;
         
-        unistring currLine = { box->text.data + realOffset, lineLength, lineLength };
-        u32 maxBeginIndex  = ls_uiGlyphStringFit(c, currLine, viewAddWidth);
+        utf32 currLine    = { box->text.data + realOffset, lineLength, lineLength };
+        u32 maxBeginIndex = ls_uiGlyphStringFit(c, currLine, viewAddWidth);
         
-        box->viewBeginIdx  = maxBeginIndex;
+        box->viewBeginIdx = maxBeginIndex;
         
         //NOTE:TODO: As of right now viewEndIdx does absolutely nothing.
-        box->viewEndIdx    = 0xFEFEFE; // = lineLength; //TODONOTE Strange that an idx == lenght.
+        box->viewEndIdx   = 0xFEFEFE; // = lineLength; //TODONOTE Strange that an idx == lenght.
         
         return realOffset;
     };
@@ -2332,7 +2332,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         box->caretLineIdx = box->selectBeginLine;
         box->isSelecting  = FALSE;
         
-        ls_unistrRmSubstr(&box->text, box->selectBeginIdx, box->selectEndIdx-1);
+        ls_utf32RmSubstr(&box->text, box->selectBeginIdx, box->selectEndIdx-1);
         box->currLineBeginIdx = setIndices(box->caretIndex);
     };
     
@@ -2350,8 +2350,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         {
             if(box->isSelecting) { removeSelection(); }
             
-            if(box->caretIndex == box->text.len) { ls_unistrAppendChar(&box->text, GetPrintableKey()); }
-            else { ls_unistrInsertChar(&box->text, GetPrintableKey(), box->caretIndex); }
+            if(box->caretIndex == box->text.len) { ls_utf32AppendChar(&box->text, GetPrintableKey()); }
+            else { ls_utf32InsertChar(&box->text, GetPrintableKey(), box->caretIndex); }
             
             //NOTE We changed line, so we reset the view (Which is always relative caret curret line)
             if(GetPrintableKey() == (char32_t)'\n') {
@@ -2389,8 +2389,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                 }
                 else { setIndices(box->caretIndex-1); }
                 
-                if(box->caretIndex == box->text.len) { ls_unistrTrimRight(&box->text, 1); }
-                else { ls_unistrRmIdx(&box->text, box->caretIndex-1); }
+                if(box->caretIndex == box->text.len) { ls_utf32TrimRight(&box->text, 1); }
+                else { ls_utf32RmIdx(&box->text, box->caretIndex-1); }
                 box->caretIndex -= 1;
             }
             
@@ -2410,8 +2410,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             {
                 b32 isCR = (box->text.data[box->caretIndex] == (char32_t)'\n');
                 
-                if(box->caretIndex == box->text.len-1) { ls_unistrTrimRight(&box->text, 1); }
-                else { ls_unistrRmIdx(&box->text, box->caretIndex); }
+                if(box->caretIndex == box->text.len-1) { ls_utf32TrimRight(&box->text, 1); }
+                else { ls_utf32RmIdx(&box->text, box->caretIndex); }
                 
                 if(isCR) { box->lineCount -= 1; }
                 
@@ -2536,13 +2536,13 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                 }
             }
             
-            u32 addedLines = ls_unistrCountOccurrences({buff, realCopyLen, realCopyLen}, (u32)'\n');
+            u32 addedLines = ls_utf32CountOccurrences({buff, realCopyLen, realCopyLen}, (u32)'\n');
             
             //NOTE: Skip if box is single line and you're trying to paste a multiline text.
             if(addedLines > 0 && box->isSingleLine) { goto goto_skip_to_post_input; }
             
-            if(box->caretIndex == box->text.len) { ls_unistrAppendBuffer(&box->text, buff, realCopyLen); }
-            else { ls_unistrInsertBuffer(&box->text, buff, realCopyLen, box->caretIndex); }
+            if(box->caretIndex == box->text.len) { ls_utf32AppendBuffer(&box->text, buff, realCopyLen); }
+            else { ls_utf32InsertBuffer(&box->text, buff, realCopyLen, box->caretIndex); }
             
             box->caretIndex      += realCopyLen;
             box->lineCount       += addedLines;
@@ -2796,13 +2796,13 @@ void _ls_uiLPane(UIContext *c, UILPane *pane, s32 xPos, s32 yPos, s32 w, s32 h)
 //TODO I really think ListBox shouldn't manage memory. Fix This.
 inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, char *s)
 { 
-    unistring text = ls_unistrFromAscii(s);
+    utf32 text = ls_utf32FromAscii(s);
     UIListBoxItem item = { text, cxt->widgetColor, cxt->textColor };
     
     return ls_arrayAppend(&list->list, item);
 }
 
-inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, unistring s)
+inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, utf32 s)
 {
     UIListBoxItem item = { s, cxt->widgetColor, cxt->textColor };
     return ls_arrayAppend(&list->list, item);
@@ -2814,7 +2814,7 @@ inline void ls_uiListBoxRemoveEntry(UIContext *cxt, UIListBox *list, u32 index)
     if(list->selectedIndex == index) { list->selectedIndex = 0; }
     
     UIListBoxItem val = list->list[index];
-    ls_unistrFree(&val.name);
+    ls_utf32Free(&val.name);
     //list->list.remove(index);
     return ls_arrayRemove(&list->list, index);
 }
@@ -2894,8 +2894,8 @@ UISlider ls_uiSliderInit(char32_t *name, s32 maxVal, s32 minVal, f64 currPos, Sl
 {
     UISlider Result = {};
     
-    if(name) { Result.text = ls_unistrFromUTF32((const char32_t *)name); }
-    else     { Result.text = ls_unistrAlloc(16); }
+    if(name) { Result.text = ls_utf32FromUTF32((const char32_t *)name); }
+    else     { Result.text = ls_utf32Alloc(16); }
     
     Result.maxValue = maxVal;
     Result.minValue = minVal;
@@ -2989,14 +2989,14 @@ inline void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub)
 void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, char32_t *name)
 { 
     UISubMenu newSub = {};
-    newSub.name = ls_unistrFromUTF32(name);
+    newSub.name = ls_utf32FromUTF32(name);
     ls_arrayAppend(&menu->subMenus, newSub);
 }
 
 void ls_uiMenuAddItem(UIContext *c, UIMenu *menu, char32_t *name, ButtonProc onClick, void *userData)
 {
     UIMenuItem newItem = {};
-    newItem.name       = ls_unistrFromUTF32(name);
+    newItem.name       = ls_utf32FromUTF32(name);
     newItem.onClick    = onClick;
     newItem.userData   = userData;
     ls_arrayAppend(&menu->items, newItem);
@@ -3006,7 +3006,7 @@ void ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonPro
 {
     UIMenuItem newItem = {};
     
-    newItem.name       = ls_unistrFromUTF32(name);
+    newItem.name       = ls_utf32FromUTF32(name);
     newItem.onClick    = onClick;
     newItem.userData   = userData;
     ls_arrayAppend(&sub->items, newItem);
@@ -3016,7 +3016,7 @@ void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name,
 {
     UIMenuItem newItem = {};
     
-    newItem.name       = ls_unistrFromUTF32(name);
+    newItem.name       = ls_utf32FromUTF32(name);
     newItem.onClick    = onClick;
     newItem.userData   = userData;
     ls_arrayAppend(&menu->subMenus[subIdx].items, newItem);
@@ -3322,7 +3322,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     
                     if(list->list.count)
                     {
-                        unistring selected = list->list[list->selectedIndex].name;
+                        utf32 selected = list->list[list->selectedIndex].name;
                         ls_uiGlyphString(c, font, xPos+10, yPos + vertOff, 
                                          minX, maxX, minY, maxY, selected, c->textColor);
                     }
@@ -3434,7 +3434,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         ls_uiFillRect(c, xPos+1, yPos+1, lColorW, h-2, minX, maxX, minY, maxY, slider->lColor);
                         ls_uiFillRect(c, xPos+slidePos+1, yPos+1, rColorW, h-2, minX, maxX, minY, maxY, slider->rColor);
                         
-                        unistring val = ls_unistrFromInt(slider->currValue);
+                        utf32 val = ls_utf32FromInt(slider->currValue);
                         
                         s32 strHeight = font->pixelHeight;
                         
@@ -3450,7 +3450,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         ls_uiGlyphString(c, font, strXPos, yPos + h - strHeight, 
                                          minX, maxX, minY, maxY, val, valueColor);
                         
-                        ls_unistrFree(&val);
+                        ls_utf32Free(&val);
                         
                         if(slider->isHot)
                         {
