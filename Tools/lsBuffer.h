@@ -16,6 +16,8 @@ struct buffer
 
 extern "C"
 {
+    //TODO: My names are stupid. Byte is okay, but Word, DWord and QWord are stupid.
+    //      Should be all renamed to (name)8, (name)16, (name)32, etc...
     buffer ls_bufferInit(u64 bufferSize);
     buffer ls_bufferViewIntoPtr(void *arr, u64 arrSize);
     buffer ls_bufferFromPtrArray(void *arr, u64 arrSize);
@@ -53,6 +55,7 @@ extern "C"
     f64    ls_bufferPeekDouble(buffer *buff);
     
     u32    ls_bufferPeekData8(buffer *buff, void **dataOut);
+    u32    ls_bufferPeekData16(buffer *buff, void **dataOut);
     u32    ls_bufferPeekData32(buffer *buff, void **dataOut);
     void   ls_bufferPeekDataClean(buffer *buff, void **dataOut, u32 numBytes);
     
@@ -81,12 +84,12 @@ extern "C"
     //      2nd len bytes.
     
 #ifdef LS_STRING_H
-    void      ls_bufferAddString(buffer *buff, string v);
-    void      ls_bufferAddUnistring(buffer *buff, unistring v);
+    void   ls_bufferAddString(buffer *buff, string v);
+    void   ls_bufferAddUTF32(buffer *buff, utf32 v);
     
-    string    ls_bufferReadString(buffer *buff);
-    unistring ls_bufferReadUnistring(buffer *buff);
-    void      ls_bufferReadIntoUnistring(buffer *buff, unistring *s);
+    string ls_bufferReadString(buffer *buff);
+    utf32  ls_bufferReadUTF32(buffer *buff);
+    void   ls_bufferReadIntoUTF32(buffer *buff, utf32 *s);
 #endif
     
 };
@@ -420,7 +423,22 @@ u32 ls_bufferPeekData8(buffer *buff, void **dataOut)
     u8 *At = (u8 *)buff->data + (buff->cursor + 1);
     
     //NOTE Peek should never copy, only return the pointer into the data and the length.
-    //ls_memcpy(At, dataOut, numBytes);
+    *dataOut = (void *)At;
+    
+    return numBytes;
+}
+
+u32 ls_bufferPeekData16(buffer *buff, void **dataOut)
+{
+    AssertMsg(buff,       "Buffer pointer is null\n");
+    AssertMsg(buff->data, "Buffer data is null\n");
+    AssertMsg(dataOut,    "Output buffer is null\n");
+    
+    u32 numBytes = ls_bufferPeekWord(buff);
+    
+    u8 *At = (u8 *)buff->data + (buff->cursor + 2);
+    
+    //NOTE Peek should never copy, only return the pointer into the data and the length.
     *dataOut = (void *)At;
     
     return numBytes;
@@ -437,7 +455,6 @@ u32 ls_bufferPeekData32(buffer *buff, void **dataOut)
     u8 *At = (u8 *)buff->data + (buff->cursor + 4);
     
     //NOTE Peek should never copy, only return the pointer into the data and the length.
-    //ls_memcpy(At, dataOut, numBytes);
     *dataOut = (void *)At;
     
     return numBytes;
@@ -636,7 +653,7 @@ void ls_bufferAddString(buffer *buff, string v)
     buff->cursor += v.len;
 }
 
-void ls_bufferAddUnistring(buffer *buff, unistring v)
+void ls_bufferAddUTF32(buffer *buff, utf32 v)
 {
     AssertMsg(buff,       "Buffer pointer is NULL\n");
     AssertMsg(buff->data, "Buffer data is not allocated\n");
@@ -675,16 +692,16 @@ string ls_bufferReadString(buffer *buff)
     return s;
 }
 
-unistring ls_bufferReadUnistring(buffer *buff)
+utf32 ls_bufferReadUTF32(buffer *buff)
 {
     AssertMsg(buff,       "Buffer pointer is NULL\n");
     AssertMsg(buff->data, "Buffer data is not allocated\n");
     
     u32 strLen     = ls_bufferReadDWord(buff);
-    if(strLen == 0) { return unistring({NULL, 0, 0}); }
+    if(strLen == 0) { return utf32({NULL, 0, 0}); }
     
     u32 lenInBytes = strLen * sizeof(u32);
-    unistring s    = ls_unistrAlloc(strLen);
+    utf32 s        = ls_utf32Alloc(strLen);
     
     u8 *At = (u8 *)buff->data + buff->cursor;
     ls_memcpy(At, s.data, lenInBytes);
@@ -694,22 +711,18 @@ unistring ls_bufferReadUnistring(buffer *buff)
     return s;
 }
 
-void ls_bufferReadIntoUnistring(buffer *buff, unistring *s)
+void ls_bufferReadIntoUTF32(buffer *buff, utf32 *s)
 {
     AssertMsg(buff,       "Buffer pointer is NULL\n");
     AssertMsg(s,          "Unistring pointer is NULL\n");
     AssertMsg(buff->data, "Buffer data is not allocated");
     
-    if(!s->data) { *s = ls_bufferReadUnistring(buff); return; }
-    
     u32 strLen     = ls_bufferReadDWord(buff);
     u32 lenInBytes = strLen * sizeof(u32);
     
-    if(s->size < strLen)
-    {
-        s32 growSize = (strLen - s->size) + 32;
-        ls_unistrGrow(s, growSize);
-    }
+    if(s->size < strLen) { ls_utf32Free(s); }
+    
+    if(!s->data) { *s = ls_bufferReadUTF32(buff); return; }
     
     u8 *At = (u8 *)buff->data + buff->cursor;
     ls_memcpy(At, s->data, lenInBytes);
