@@ -17,7 +17,15 @@ struct string
     u32  size;
 };
 
-struct unistring
+struct utf8
+{
+    u8  *data;
+    u32  len;
+    u32  byteLen;
+    u32  size;
+};
+
+struct utf32
 {
     u32 *data;
     u32  len;
@@ -34,7 +42,7 @@ struct view
 
 struct uview
 {
-    unistring s;
+    utf32 s;
     
     u32 *next;
     u32 len;
@@ -128,93 +136,172 @@ b32     operator!=(string s1, string s2);
 
 b32     ls_strIsEqualNCStr(string s1, char *s2, u32 len);
 
+//-----------------------------//
+//    UTF8  UNICODE STRINGS    //
+//-----------------------------//
+
+//Create/Destroy
+utf8  ls_utf8Alloc(u32 size);
+utf8 *ls_utf8AllocArr(u32 numStrings, s32 initialSize);
+void  ls_utf8Free(utf8 *s);
+void  ls_utf8FreeArr(utf8 *s, u32 arrSize);
+
+b32   ls_utf8AreEqual(utf8 a, utf8 b);
+void  ls_utf8Set(utf8 *toSet, utf8 source);
+
+u32   ls_utf8Len(u8 *src, u32 byteLen);
+
+utf8  ls_utf8FromAscii(char *s);
+utf8  ls_utf8FromAscii(char *s, u32 len);
+void  ls_utf8FromAscii_t(utf8 *dst, char *src);
+void  ls_utf8FromAscii_t(utf8 *dst, char *src, u32 len);
+utf8  ls_utf8FromUTF32(const char32_t *s);
+void  ls_utf8FromUTF32_t(utf8 *dst, const char32_t *s);
+utf8  ls_utf8FromInt(s64 x);
+void  ls_utf8FromInt_t(utf8 *s, s64 x);
+utf8  ls_utf8FromF64(f64 x);
+void  ls_utf8FromF64_t(utf8 *s, f64 x);
+utf8  ls_utf8Constant(const u8 *p);
+
+//Manage
+void  ls_utf8Clear(utf8 *s);
+utf8  ls_utf8Copy(utf8 s);
+
+//OperateOn
+void  ls_utf8Reverse(utf8 *s);
+void  ls_utf8RmSubstr(utf8 *s, u32 beginIdx, u32 endIdx);
+void  ls_utf8RmIdx(utf8 *s, u32 idx);
+void  ls_utf8RmAllNonTextChar(utf8 *s);
+void  ls_utf8TrimRight(utf8 *s, u32 numChars);
+
+void  ls_utf8InsertSubstr(utf8 *s, utf8 toInsert, u32 insertIdx);
+void  ls_utf8InsertChar(utf8 *s, u32 c, u32 idx);
+void  ls_utf8InsertCStr(utf8 *s, char *toInsert, u32 insertIdx);
+void  ls_utf8InsertBuffer(utf8 *s, u8 *toInsert, u32 buffLen, u32 insertIdx);
+
+utf8 *ls_utf8Split(utf8 s, u32 *outNum, utf8 delim);
+utf8 *ls_utf8Split(utf8 s, u32 *outNum, const u8 *delim);
+utf8 *ls_utf8Split(utf8 s, u32 *outNum, u32 character);
+
+s32   ls_utf8LeftFind(utf8 s, u32 c);
+s32   ls_utf8LeftFind(utf8 s, s32 offset, u32 c);
+s32   ls_utf8RightFind(utf8 s, u32 c);
+s32   ls_utf8RightFind(utf8 s, s32 offset, u32 c);
+s32   ls_utf8CountOccurrences(utf8 s, u32 c);
+
+//Merge
+utf8  ls_utf8Concat(utf8 s1, utf8 s2);
+void  ls_utf8ConcatOn(utf8 s1, utf8 s2, utf8 *out);
+utf8  ls_utf8CatChar(utf8 s1, u32 c);
+utf8  ls_utf8CatCStr(utf8 s1, char *c);
+void  ls_utf8Prepend(utf8 *s1, utf8 s2);
+void  ls_utf8PrependChar(utf8 *s, u32 c);
+void  ls_utf8PrependCStr(utf8 *s, char *c);
+void  ls_utf8Append(utf8 *s1, utf8 s2);
+void  ls_utf8AppendChar(utf8 *s1, u32 c);
+void  ls_utf8AppendCStr(utf8 *s1, char *c);
+void  ls_utf8AppendNCStr(utf8 *s1, char *c, u32 len);
+void  ls_utf8AppendBuffer(utf8 *s1, u32 *buff, u32 buffLen);
+
+// Convert
+s32   ls_utf8ToAscii_t(utf8 *s, char *buff, u32 buffMaxLen);
+s64   ls_utf8ToInt(utf8 s);
+
+b32   ls_utf8IsWhitespace(u32 c);
+b32   ls_utf8IsNumber(u32 c);
+
 
 //-----------------------------//
 //    UTF32 UNICODE STRINGS    //
 //-----------------------------//
 
 //Create/Destroy
-unistring  ls_unistrAlloc(u32 size);
-unistring *ls_unistrAllocPtr(u32 size);
-unistring *ls_unistrAllocArr(u32 numStrings, s32 initialSize);
-void       ls_unistrFree(unistring *s);
-void       ls_unistrFreePtr(unistring *s);
-void       ls_unistrFreeArr(unistring *s, u32 arrSize);
+utf32  ls_utf32Alloc(u32 size);
+utf32 *ls_utf32AllocArr(u32 numStrings, s32 initialSize);
+void   ls_utf32Free(utf32 *s);
+void   ls_utf32FreeArr(utf32 *s, u32 arrSize);
 
-b32        ls_unistrAreEqual(unistring a, unistring b);
-b32        ls_unistrAsciiAreEqual(unistring a, string b);
-void       ls_unistrSet(unistring *toSet, unistring source);
+b32    ls_utf32AreEqual(utf32 a, utf32 b);
+b32    ls_utf32AsciiAreEqual(utf32 a, string b);
+void   ls_utf32Set(utf32 *toSet, utf32 source);
 
-unistring  ls_unistrFromAscii(char *s);
-unistring  ls_unistrFromAscii(char *s, u32 len);
-void       ls_unistrFromAscii_t(unistring *dst, char *src);
-void       ls_unistrFromAscii_t(unistring *dst, char *src, u32 len);
-unistring  ls_unistrFromUTF32(const char32_t *s);
-void       ls_unistrFromUTF32_t(unistring *dst, const char32_t *s);
-unistring  ls_unistrFromInt(s64 x);
-void       ls_unistrFromInt_t(unistring *s, s64 x);
-void       ls_unistrFromF64_t(unistring *s, f64 x);
-unistring  ls_unistrConstant(const char32_t *p);
+utf32  ls_utf32FromAscii(char *s);
+utf32  ls_utf32FromAscii(char *s, u32 len);
+void   ls_utf32FromAscii_t(utf32 *dst, char *src);
+void   ls_utf32FromAscii_t(utf32 *dst, char *src, u32 len);
+utf32  ls_utf32FromUTF8(utf8 src);
+utf32  ls_utf32FromUTF32(const char32_t *s);
+void   ls_utf32FromUTF32_t(utf32 *dst, const char32_t *s);
+utf32  ls_utf32FromInt(s64 x);
+void   ls_utf32FromInt_t(utf32 *s, s64 x);
+utf32  ls_utf32FromF64(f64 x);
+void   ls_utf32FromF64_t(utf32 *s, f64 x);
+utf32  ls_utf32Constant(const char32_t *p);
 
 //Manage
-void       ls_unistrClear(unistring *s);
-unistring  ls_unistrCopy(unistring s);
-void	   ls_unistrNCopy(unistring s, unistring *dst, size_t size);
-unistring  ls_unistrCopySubstr(unistring s, u32 beginIdx, u32 _endIdx = (u32)-1);
+void   ls_utf32Clear(utf32 *s);
+utf32  ls_utf32Copy(utf32 s);
+void   ls_utf32NCopy(utf32 s, utf32 *dst, size_t size);
+utf32  ls_utf32CopySubstr(utf32 s, u32 beginIdx, u32 _endIdx = (u32)-1);
 
 //OperateOn
-void    ls_unistrReverse(unistring *s);
-void    ls_unistrRmSubstr(unistring *s, u32 beginIdx, u32 endIdx);
-void    ls_unistrRmIdx(unistring *s, u32 idx);
-void    ls_unistrRmAllNonTextChar(unistring *s);
-void    ls_unistrTrimRight(unistring *s, u32 numChars);
+void   ls_utf32Reverse(utf32 *s);
+void   ls_utf32RmSubstr(utf32 *s, u32 beginIdx, u32 endIdx);
+void   ls_utf32RmIdx(utf32 *s, u32 idx);
+void   ls_utf32TrimRight(utf32 *s, u32 numChars);
 
-void    ls_unistrInsertSubstr(unistring *s, unistring toInsert, u32 insertIdx);
-void    ls_unistrInsertChar(unistring *s, u32 c, u32 idx);
-void    ls_unistrInsertCStr(unistring *s, char *toInsert, u32 insertIdx);
-void    ls_unistrInsertBuffer(unistring *s, u32 *toInsert, u32 buffLen, u32 insertIdx);
+void   ls_utf32InsertSubstr(utf32 *s, utf32 toInsert, u32 insertIdx);
+void   ls_utf32InsertChar(utf32 *s, u32 c, u32 idx);
+void   ls_utf32InsertCStr(utf32 *s, char *toInsert, u32 insertIdx);
+void   ls_utf32InsertBuffer(utf32 *s, u32 *toInsert, u32 buffLen, u32 insertIdx);
 
-unistring  *ls_unistrSplit(unistring s, u32 *outNum, unistring delim);
-unistring  *ls_unistrSplit(unistring s, u32 *outNum, const char32_t *a);
-unistring  *ls_unistrSplit(unistring s, u32 *outNum, char32_t c);
-unistring  *ls_unistrSplit(unistring s, u32 *outNum, u32 c);
-unistring  *ls_unistrSplit(unistring s, u32 *outNum, char c);
-unistring  *ls_unistrSplit(unistring s, u32 *outNum, const char *c);
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, utf32 delim);
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, const char32_t *a);
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, char32_t c);
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, u32 c);
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, char c);
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, const char *c);
 
-unistring  *ls_unistrSeparateByNumber(unistring s, u32 *outNum);
+utf32 *ls_utf32SeparateByNumber(utf32 s, u32 *outNum);
 
-unistring  *ls_unistrBreakBySpaceUntilDelimiter(unistring s, u32 delimiter, u32 *numOfStrings);
-s32         ls_unistrLeftFind(unistring s, u32 c);
-s32         ls_unistrLeftFind(unistring s, s32 offset, u32 c);
-s32         ls_unistrRightFind(unistring s, u32 c);
-s32         ls_unistrRightFind(unistring s, s32 offset, u32 c);
-s32         ls_unistrCountOccurrences(unistring s, u32 c);
+utf32 *ls_utf32BreakBySpaceUntilDelimiter(utf32 s, u32 delimiter, u32 *numOfStrings);
+s32    ls_utf32LeftFind(utf32 s, u32 c);
+s32    ls_utf32LeftFind(utf32 s, s32 offset, u32 c);
+s32    ls_utf32RightFind(utf32 s, u32 c);
+s32    ls_utf32RightFind(utf32 s, s32 offset, u32 c);
+s32    ls_utf32CountOccurrences(utf32 s, u32 c);
 
-b32         ls_UTF32IsWhitespace(u32 c);
+b32    ls_UTF32IsWhitespace(u32 c);
 
 //Merge
-unistring  ls_unistrConcat(unistring s1, unistring s2);
-void       ls_unistrConcatOn(unistring s1, unistring s2, unistring *out);
-unistring  ls_unistrCatChar(unistring s1, u32 c);
-unistring  ls_unistrCatCStr(unistring s1, char *c);
-void       ls_unistrPrepend(unistring *s1, unistring s2);
-void       ls_unistrPrependChar(unistring *s, u32 c);
-void       ls_unistrPrependCStr(unistring *s, char *c);
-void       ls_unistrAppend(unistring *s1, unistring s2);
-void       ls_unistrAppendChar(unistring *s1, u32 c);
-void       ls_unistrAppendCStr(unistring *s1, char *c);
-void       ls_unistrAppendNCStr(unistring *s1, char *c, u32 len);
-void       ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen);
+utf32  ls_utf32Concat(utf32 s1, utf32 s2);
+void   ls_utf32ConcatOn(utf32 s1, utf32 s2, utf32 *out);
+utf32  ls_utf32CatChar(utf32 s1, u32 c);
+utf32  ls_utf32CatCStr(utf32 s1, char *c);
+void   ls_utf32Prepend(utf32 *s1, utf32 s2);
+void   ls_utf32PrependChar(utf32 *s, u32 c);
+void   ls_utf32PrependCStr(utf32 *s, char *c);
+void   ls_utf32Append(utf32 *s1, utf32 s2);
+void   ls_utf32AppendChar(utf32 *s1, u32 c);
+void   ls_utf32AppendCStr(utf32 *s1, char *c);
+void   ls_utf32AppendNCStr(utf32 *s1, char *c, u32 len);
+void   ls_utf32AppendBuffer(utf32 *s1, u32 *buff, u32 buffLen);
 
 // Convert
-s32        ls_unistrToAscii_t(unistring *s, char *buff, u32 buffMaxLen);
-s64        ls_unistrToInt(unistring s);
+s32    ls_utf32ToAscii_t(utf32 *s, char *buff, u32 buffMaxLen);
+s64    ls_utf32ToInt(utf32 s);
 
-b32        ls_utf32IsNumber(u32 c);
+b32    ls_utf32IsNumber(u32 c);
+
+
+
+//-----------------------------//
+//            VIEWS            //
+//-----------------------------//
 
 //Create/Destroy
 view  ls_viewCreate(string s);
-uview ls_uviewCreate(unistring s);
+uview ls_uviewCreate(utf32 s);
 
 //OperateOn
 view  ls_viewEatWhitespace(view v);
@@ -260,7 +347,7 @@ static void ls_strGrow(string *s, u32 amount)
     s->size = newSize;
 }
 
-static void ls_unistrGrow(unistring *s, u32 amount)
+static void ls_utf32Grow(utf32 *s, u32 amount)
 {
     AssertMsg(s, "String ptr was null\n");
     AssertMsg(amount < UINT32_MAX-1, "Amount was UINT32_MAX. Probably not a good sign. Off by 1 error?\n");
@@ -849,7 +936,7 @@ string *ls_strBreakBySpaceUntilDelimiter(string s, char delimiter, u32 *numOfStr
 
 s32 ls_strLeftFind(string s, char c)
 {
-    AssertMsg(s.data, "Unistring data is null.\n");
+    AssertMsg(s.data, "Source data is null.\n");
     
     char *At = s.data;
     s32 offset = 0;
@@ -868,7 +955,7 @@ s32 ls_strLeftFind(string s, char c)
 
 s32 ls_strRightFind(string s, char c)
 {
-    AssertMsg(s.data, "Unistring data is null.\n");
+    AssertMsg(s.data, "Source data is null.\n");
     
     char *At = s.data + s.len;
     s32 offset = s.len;
@@ -1319,7 +1406,513 @@ b32 ls_strIsEqualNCStr(string s1, char *s2, u32 len)
 //------------------//
 
 
+//-----------------------------//
+//    UTF8  STRINGS
 
+//Create/Destroy
+utf8 ls_utf8Alloc(u32 size)
+{
+    u8 *data = (u8 *)ls_alloc(sizeof(u8) * size);
+    utf8 result = { data, 0, 0, size };
+    return result;
+}
+
+utf8 *ls_utf8AllocArr(u32 numStrings, s32 initialSize)
+{
+    if(numStrings == 0) { return 0x0; }
+    
+    utf8 *result = (utf8 *)ls_alloc(sizeof(utf8)*numStrings);
+    if(initialSize > 0)
+    {
+        for(u32 i = 0; i < numStrings; i++) { result[i] = ls_utf8Alloc(initialSize); }
+    }
+    
+    return result;
+}
+
+void ls_utf8Free(utf8 *s)
+{
+    ls_free(s->data);
+    s->data     = 0;
+    s->len      = 0;
+    s->byteLen  = 0;
+    s->size     = 0;
+}
+
+void ls_utf8FreeArr(utf8 *s, u32 arrSize)
+{
+    for(u32 i = 0; i < arrSize; i++)
+    { ls_utf8Free(&s[i]);}
+    
+    ls_free(s);
+}
+
+b32 ls_utf8AreEqual(utf8 a, utf8 b)
+{
+    AssertMsg(a.data, "First string's data pointer is null");
+    AssertMsg(b.data, "Second string's data pointer is null");
+    
+    if(a.data == b.data)       { return TRUE; }
+    if(a.len != b.len)         { return FALSE; }
+    if(a.byteLen != b.byteLen) { return FALSE; }
+    
+    return ls_memcmp(a.data, b.data, a.byteLen*sizeof(u8));
+}
+
+u32 ls_utf8Len(u8 *src, u32 byteLen)
+{
+    u32 len = 0;
+    u8 *At = (u8 *)src;
+    while(byteLen)
+    {
+        if(*At <= 0x7F)        { byteLen -= 1; At  += 1; }
+        else if(*At <= 0x7FF)  { byteLen -= 2; At  += 2; }
+        else if(*At <= 0xFFFF) { byteLen -= 3; At  += 3; }
+        else                   { byteLen -= 4; At  += 4; }
+        
+        len += 1;
+    }
+    
+    return len;
+}
+
+void ls_utf8Set(utf8 *toSet, utf8 source)
+{
+    AssertMsg(toSet, "String to be set pointer is null\n");
+    
+    if(toSet->size < source.byteLen) { ls_utf8Free(toSet); }
+    
+    if(!toSet->data)
+    { 
+        u32 allocSize = (16 + source.byteLen);
+        
+        toSet->data = (u8 *)ls_alloc(allocSize*sizeof(u8));
+        toSet->size = allocSize;
+    }
+    
+    //NOTE: We assume source.byteLen == 0 if source.len == 0
+    if(source.len == 0) { toSet->len = 0; toSet->byteLen = 0; return; }
+    
+    ls_memcpy(source.data, toSet->data, source.byteLen*sizeof(u8));
+    toSet->len     = source.len;
+    toSet->byteLen = source.byteLen;
+}
+
+utf8 ls_utf8FromAscii(char *s, u32 len)
+{
+    if(s == NULL) { return {}; }
+    if(len == 0)  { return {}; }
+    
+    utf8 result = ls_utf8Alloc(len);
+    
+    for(u32 i = 0; i < len; i++) { result.data[i] = (u8)s[i]; }
+    
+    result.len     = len;
+    result.byteLen = len;
+    
+    return result;
+}
+
+utf8 ls_utf8FromAscii(char *s)
+{
+    u32 len = ls_len(s);
+    return ls_utf8FromAscii(s, len);
+}
+
+void ls_utf8FromAscii_t(utf8 *dst, char *src, u32 len)
+{
+    AssertMsg(dst, "Destination pointer is null\n");
+    if(src == NULL) { return; }
+    if(len == 0)    { return; }
+    
+    for(u32 i = 0; i < len; i++) { dst->data[i] = (u8)src[i]; }
+    dst->len     = len;
+    dst->byteLen = len;
+}
+
+void ls_utf8FromAscii_t(utf8 *dst, char *src)
+{
+    AssertMsg(dst, "Destination pointer is null\n");
+    if(src == NULL) { return; }
+    
+    u32 len = ls_len(src);
+    ls_utf8FromAscii_t(dst, src, len);
+}
+
+void ls_utf8FromUTF32_t(utf8 *dst, const char32_t *s)
+{
+    AssertMsg(dst, "Destination pointer is null\n");
+    
+    if(s == NULL) { return; }
+    
+    u32 byteLen = 0;
+    u32 len = 0;
+    u32 *At = (u32 *)s;
+    while(*At)
+    {
+        if(*At <= 0x7F)        byteLen += 1;
+        else if(*At <= 0x7FF)  byteLen += 2;
+        else if(*At <= 0xFFFF) byteLen += 3;
+        else                   byteLen += 4;
+        
+        At  += 1;
+        len += 1;
+    }
+    
+    
+    if(dst->size < byteLen) { ls_utf8Free(dst); }
+    
+    if(dst->data == 0)
+    {
+        u32 allocSize = (16 + byteLen);
+        
+        dst->data     = (u8 *)ls_alloc(allocSize*sizeof(u8));
+        dst->size     = allocSize;
+    }
+    
+    u32 *utf32_buffer = (u32 *)s;
+    
+    for(u32 utf32_index = 0, utf8_index = 0; utf32_index < len; utf32_index++)
+    {
+        u32 utf32_code = utf32_buffer[utf32_index];
+        
+        AssertMsg(utf32_code <= 0x10FFFF, "UTF32 codepoint outside valid range [0x0 - 0x10FFFF]");
+        
+        if(utf32_code <= 0x7F)
+        {
+            dst->data[utf8_index] = (u8)utf32_code;
+            utf8_index += 1;
+        }
+        else if(utf32_code <= 0x7FF)
+        {
+            u16 base_bytes = (u16)utf32_code;
+            
+            u8 high = (u8)(((0x07C0 & base_bytes) >> 6) | 0xC0);
+            u8 low  = (u8)((0x003F  & base_bytes)       | 0x80);
+            
+            dst->data[utf8_index]     = high;
+            dst->data[utf8_index + 1] = low;
+            
+            utf8_index += 2;
+        }
+        else if(utf32_code <= 0xFFFF)
+        {
+            u16 base_bytes = (u16)utf32_code;
+            
+            u8 high = (u8)(((0xF000 & base_bytes) >> 12) | 0xE0);
+            u8 mid  = (u8)(((0x0FC0 & base_bytes) >> 6)  | 0x80);
+            u8 low  = (u8)((0x003F  & base_bytes)        | 0x80);
+            
+            dst->data[utf8_index]     = high;
+            dst->data[utf8_index + 1] = mid;
+            dst->data[utf8_index + 2] = low;
+            
+            utf8_index += 3;
+        }
+        else if(utf32_code <= 0x10FFFF)
+        {
+            u8 high = (u8)(((0x001C0000 & utf32_code) >> 18) | 0xF0);
+            u8 midh = (u8)(((0x0003F000 & utf32_code) >> 12) | 0x80);
+            u8 midl = (u8)(((0x00000FC0 & utf32_code) >> 6)  | 0x80);
+            u8 low  = (u8)((0x0000003F  & utf32_code)        | 0x80);
+            
+            dst->data[utf8_index]     = high;
+            dst->data[utf8_index + 1] = midh;
+            dst->data[utf8_index + 2] = midl;
+            dst->data[utf8_index + 3] = low;
+            
+            utf8_index += 4;
+        }
+    }
+    
+    dst->byteLen  = byteLen;
+    dst->len      = len;
+    
+    return;
+}
+
+utf8 ls_utf8FromUTF32(const char32_t *s)
+{
+    if(s == NULL) { return {}; }
+    
+    utf8 result = {};
+    ls_utf8FromUTF32_t(&result, s);
+    return result;
+}
+
+
+//TODO: Should I try optimizing it for utf-8 directly, rather than converting?
+utf8 ls_utf8FromInt(s64 x)
+{
+    char buff[32] = {};
+    ls_itoa_t(x, buff, 32);
+    
+    return ls_utf8FromAscii(buff);
+}
+
+void ls_utf8FromInt_t(utf8 *s, s64 x)
+{
+    AssertMsg(s, "Source pointer is null");
+    
+    char buff[32] = {};
+    s32 len = ls_itoa_t(x, buff, 32);
+    
+    //NOTE: Fine because ascii string lengths are equivalent to utf8 byte lengths
+    if(s->size < len) { ls_utf8Free(s); }
+    
+    if(s->data == NULL)
+    {
+        *s = ls_utf8FromAscii(buff, len);
+    }
+    else
+    {
+        for(u32 i = 0; i < len; i++)
+        { s->data[i] = buff[i]; }
+        
+        s->len     = len;
+        s->byteLen = len;
+    }
+}
+
+utf8 ls_utf8FromF64(f64 x)
+{
+    char buff[32] = {};
+    u32 len = ls_ftoa_t(x, buff, 32);
+    
+    return ls_utf8FromAscii(buff, len);
+}
+
+void ls_utf8FromF64_t(utf8 *s, f64 x)
+{
+    AssertMsg(s, "Source ptr is null\n");
+    
+    char buff[32] = {};
+    u32 len = ls_ftoa_t(x, buff, 32);
+    
+    //NOTE: Fine because ascii string lengths are equivalent to utf8 byte lengths
+    if(s->size < len) { ls_utf8Free(s); }
+    
+    if(s->data == NULL)
+    {
+        *s = ls_utf8FromAscii(buff, len);
+    }
+    else
+    {
+        for(u32 i = 0; i < len; i++)
+        { s->data[i] = buff[i]; }
+        
+        s->len     = len;
+        s->byteLen = len;
+    }
+}
+
+utf8 ls_utf8Constant(const u8 *p)
+{
+    u32 byteLen = 0;
+    u32 len = 0;
+    u8 *At = (u8 *)p;
+    while(*At)
+    {
+        if(*At <= 0x7F)        { byteLen += 1; At += 1; }
+        else if(*At <= 0x7FF)  { byteLen += 2; At += 2; }
+        else if(*At <= 0xFFFF) { byteLen += 3; At += 3; }
+        else                   { byteLen += 4; At += 4; }
+        
+        len += 1;
+    }
+    
+    utf8 result = { (u8 *)p, len, byteLen, byteLen };
+    return result;
+}
+
+//Manage
+void ls_utf8Clear(utf8 *s)
+{
+    s->len     = 0;
+    s->byteLen = 0;
+}
+
+utf8 ls_utf8Copy(utf8 s)
+{
+    utf8 result = ls_utf8Alloc(s.byteLen);
+    ls_memcpy(s.data, result.data, s.byteLen);
+    result.len     = s.len;
+    result.byteLen = s.byteLen;
+    
+    return result;
+}
+
+//OperateOn
+void ls_utf8Reverse(utf8 *s)
+{
+    AssertMsg(FALSE, "Not Implemented yet");
+}
+
+void  ls_utf8RmSubstr(utf8 *s, u32 beginIdx, u32 endIdx)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+void  ls_utf8RmIdx(utf8 *s, u32 idx)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+void  ls_utf8RmAllNonTextChar(utf8 *s)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+void  ls_utf8TrimRight(utf8 *s, u32 numChars)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+
+void  ls_utf8InsertSubstr(utf8 *s, utf8 toInsert, u32 insertIdx)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+void  ls_utf8InsertChar(utf8 *s, u32 c, u32 idx)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+void  ls_utf8InsertCStr(utf8 *s, char *toInsert, u32 insertIdx)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+void  ls_utf8InsertBuffer(utf8 *s, u8 *toInsert, u32 buffLen, u32 insertIdx)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+
+utf8 *ls_utf8Split(utf8 s, u32 *outNum, utf8 delim)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return 0;
+}
+utf8 *ls_utf8Split(utf8 s, u32 *outNum, const u8 *delim)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return 0;
+}
+utf8 *ls_utf8Split(utf8 s, u32 *outNum, u32 character)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return 0;
+}
+
+s32 ls_utf8LeftFind(utf8 s, u32 c)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return 0;
+}
+s32 ls_utf8LeftFind(utf8 s, s32 offset, u32 c)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return 0;
+}
+s32 ls_utf8RightFind(utf8 s, u32 c)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return 0;
+}
+s32 ls_utf8RightFind(utf8 s, s32 offset, u32 c)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return 0;
+}
+s32 ls_utf8CountOccurrences(utf8 s, u32 c)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return 0;
+}
+
+//Merge
+utf8 ls_utf8Concat(utf8 s1, utf8 s2)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return {};
+}
+
+void ls_utf8ConcatOn(utf8 s1, utf8 s2, utf8 *out)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+
+utf8 ls_utf8CatChar(utf8 s1, u32 c)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return {};
+}
+
+utf8 ls_utf8CatCStr(utf8 s1, char *c)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return {};
+}
+
+void ls_utf8Prepend(utf8 *s1, utf8 s2)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+
+void ls_utf8PrependChar(utf8 *s, u32 c)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+
+void ls_utf8PrependCStr(utf8 *s, char *c)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+
+void ls_utf8Append(utf8 *s1, utf8 s2)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+
+void ls_utf8AppendChar(utf8 *s1, u32 c)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+
+void ls_utf8AppendCStr(utf8 *s1, char *c)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+
+void ls_utf8AppendNCStr(utf8 *s1, char *c, u32 len)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+
+void ls_utf8AppendBuffer(utf8 *s1, u32 *buff, u32 buffLen)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+}
+
+// Convert
+s32 ls_utf8ToAscii_t(utf8 *s, char *buff, u32 buffMaxLen)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return 0;
+}
+s64 ls_utf8ToInt(utf8 s)
+{
+    AssertMsg(FALSE, "Not implemented yet");
+    return 0;
+}
+
+b32 ls_utf8IsWhitespace(u32 c)
+{
+    if((c == (u32)' ') || (c == (u32)'\n') || (c == (u32)'\r') || (c == (u32)'\t') || (c == (u32)'\v'))
+    { return TRUE; }
+    
+    return FALSE;
+}
+
+b32 ls_utf8IsNumber(u32 c)
+{
+    if(c >= (u32)'0' && c <= (u32)'9') { return TRUE; }
+    return FALSE;
+}
 
 
 
@@ -1328,63 +1921,44 @@ b32 ls_strIsEqualNCStr(string s1, char *s2, u32 len)
 //------------------//
 //  Create/Destroy  //
 
-unistring ls_unistrAlloc(u32 size)
+utf32 ls_utf32Alloc(u32 size)
 {
     u32 *data = (u32 *)ls_alloc(sizeof(u32)*size);
-    unistring Result = {data, 0, size};
+    utf32 Result = {data, 0, size};
     
     return Result;
 }
 
-unistring *ls_unistrAllocPtr(u32 size)
-{
-    unistring *Result = (unistring *)ls_alloc(sizeof(string));
-    *Result = ls_unistrAlloc(size);
-    
-    return Result;
-}
-
-unistring *ls_unistrAllocArr(u32 numStrings, s32 initialSize)
+utf32 *ls_utf32AllocArr(u32 numStrings, s32 initialSize)
 {
     if(numStrings == 0) { return 0x0; }
     
-    
-    unistring *s = (unistring *)ls_alloc(sizeof(unistring)*numStrings);
+    utf32 *s = (utf32 *)ls_alloc(sizeof(utf32)*numStrings);
     if(initialSize > 0)
     {
-        for(u32 i = 0; i < numStrings; i++) { s[i] = ls_unistrAlloc(initialSize); }
+        for(u32 i = 0; i < numStrings; i++) { s[i] = ls_utf32Alloc(initialSize); }
     }
     
     return s;
 }
 
-void ls_unistrFree(unistring *s)
+void ls_utf32Free(utf32 *s)
 {
     ls_free(s->data);
     s->data = 0;
-    s->len = 0;
+    s->len  = 0;
     s->size = 0;
 }
 
-void ls_unistrFreePtr(unistring *s)
-{
-    ls_free(s->data);
-    s->data = 0;
-    s->len = 0;
-    s->size = 0;
-    
-    ls_free(s);
-}
-
-void ls_unistrFreeArr(unistring *s, u32 arrSize)
+void ls_utf32FreeArr(utf32 *s, u32 arrSize)
 {
     for(u32 i = 0; i < arrSize; i++)
-    { ls_unistrFree(&s[i]);}
+    { ls_utf32Free(&s[i]);}
     
     ls_free(s);
 }
 
-b32 ls_unistrAreEqual(unistring a, unistring b)
+b32 ls_utf32AreEqual(utf32 a, utf32 b)
 {
     AssertMsg(a.data, "First string's data pointer is null");
     AssertMsg(b.data, "Second string's data pointer is null");
@@ -1395,7 +1969,7 @@ b32 ls_unistrAreEqual(unistring a, unistring b)
     return ls_memcmp(a.data, b.data, a.len*sizeof(u32));
 }
 
-b32 ls_unistrAsciiAreEqual(unistring a, string b)
+b32 ls_utf32AsciiAreEqual(utf32 a, string b)
 {
     AssertMsg(a.data, "First string's data pointer is null");
     AssertMsg(b.data, "Second string's data pointer is null");
@@ -1409,9 +1983,11 @@ b32 ls_unistrAsciiAreEqual(unistring a, string b)
     return TRUE;
 }
 
-void ls_unistrSet(unistring *toSet, unistring source)
+void ls_utf32Set(utf32 *toSet, utf32 source)
 {
     AssertMsg(toSet, "String to be set pointer is null\n");
+    
+    if(toSet->size < source.len) { ls_utf32Free(toSet); }
     
     if(!toSet->data)
     { 
@@ -1423,20 +1999,14 @@ void ls_unistrSet(unistring *toSet, unistring source)
     
     if(source.len == 0) { toSet->len = 0; return; }
     
-    if(toSet->size < source.len)
-    {
-        u32 growAmount = (toSet->size - source.len + 32);
-        ls_unistrGrow(toSet, growAmount);
-    }
-    
     ls_memcpy(source.data, toSet->data, source.len*sizeof(u32));
     toSet->len = source.len;
 }
 
 
-unistring ls_unistrFromAscii(char *s, u32 len)
+utf32 ls_utf32FromAscii(char *s, u32 len)
 {
-    unistring Result = ls_unistrAlloc(len);
+    utf32 Result = ls_utf32Alloc(len);
     
     for(u32 i = 0; i < len; i++) { Result.data[i] = (u32)s[i]; }
     Result.len = len;
@@ -1444,25 +2014,92 @@ unistring ls_unistrFromAscii(char *s, u32 len)
     return Result;
 }
 
-unistring ls_unistrFromAscii(char *s)
+utf32 ls_utf32FromAscii(char *s)
 {
     u32 len = ls_len(s);
-    return ls_unistrFromAscii(s, len);
+    return ls_utf32FromAscii(s, len);
 }
 
-void ls_unistrFromAscii_t(unistring *dst, char *src, u32 len)
+void ls_utf32FromAscii_t(utf32 *dst, char *src, u32 len)
 {
     for(u32 i = 0; i < len; i++) { dst->data[i] = (u32)src[i]; }
     dst->len = len;
 }
 
-void ls_unistrFromAscii_t(unistring *dst, char *src)
+void ls_utf32FromAscii_t(utf32 *dst, char *src)
 {
     u32 len = ls_len(src);
-    ls_unistrFromAscii_t(dst, src, len);
+    ls_utf32FromAscii_t(dst, src, len);
 }
 
-unistring ls_unistrFromUTF32(const char32_t *s)
+utf32 ls_utf32FromUTF8(u8 *src, u32 byteLen)
+{
+    u32 len = ls_utf8Len(src, byteLen);
+    
+    utf32 result = ls_utf32Alloc(len);
+    result.len = len;
+    
+    u8 *At = src;
+    for(u32 utf32_index = 0, utf8_index = 0; utf32_index < len; utf32_index++)
+    {
+        u8 c0 = At[utf8_index];
+        
+        AssertMsg(c0 <= 0xF7, "UTF8 first byte is out of range [0x0 - 0xF7]");
+        
+        if(c0 <= 0x7F)
+        {
+            result.data[utf32_index] = (u32)c0;
+            utf8_index += 1;
+        }
+        else if(c0 <= 0xDF)
+        {
+            u8 c1 = At[utf8_index + 1];
+            
+            u16 byte1 = u16(c0 & 0x1F);
+            u16 byte2 = u16(c1 & 0x3F);
+            
+            u32 codepoint = u32((byte1 << 6) | byte2);
+            
+            result.data[utf32_index] = codepoint;
+            utf8_index += 2;
+        }
+        else if(c0 <= 0xEF)
+        {
+            u8 c1 = At[utf8_index + 1];
+            u8 c2 = At[utf8_index + 2];
+            
+            u16 byte1 = u16(c0 & 0x0F);
+            u16 byte2 = u16(c1 & 0x3F);
+            u16 byte3 = u16(c2 & 0x3F);
+            
+            u32 codepoint = u32((byte1 << 12) | (byte2 << 6) | byte3);
+            
+            result.data[utf32_index] = codepoint;
+            utf8_index += 3;
+        }
+        else if(c0 <= 0xF7)
+        {
+            u8 c1 = At[utf8_index + 1];
+            u8 c2 = At[utf8_index + 2];
+            u8 c3 = At[utf8_index + 3];
+            
+            u16 byte1 = u16(c0 & 0x07);
+            u16 byte2 = u16(c1 & 0x3F);
+            u16 byte3 = u16(c2 & 0x3F);
+            u16 byte4 = u16(c3 & 0x3F);
+            
+            u32 codepoint = u32((byte1 << 18) | (byte2 << 12) | (byte3 << 6) | byte4);
+            
+            result.data[utf32_index] = codepoint;
+            utf8_index += 4;
+        }
+    }
+    
+    return result;
+    
+}
+
+utf32 ls_utf32FromUTF32(const char32_t *s)
 {
     if(s == NULL) { return {}; }
     
@@ -1470,16 +2107,16 @@ unistring ls_unistrFromUTF32(const char32_t *s)
     u32 *At = (u32 *)s;
     while(*At) { len += 1; At += 1; }
     
-    unistring Result = ls_unistrAlloc(len);
+    utf32 Result = ls_utf32Alloc(len);
     ls_memcpy((void *)s, Result.data, len*sizeof(u32));
     Result.len = len;
     
     return Result;
 }
 
-void ls_unistrFromUTF32_t(unistring *dst, const char32_t *s)
+void ls_utf32FromUTF32_t(utf32 *dst, const char32_t *s)
 {
-    AssertMsg(dst, "Destination unistring pointer is null\n");
+    AssertMsg(dst, "Destination utf32 pointer is null\n");
     if(s == NULL) { return; }
     
     u32 len = 0;
@@ -1497,7 +2134,7 @@ void ls_unistrFromUTF32_t(unistring *dst, const char32_t *s)
     if(dst->size < len)
     {
         u32 growAmount = (dst->size - len + 32);
-        ls_unistrGrow(dst, growAmount);
+        ls_utf32Grow(dst, growAmount);
     }
     
     ls_memcpy((void *)s, dst->data, len*sizeof(u32));
@@ -1506,13 +2143,13 @@ void ls_unistrFromUTF32_t(unistring *dst, const char32_t *s)
     return;
 }
 
-unistring ls_unistrConstant(const char32_t *p)
+utf32 ls_utf32Constant(const char32_t *p)
 {
     u32 len = 0;
     u32 *At = (u32 *)p;
     while(*At != 0) { len += 1; At += 1; }
     
-    unistring Result = { (u32 *)p, len, len };
+    utf32 Result = { (u32 *)p, len, len };
     return Result;
 }
 
@@ -1523,36 +2160,36 @@ unistring ls_unistrConstant(const char32_t *p)
 //     Manage       //
 
 
-void ls_unistrClear(unistring *s)
+void ls_utf32Clear(utf32 *s)
 { s->len = 0; }
 
-unistring ls_unistrCopy(unistring s)
+utf32 ls_utf32Copy(utf32 s)
 {
-    unistring Result = ls_unistrAlloc(s.len);
+    utf32 Result = ls_utf32Alloc(s.len);
     ls_memcpy(s.data, Result.data, s.len*4);
     Result.len = s.len;
     
     return Result;
 }
 
-void ls_unistrNCopy(unistring src, unistring *dst, size_t size)
+void ls_utf32NCopy(utf32 src, utf32 *dst, size_t size)
 {
     u32 copySize = size;
     if(size > src.len) { copySize = src.len; }
     
-    if(dst->data == NULL) { *dst = ls_unistrAlloc(copySize); }
+    if(dst->data == NULL) { *dst = ls_utf32Alloc(copySize); }
     
     if(dst->size < src.len)
     {
         u32 growAmount = (dst->size - src.len + 32);
-        ls_unistrGrow(dst, growAmount);
+        ls_utf32Grow(dst, growAmount);
     }
     
     ls_memcpy(src.data, dst->data, copySize*4);
     dst->len = copySize;
 }
 
-unistring ls_unistrCopySubstr(unistring s, u32 beginIdx, u32 _endIdx)
+utf32 ls_utf32CopySubstr(utf32 s, u32 beginIdx, u32 _endIdx)
 {
     u32 endIdx = 0;
     if(_endIdx == (u32)-1) { endIdx = s.len-1; }
@@ -1561,9 +2198,9 @@ unistring ls_unistrCopySubstr(unistring s, u32 beginIdx, u32 _endIdx)
     if((beginIdx < 0 || beginIdx >= s.size) ||
        (endIdx < 0 || endIdx >= s.size) ||
        (endIdx - beginIdx >= s.size))
-    { unistring error = {}; return error; }
+    { utf32 error = {}; return error; }
     
-    unistring result = ls_unistrAlloc((endIdx - beginIdx) + 1);
+    utf32 result = ls_utf32Alloc((endIdx - beginIdx) + 1);
     
     ls_memcpy(s.data + beginIdx, result.data, result.size*4);
     result.len = ((endIdx - beginIdx) + 1);
@@ -1577,12 +2214,12 @@ unistring ls_unistrCopySubstr(unistring s, u32 beginIdx, u32 _endIdx)
 //------------------//
 //     OperateOn    //
 
-void ls_unistrReverse(unistring *s)
+void ls_utf32Reverse(utf32 *s)
 {
     u32 *Begin = s->data;
     u32 *End   = s->data + s->len;
     u32 temp = 0;
-    //NOTE: unistring doesn't have null-terminators if(*End == 0) { End--; } Ignore null-terminator
+    //NOTE: utf32 doesn't have null-terminators if(*End == 0) { End--; } Ignore null-terminator
     while (Begin < End)
     {
         temp   = *Begin;
@@ -1594,9 +2231,9 @@ void ls_unistrReverse(unistring *s)
     }
 }
 
-void ls_unistrRmSubstr(unistring *s, u32 beginIdx, u32 endIdx)
+void ls_utf32RmSubstr(utf32 *s, u32 beginIdx, u32 endIdx)
 {
-    AssertMsg(s, "Unistring pointer is null\n");
+    AssertMsg(s, "Source pointer is null\n");
     AssertMsg(beginIdx < s->len, "Begin Index is out of bounds. Larger than string length\n");
     AssertMsg(endIdx   < s->len, "End Index is out of bounds. Larger than string length\n");
     AssertMsg((endIdx - beginIdx) < s->len, "Index Range is larger than string length. How??\n");
@@ -1610,56 +2247,27 @@ void ls_unistrRmSubstr(unistring *s, u32 beginIdx, u32 endIdx)
     return;
 }
 
-void ls_unistrRmIdx(unistring *s, u32 idx)
-{ ls_unistrRmSubstr(s, idx, idx); }
+void ls_utf32RmIdx(utf32 *s, u32 idx)
+{ ls_utf32RmSubstr(s, idx, idx); }
 
 
-void ls_unistrRmAllNonTextChar(unistring *s)
-{
-    AssertMsg(FALSE, "Function needs to be implemented\n");
-    
-#if 0
-    unistring *Result = ls_unistrAllocPtr(s->size);
-    
-    for(u32 i = 0; i < s->len; i++)
-    {
-        char c = s->data[i];
-        if(!ls_isANumber(c))
-        {
-            if(c != '\r' && c != '\n' && c != '\t')
-            {
-                if(c < 32 || c > 126)
-                { continue; }
-            }
-        }
-        
-        ls_unistrAppendChar(Result, c);
-    }
-    
-    ls_free(s->data);
-    *s = *Result;
-    
-    return;
-#endif
-}
-
-void ls_unistrTrimRight(unistring *s, u32 numChars)
+void ls_utf32TrimRight(utf32 *s, u32 numChars)
 { 
-    AssertMsg(s, "Null unistring pointer passed\n");
-    AssertMsg(s->len > 0, "Trying to trim an empty unistring\n");
+    AssertMsg(s, "Null utf32 pointer passed\n");
+    AssertMsg(s->len > 0, "Trying to trim an empty utf32\n");
     AssertMsg(numChars <= s->len, "Trying to trim more than the string length.\n");
     s->len -= numChars; 
 }
 
-void ls_unistrInsertSubstr(unistring *s, unistring toInsert, u32 insertIdx)
+void ls_utf32InsertSubstr(utf32 *s, utf32 toInsert, u32 insertIdx)
 {
-    AssertMsg(s, "Null unistring pointer passed\n");
-    AssertMsg(insertIdx < s->len, "Insertion index past unistring length\n");
+    AssertMsg(s, "Null utf32 pointer passed\n");
+    AssertMsg(insertIdx < s->len, "Insertion index past utf32 length\n");
     
     if(s->len + toInsert.len > s->size)
     {
         u32 growSize = ((s->len + toInsert.len) - s->size) + 32;
-        ls_unistrGrow(s, growSize);
+        ls_utf32Grow(s, growSize);
     }
     
     //TODO:Make a better reverse memcpy for non byte-boundary blocks.
@@ -1676,24 +2284,24 @@ void ls_unistrInsertSubstr(unistring *s, unistring toInsert, u32 insertIdx)
     s->len += toInsert.len;
 }
 
-void ls_unistrInsertChar(unistring *s, u32 c, u32 idx)
+void ls_utf32InsertChar(utf32 *s, u32 c, u32 idx)
 {
-    unistring insertString = {&c, 1, 1};
-    ls_unistrInsertSubstr(s, insertString, idx);
+    utf32 insertString = {&c, 1, 1};
+    ls_utf32InsertSubstr(s, insertString, idx);
 }
 
-void ls_unistrInsertCStr(unistring *s, char *toInsert, u32 insertIdx)
+void ls_utf32InsertCStr(utf32 *s, char *toInsert, u32 insertIdx)
 {
-    AssertMsg(s, "Null unistring pointer passed\n");
+    AssertMsg(s, "Null utf32 pointer passed\n");
     AssertMsg(toInsert, "C String pointer passed is null\n");
-    AssertMsg(insertIdx < s->len, "Insertion index past unistring length\n");
+    AssertMsg(insertIdx < s->len, "Insertion index past utf32 length\n");
     
     u32 len = ls_len(toInsert);
     
     if(s->len + len > s->size)
     {
         u32 growSize = ((s->len + len) - s->size) + 32;
-        ls_unistrGrow(s, growSize);
+        ls_utf32Grow(s, growSize);
     }
     
     ls_memcpy(s->data + insertIdx, s->data + insertIdx + len, (s->len - insertIdx)*sizeof(u32));
@@ -1703,20 +2311,20 @@ void ls_unistrInsertCStr(unistring *s, char *toInsert, u32 insertIdx)
     s->len += len;
 }
 
-void ls_unistrInsertBuffer(unistring *s, u32 *toInsert, u32 buffLen, u32 insertIdx)
+void ls_utf32InsertBuffer(utf32 *s, u32 *toInsert, u32 buffLen, u32 insertIdx)
 {
     AssertMsg(s, "Dest string pointer is null\n");
     AssertMsg(toInsert, "To Insert string pointer is null\n");
     
     if(buffLen == 0) { return; }
     
-    unistring insertString = {toInsert, buffLen, buffLen};
-    ls_unistrInsertSubstr(s, insertString, insertIdx);
+    utf32 insertString = {toInsert, buffLen, buffLen};
+    ls_utf32InsertSubstr(s, insertString, insertIdx);
 }
 
-unistring *ls_unistrSplit(unistring s, u32 *outNum, unistring delim)
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, utf32 delim)
 {
-    AssertMsg(s.data, "Unistring data pointer is null\n");
+    AssertMsg(s.data, "Source data pointer is null\n");
     AssertMsg(outNum, "Output parameter outNum is null\n");
     
     u32 delimCount = 0;
@@ -1724,12 +2332,12 @@ unistring *ls_unistrSplit(unistring s, u32 *outNum, unistring delim)
     u32 *At = s.data;
     while(At < (s.data + s.len))
     {
-        unistring test = { At, delim.len, delim.len };
-        if(ls_unistrAreEqual(test, delim) == TRUE)
+        utf32 test = { At, delim.len, delim.len };
+        if(ls_utf32AreEqual(test, delim) == TRUE)
         { 
             delimCount += 1;
             
-            while(ls_unistrAreEqual(test, delim) == TRUE) {
+            while(ls_utf32AreEqual(test, delim) == TRUE) {
                 At += 1; 
                 test.data = At;
             }
@@ -1738,7 +2346,7 @@ unistring *ls_unistrSplit(unistring s, u32 *outNum, unistring delim)
         At += 1;
     }
     
-    unistring *Result = ls_unistrAllocArr(delimCount+1, 16);
+    utf32 *Result = ls_utf32AllocArr(delimCount+1, 16);
     u32 idx = 0;
     
     
@@ -1746,14 +2354,14 @@ unistring *ls_unistrSplit(unistring s, u32 *outNum, unistring delim)
     At = s.data;
     while(At < (s.data + s.len))
     {
-        unistring test = { At, delim.len, delim.len };
-        if(ls_unistrAreEqual(test, delim) == TRUE)
+        utf32 test = { At, delim.len, delim.len };
+        if(ls_utf32AreEqual(test, delim) == TRUE)
         {
-            unistring toCopy = { BeginString, (u32)(At - BeginString), (u32)(At - BeginString)};
-            ls_unistrSet(Result + idx, toCopy);
+            utf32 toCopy = { BeginString, (u32)(At - BeginString), (u32)(At - BeginString)};
+            ls_utf32Set(Result + idx, toCopy);
             idx += 1;
             
-            while(ls_unistrAreEqual(test, delim) == TRUE) {
+            while(ls_utf32AreEqual(test, delim) == TRUE) {
                 At += 1; 
                 test.data = At; 
             }
@@ -1766,8 +2374,8 @@ unistring *ls_unistrSplit(unistring s, u32 *outNum, unistring delim)
     
     if(BeginString != At)
     {
-        unistring toCopy = { BeginString, (u32)(At - BeginString), (u32)(At - BeginString)};
-        ls_unistrSet(Result + idx, toCopy);
+        utf32 toCopy = { BeginString, (u32)(At - BeginString), (u32)(At - BeginString)};
+        ls_utf32Set(Result + idx, toCopy);
         idx += 1;
     }
     
@@ -1776,42 +2384,42 @@ unistring *ls_unistrSplit(unistring s, u32 *outNum, unistring delim)
     return Result;
 }
 
-unistring *ls_unistrSplit(unistring s, u32 *outNum, const char32_t *a)
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, const char32_t *a)
 {
-    unistring delim = ls_unistrConstant(a);
-    return ls_unistrSplit(s, outNum, delim);
+    utf32 delim = ls_utf32Constant(a);
+    return ls_utf32Split(s, outNum, delim);
 }
 
-unistring *ls_unistrSplit(unistring s, u32 *outNum, u32 c)
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, u32 c)
 {
-    unistring delim = {&c, 1, 1};
-    return ls_unistrSplit(s, outNum, delim);
+    utf32 delim = {&c, 1, 1};
+    return ls_utf32Split(s, outNum, delim);
 }
 
-unistring *ls_unistrSplit(unistring s, u32 *outNum, char32_t c)
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, char32_t c)
 {
-    unistring delim = {(u32 *)(&c), 1, 1};
-    return ls_unistrSplit(s, outNum, delim);
+    utf32 delim = {(u32 *)(&c), 1, 1};
+    return ls_utf32Split(s, outNum, delim);
 }
 
-unistring *ls_unistrSplit(unistring s, u32 *outNum, char c)
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, char c)
 {
     u32 ch = (u32)c;
-    return ls_unistrSplit(s, outNum, ch);
+    return ls_utf32Split(s, outNum, ch);
 }
 
-unistring *ls_unistrSplit(unistring s, u32 *outNum, const char *c)
+utf32 *ls_utf32Split(utf32 s, u32 *outNum, const char *c)
 {
-    unistring delim = ls_unistrFromAscii((char *)c);
-    unistring *result = ls_unistrSplit(s, outNum, delim);
+    utf32 delim = ls_utf32FromAscii((char *)c);
+    utf32 *result = ls_utf32Split(s, outNum, delim);
     
-    ls_unistrFree(&delim);
+    ls_utf32Free(&delim);
     return result;
 }
 
-unistring *ls_unistrSeparateByNumber(unistring s, u32 *outNum)
+utf32 *ls_utf32SeparateByNumber(utf32 s, u32 *outNum)
 {
-    AssertMsg(s.data, "Unistring data pointer is null\n");
+    AssertMsg(s.data, "Source data pointer is null\n");
     AssertMsg(outNum, "Output parameter outNum is null\n");
     
     u32 count = 0;
@@ -1839,7 +2447,7 @@ unistring *ls_unistrSeparateByNumber(unistring s, u32 *outNum)
     
     if(len > 0) { count += 1; }
     
-    unistring *Result = ls_unistrAllocArr(count, 16);
+    utf32 *Result = ls_utf32AllocArr(count, 16);
     u32 idx = 0;
     
     u32 *BeginString = s.data;
@@ -1851,8 +2459,8 @@ unistring *ls_unistrSeparateByNumber(unistring s, u32 *outNum)
         {
             if(len > 0)
             {
-                unistring nonNumber = { BeginString, len, len};
-                ls_unistrSet(Result + idx, nonNumber);
+                utf32 nonNumber = { BeginString, len, len};
+                ls_utf32Set(Result + idx, nonNumber);
                 idx += 1;
                 len = 0; 
             }
@@ -1864,8 +2472,8 @@ unistring *ls_unistrSeparateByNumber(unistring s, u32 *outNum)
                 At += 1;
             }
             
-            unistring number = { BeginString, (u32)(At - BeginString), (u32)(At - BeginString)};
-            ls_unistrSet(Result + idx, number);
+            utf32 number = { BeginString, (u32)(At - BeginString), (u32)(At - BeginString)};
+            ls_utf32Set(Result + idx, number);
             idx += 1;
             
             BeginString = At;
@@ -1878,8 +2486,8 @@ unistring *ls_unistrSeparateByNumber(unistring s, u32 *outNum)
     
     if(len > 0)
     {
-        unistring nonNumber = { BeginString, len+1, len+1};
-        ls_unistrSet(Result + idx, nonNumber);
+        utf32 nonNumber = { BeginString, len+1, len+1};
+        ls_utf32Set(Result + idx, nonNumber);
         idx += 1;
     }
     
@@ -1889,15 +2497,15 @@ unistring *ls_unistrSeparateByNumber(unistring s, u32 *outNum)
 }
 
 
-unistring *ls_unistrBreakBySpaceUntilDelimiter(unistring s, u32 delimiter, u32 *numOfStrings)
+utf32 *ls_utf32BreakBySpaceUntilDelimiter(utf32 s, u32 delimiter, u32 *numOfStrings)
 {
     AssertMsg(FALSE, "Not implmented\n");
-    unistring *Result = 0;
+    utf32 *Result = 0;
     return Result;
     
 #if 0
-    unistring *Result = 0;
-    unistring buff[256] = {};
+    utf32 *Result = 0;
+    utf32 buff[256] = {};
     u32 buffIdx = 0;
     char *At = s.data;
     
@@ -1949,17 +2557,17 @@ unistring *ls_unistrBreakBySpaceUntilDelimiter(unistring s, u32 delimiter, u32 *
         
     } while (*At);
     
-    Result = (unistring *)ls_alloc(sizeof(unistring)*buffIdx);
-    ls_memcpy(buff, Result, sizeof(unistring)*buffIdx);
+    Result = (utf32 *)ls_alloc(sizeof(utf32)*buffIdx);
+    ls_memcpy(buff, Result, sizeof(utf32)*buffIdx);
     if(numOfStrings) { *numOfStrings = buffIdx; }
     
     return Result;
 #endif
 }
 
-s32 ls_unistrLeftFind(unistring s, s32 off, u32 c)
+s32 ls_utf32LeftFind(utf32 s, s32 off, u32 c)
 {
-    AssertMsg(s.data, "Unistring data is null.\n");
+    AssertMsg(s.data, "Source data is null.\n");
     AssertMsg(off >= 0, "Offset is negative.\n");
     
     u32 *At = s.data + off;
@@ -1977,12 +2585,12 @@ s32 ls_unistrLeftFind(unistring s, s32 off, u32 c)
 }
 
 
-s32 ls_unistrLeftFind(unistring s, u32 c)
-{ return ls_unistrLeftFind(s, 0, c); }
+s32 ls_utf32LeftFind(utf32 s, u32 c)
+{ return ls_utf32LeftFind(s, 0, c); }
 
-s32 ls_unistrRightFind(unistring s, s32 off, u32 c)
+s32 ls_utf32RightFind(utf32 s, s32 off, u32 c)
 {
-    AssertMsg(s.data, "Unistring data is null.\n");
+    AssertMsg(s.data, "Source data is null.\n");
     AssertMsg(off >= 0, "Offset is negative.\n");
     
     u32 *At = s.data + off;
@@ -1999,13 +2607,13 @@ s32 ls_unistrRightFind(unistring s, s32 off, u32 c)
     return -1;
 }
 
-s32 ls_unistrRightFind(unistring s, u32 c)
-{ return ls_unistrRightFind(s, 0, c); }
+s32 ls_utf32RightFind(utf32 s, u32 c)
+{ return ls_utf32RightFind(s, 0, c); }
 
 
-s32 ls_unistrCountOccurrences(unistring s, u32 c)
+s32 ls_utf32CountOccurrences(utf32 s, u32 c)
 {
-    AssertMsg(s.data, "Unistring data is null.\n");
+    AssertMsg(s.data, "Source data is null.\n");
     u32 *At = s.data;
     u32 *End = s.data + s.len;
     
@@ -2035,9 +2643,9 @@ b32 ls_UTF32IsWhitespace(u32 c)
 //------------------//
 //      Merge       //
 
-unistring ls_unistrConcat(unistring s1, unistring s2)
+utf32 ls_utf32Concat(utf32 s1, utf32 s2)
 {
-    unistring Result = ls_unistrAlloc(s1.len + s2.len);
+    utf32 Result = ls_utf32Alloc(s1.len + s2.len);
     if(s1.len) { ls_memcpy(s1.data, Result.data, s1.len*4); }
     if(s2.len) { ls_memcpy(s2.data, Result.data + s1.len, s2.len*4); }
     Result.len = s1.len + s2.len;
@@ -2045,22 +2653,22 @@ unistring ls_unistrConcat(unistring s1, unistring s2)
     return Result;
 }
 
-void ls_unistrConcatOn(unistring s1, unistring s2, unistring *out)
+void ls_utf32ConcatOn(utf32 s1, utf32 s2, utf32 *out)
 {
-    AssertMsg(out, "Output unistring ptr is null\n");
-    AssertMsg(out->data, "Output unistring data is null\n");
-    AssertMsg((out->size > (s1.len + s2.len)), "Output unistring is too small to fit inputs\n");
+    AssertMsg(out, "Output utf32 ptr is null\n");
+    AssertMsg(out->data, "Output utf32 data is null\n");
+    AssertMsg((out->size > (s1.len + s2.len)), "Output utf32 is too small to fit inputs\n");
     
     if(s1.len) { ls_memcpy(s1.data, out->data, s1.len*4); }
     if(s2.len) { ls_memcpy(s2.data, out->data + s1.len, s2.len*4); }
     out->len = s1.len + s2.len;
 }
 
-unistring ls_unistrCatChar(unistring s, u32 c)
+utf32 ls_utf32CatChar(utf32 s, u32 c)
 {
-    AssertMsg(s.data, "Input unistring data is null\n");
+    AssertMsg(s.data, "Input utf32 data is null\n");
     
-    unistring Result = ls_unistrAlloc(s.len + 1);
+    utf32 Result = ls_utf32Alloc(s.len + 1);
     if(s.len) { ls_memcpy(s.data, Result.data, s.len*4); }
     Result.data[s.len] = c;
     Result.len = s.len + 1;
@@ -2068,15 +2676,15 @@ unistring ls_unistrCatChar(unistring s, u32 c)
     return Result;
 }
 
-unistring ls_unistrCatCStr(unistring s1, char *s2)
+utf32 ls_utf32CatCStr(utf32 s1, char *s2)
 {
     AssertMsg(NULL, "Not implemented\n");
-    unistring Result = {};
+    utf32 Result = {};
     return Result;
 #if 0
     u32 s2Len = ls_len(s2);
     
-    unistring Result = ls_unistrAlloc(s1.len + s2Len);
+    utf32 Result = ls_utf32Alloc(s1.len + s2Len);
     if(s1.len) { ls_memcpy(s1.data, Result.data, s1.len); }
     if(s2Len) { ls_memcpy(s2, Result.data + s1.len, s2Len); }
     Result.len = s1.len + s2Len;
@@ -2085,16 +2693,16 @@ unistring ls_unistrCatCStr(unistring s1, char *s2)
 #endif
 }
 
-void ls_unistrPrepend(unistring *s1, unistring s2)
+void ls_utf32Prepend(utf32 *s1, utf32 s2)
 {
-    AssertMsg(s1,       "Base unistring ptr is null\n");
-    AssertMsg(s1->data, "Base unistring data is null\n");
-    AssertMsg(s2.data,  "Input unistring data is null\n");
+    AssertMsg(s1,       "Base utf32 ptr is null\n");
+    AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsg(s2.data,  "Input utf32 data is null\n");
     
     if(s1->len + s2.len > s1->size)
     {
         u32 growSize = ((s1->len + s2.len) - s1->size) + 32;
-        ls_unistrGrow(s1, growSize);
+        ls_utf32Grow(s1, growSize);
     }
     
     //NOTE: TODO: Backwards memcpy
@@ -2111,13 +2719,13 @@ void ls_unistrPrepend(unistring *s1, unistring s2)
     s1->len = s1->len + s2.len;
 }
 
-void ls_unistrPrependChar(unistring *s1, u32 c)
+void ls_utf32PrependChar(utf32 *s1, u32 c)
 {
-    AssertMsg(s1, "Base unistring ptr is null\n");
-    AssertMsg(s1->data, "Base unistring data is null\n");
+    AssertMsg(s1, "Base utf32 ptr is null\n");
+    AssertMsg(s1->data, "Base utf32 data is null\n");
     
     if(s1->len + 1 > s1->size)
-    { ls_unistrGrow(s1, 32); }
+    { ls_utf32Grow(s1, 32); }
     
     //NOTE: TODO: Backwards memcpy
     u32 cpySize = s1->len;
@@ -2135,21 +2743,21 @@ void ls_unistrPrependChar(unistring *s1, u32 c)
     s1->len += 1;
 }
 
-void ls_unistrPrependCStr(unistring *s1, char *s2)
+void ls_utf32PrependCStr(utf32 *s1, char *s2)
 {
     AssertMsg(NULL, "Not implemented\n");
     
 #if 0
-    AssertMsg(s1, "Base unistring ptr is null\n");
-    AssertMsg(s1->data, "Base unistring data is null\n");
-    AssertMsg(s2, "C unistring ptr is null\n");
+    AssertMsg(s1, "Base utf32 ptr is null\n");
+    AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsg(s2, "C utf32 ptr is null\n");
     
     u32 s2Len = ls_len(s2);
     
     if(s1->len + s2Len > s1->size)
     {
         u32 growSize = ((s1->len + s2Len) - s1->size) + 32;
-        ls_unistrGrow(s1, growSize);
+        ls_utf32Grow(s1, growSize);
     }
     
     ls_memcpy(s1->data, s1->data + s2Len, s1->len);
@@ -2158,55 +2766,55 @@ void ls_unistrPrependCStr(unistring *s1, char *s2)
 #endif
 }
 
-void ls_unistrAppend(unistring *s1, unistring s2)
+void ls_utf32Append(utf32 *s1, utf32 s2)
 {
-    AssertMsg(s1, "Base unistring ptr is null\n");
-    AssertMsg(s1->data, "Base unistring data is null\n");
-    AssertMsg(s2.data, "Input unistring data is null\n");
+    AssertMsg(s1, "Base utf32 ptr is null\n");
+    AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsg(s2.data, "Input utf32 data is null\n");
     
     if(s1->len + s2.len > s1->size)
     {
         u32 growSize = ((s1->len + s2.len) - s1->size) + 32;
-        ls_unistrGrow(s1, growSize);
+        ls_utf32Grow(s1, growSize);
     }
     
     ls_memcpy(s2.data, s1->data + s1->len, s2.len*4);
     s1->len += s2.len;
 }
 
-void ls_unistrAppendChar(unistring *s1, u32 c)
+void ls_utf32AppendChar(utf32 *s1, u32 c)
 {
-    AssertMsg(s1, "Base unistring ptr is null\n");
-    AssertMsg(s1->data, "Base unistring data is null\n");
+    AssertMsg(s1, "Base utf32 ptr is null\n");
+    AssertMsg(s1->data, "Base utf32 data is null\n");
     
     if(s1->len + 1 > s1->size)
-    { ls_unistrGrow(s1, 32); }
+    { ls_utf32Grow(s1, 32); }
     
     s1->data[s1->len] = c;
     s1->len += 1;
 }
 
-void ls_unistrAppendCStr(unistring *s1, char *c)
+void ls_utf32AppendCStr(utf32 *s1, char *c)
 {
-    AssertMsg(s1, "Base unistring ptr is null\n");
-    AssertMsg(s1->data, "Base unistring data is null\n");
+    AssertMsg(s1, "Base utf32 ptr is null\n");
+    AssertMsg(s1->data, "Base utf32 data is null\n");
     AssertMsg(c, "C String ptr is null\n");
     
     u32 len = ls_len(c);
-    ls_unistrAppendNCStr(s1, c, len);
+    ls_utf32AppendNCStr(s1, c, len);
 }
 
-void ls_unistrAppendNCStr(unistring *s1, char *c, u32 s2Len)
+void ls_utf32AppendNCStr(utf32 *s1, char *c, u32 s2Len)
 {
     //NOTE: We are assuming a classical C String is ASCII
-    AssertMsg(s1, "Base unistring ptr is null\n");
-    AssertMsg(s1->data, "Base unistring data is null\n");
+    AssertMsg(s1, "Base utf32 ptr is null\n");
+    AssertMsg(s1->data, "Base utf32 data is null\n");
     AssertMsg(c, "C String ptr is null\n");
     
     if(s1->len + s2Len > s1->size)
     {
         u32 growSize = ((s1->len + s2Len) - s1->size) + 32;
-        ls_unistrGrow(s1, growSize);
+        ls_utf32Grow(s1, growSize);
     }
     
     u32 *At = s1->data + s1->len;
@@ -2214,10 +2822,10 @@ void ls_unistrAppendNCStr(unistring *s1, char *c, u32 s2Len)
     s1->len += s2Len;
 }
 
-void ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen)
+void ls_utf32AppendBuffer(utf32 *s1, u32 *buff, u32 buffLen)
 {
-    AssertMsg(s1, "Base unistring ptr is null\n");
-    AssertMsg(s1->data, "Base unistring data is null\n");
+    AssertMsg(s1, "Base utf32 ptr is null\n");
+    AssertMsg(s1->data, "Base utf32 data is null\n");
     AssertMsg(buff, "C String ptr is null\n");
     
     if(buffLen == 0) { return; }
@@ -2225,7 +2833,7 @@ void ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen)
     if(s1->len + buffLen > s1->size)
     {
         u32 growSize = ((s1->len + buffLen) - s1->size) + 32;
-        ls_unistrGrow(s1, growSize);
+        ls_utf32Grow(s1, growSize);
     }
     
     u32 *At = s1->data + s1->len;
@@ -2243,35 +2851,29 @@ void ls_unistrAppendBuffer(unistring *s1, u32 *buff, u32 buffLen)
 
 
 //TODO: Should I try optimizing it for utf-32 directly, rather than converting?
-unistring  ls_unistrFromInt(s64 x)
+utf32  ls_utf32FromInt(s64 x)
 {
     char buff[32] = {};
     ls_itoa_t(x, buff, 32);
     
-    unistring s = ls_unistrFromAscii(buff);
-    return s;
+    return ls_utf32FromAscii(buff);
 }
 
-void ls_unistrFromInt_t(unistring *s, s64 x)
+void ls_utf32FromInt_t(utf32 *s, s64 x)
 {
-    AssertMsg(s, "Unistring pointer is null");
+    AssertMsg(s, "Source pointer is null");
+    
+    char buff[32] = {};
+    s32 len = ls_itoa_t(x, buff, 32);
+    
+    if(s->size < len) { ls_utf32Free(s); }
     
     if(s->data == NULL)
-    {
-        unistring str = ls_unistrFromInt(x);
-        *s = str;
+    { 
+        *s = ls_utf32FromAscii(buff, len);
     }
     else
     {
-        char buff[32] = {};
-        s32 len = ls_itoa_t(x, buff, 32);
-        
-        if(s->size < len)
-        {
-            u32 growSize = len + 32;
-            ls_unistrGrow(s, growSize);
-        }
-        
         for(u32 i = 0; i < len; i++)
         { s->data[i] = (u32)buff[i]; }
         
@@ -2279,26 +2881,29 @@ void ls_unistrFromInt_t(unistring *s, s64 x)
     }
 }
 
-void ls_unistrFromF64_t(unistring *s, f64 x)
+utf32 ls_utf32FromF64(f64 x)
 {
-    AssertMsg(s, "Unistring ptr is null\n");
+    char buff[32] = {};
+    u32 len = ls_ftoa_t(x, buff, 32);
+    
+    return ls_utf32FromAscii(buff, len);
+}
+
+void ls_utf32FromF64_t(utf32 *s, f64 x)
+{
+    AssertMsg(s, "Source ptr is null\n");
+    
+    char buff[32] = {};
+    u32 len = ls_ftoa_t(x, buff, 32);
+    
+    if(s->size < len) { ls_utf32Free(s); }
     
     if(s->data == NULL)
     {
-        //TODO: Add string allocation
-        AssertMsg(s->data, "Unistring data allocation is not YET implemented.\n");
+        *s = ls_utf32FromAscii(buff, len);
     }
     else
     {
-        char buff[32] = {};
-        u32 len = ls_ftoa_t(x, buff, 32);
-        
-        if(s->size < len)
-        {
-            u32 growSize = len + 32;
-            ls_unistrGrow(s, growSize);
-        }
-        
         for(u32 i = 0; i < len; i++)
         { s->data[i] = (u32)buff[i]; }
         
@@ -2306,9 +2911,9 @@ void ls_unistrFromF64_t(unistring *s, f64 x)
     }
 }
 
-s32 ls_unistrToAscii_t(unistring *s, char *buff, u32 buffMaxLen)
+s32 ls_utf32ToAscii_t(utf32 *s, char *buff, u32 buffMaxLen)
 {
-    AssertMsg(s, "Unistring pointer is null\n");
+    AssertMsg(s, "Source pointer is null\n");
     AssertMsg(buff, "Output buffer pointer is null\n");
     
     u32 *At = s->data;
@@ -2324,12 +2929,12 @@ s32 ls_unistrToAscii_t(unistring *s, char *buff, u32 buffMaxLen)
     return idx;
 }
 
-s64 ls_unistrToInt(unistring s)
+s64 ls_utf32ToInt(utf32 s)
 {
     if(s.len == 0) { return 0; }
     
     char numBuff[64] = {};
-    AssertMsg(s.len < 64, "Unistring passed represents a number that contains too many digits.");
+    AssertMsg(s.len < 64, "Source passed represents a number that contains too many digits.");
     
     u32 i = 0;
     for(i = 0; i < s.len; i++)
@@ -2363,7 +2968,7 @@ view ls_viewCreate(string s)
     return Res;
 }
 
-uview ls_uviewCreate(unistring s)
+uview ls_uviewCreate(utf32 s)
 {
     uview Res = {};
     
@@ -2688,7 +3293,7 @@ uview ls_uviewNextLineSkipWS(uview v)
 
 b32 ls_uviewIsLineEmpty(uview v)
 {
-    unistring s = v.s;
+    utf32 s = v.s;
     if(s.len == 1)
     {
         if(s.data[0] == (u32)'\n') { return TRUE; }
