@@ -22,6 +22,7 @@ struct Array
 };
 
 template<typename T> Array<T> ls_arrayAlloc(u32 n);
+template<typename T> void     ls_arrayFromPointer(Array<T> *arr, void *src, u32 count);
 template<typename T> void     ls_arrayFree(Array<T> *a);
 template<typename T> void     ls_arrayClear(Array<T> *a);
 template<typename T> void     ls_arrayGrow(Array<T> *a, u32 amount);
@@ -47,10 +48,12 @@ Array<T> ls_arrayAlloc(u32 n)
     return result;
 }
 
-template<typename T>
-void ls_arrayClear(Array<T> *a) 
-{ 
-    a->count = 0;
+template<typename T> 
+void ls_arrayFromPointer(Array<T> *arr, void *src, u32 count)
+{
+    arr->count = count;
+    arr->cap = count;
+    arr->data = (T*)src;
 }
 
 template<typename T>
@@ -59,6 +62,12 @@ void ls_arrayFree(Array<T> *a)
     ls_free(a->data);
     a->count = 0;
     a->cap = 0;
+}
+
+template<typename T>
+void ls_arrayClear(Array<T> *a) 
+{ 
+    a->count = 0;
 }
 
 template<typename T>
