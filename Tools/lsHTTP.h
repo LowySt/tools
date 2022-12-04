@@ -283,7 +283,9 @@ HTTPUri        ls_httpParseUrl(string url);
 HTTPSocket     ls_httpConnectByName(string serverNameString, u32 port);
 HTTPConnection ls_httpConnectByUrl(string url, u32 port);
 
-string         ls_httpGET(HTTPConnection info);
+string         ls_httpRequest(HTTPConnection info, string message);
+
+string         ls_httpGET(HTTPConnection info, string message);
 
 #if 0
 s32            ls_getHeaderLength(char *content);
@@ -559,7 +561,6 @@ HTTPSocket ls_httpConnectByName(string serverNameString, u32 port)
     { 
         s32 success = getaddrinfo(serverName, portString, NULL, &addrInfo);
         LogMsgF(success == 0, "When getting address info got error: %d", WSAGetLastError());
-        return 0;
     }
     else
     {
@@ -572,8 +573,12 @@ HTTPSocket ls_httpConnectByName(string serverNameString, u32 port)
         server.sin_addr.s_addr = addr;
         server.sin_port = htons(port);
         
-        s32 success = getnameinfo((const sockaddr *)&server, sizeof(server), hostName, sizeof(hostName), serviceName, sizeof(serviceName), NULL);
+        s32 success = getnameinfo((const sockaddr *)&server, sizeof(server), 
+                                  hostName, sizeof(hostName), serviceName, sizeof(serviceName), NULL);
+        LogMsgF(success == 0, "When getting name info got error: %d", WSAGetLastError());
+        
         success = getaddrinfo(hostName, portString, NULL, &addrInfo);
+        LogMsgF(success == 0, "When getting address info got error: %d", WSAGetLastError());
     }
     
     if(addrInfo->ai_addr == NULL)
@@ -625,8 +630,12 @@ HTTPConnection ls_httpConnectByUrl(string urlString, u32 port)
     return connection;
 }
 
+string ls_httpRequest(HTTPConnection info, string message)
+{
+    return ls_httpGET(info, message);
+}
 
-string ls_httpGET(HTTPConnection info)
+string ls_httpGET(HTTPConnection info, string message)
 {
     /*
     ///////////// send GET request /////////////
@@ -650,7 +659,7 @@ string ls_httpGET(HTTPConnection info)
     * by default. Then you could simply read until you get no more data.
     */
     
-    string message = ls_strConstant("GET /wiki/Database_Mostri HTTP/1.1");
+    //string message = ls_strConstant("GET /wiki/Database_Mostri HTTP/1.1");
     
     s32 bytesSent = send(info.socket, message.data, message.len, 0);
     
@@ -663,12 +672,18 @@ string ls_httpGET(HTTPConnection info)
     }
     
     
-    ls_printf("Buffer being sent:\n%s", message);
+    ls_printf("Buffer being sent:\n%s\n\n", message);
     
-    ///////////// step 3 - get received bytes ////////////////
-    // Receive until the peer closes the connection
     const int bufSize = 512;
     char readBuffer[bufSize], tmpBuffer[bufSize];
+    
+    s64 thisReadSize = recv(info.socket, readBuffer, bufSize, 0);
+    
+    ls_printf("Response:\n%cs\n", readBuffer);
+    return {};
+#if 0
+    ///////////// step 3 - get received bytes ////////////////
+    // Receive until the peer closes the connection
     
     s64 totalBytesRead = 0;
     char *tmpResult = 0;
@@ -696,6 +711,7 @@ string ls_httpGET(HTTPConnection info)
     
     string result = { tmpResult, (u32)totalBytesRead, (u32)totalBytesRead };
     return result;
+#endif
     
 #if 0
     s64 headerLen = ls_getHeaderLength(tmpResult);
