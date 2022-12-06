@@ -1886,33 +1886,6 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
 
 //TODO: Use font max descent to determine yOffsets globally
 //      Maybe instead make glyphstring only do 1 line at a time and push line responsibility outside?
-void ls_uiGlyphString(UIContext *c, s32 xPos, s32 yPos, 
-                      s32 minX, s32 maxX, s32 minY, s32 maxY, 
-                      utf32 text, Color textColor)
-{
-    AssertMsg(c, "Context is null\n");
-    AssertMsg(c->currFont, "Current Font is null\n");
-    
-    s32 currXPos = xPos;
-    s32 currYPos = yPos;
-    for(u32 i = 0; i < text.len; i++)
-    {
-        u32 indexInGlyphArray = text.data[i];
-        AssertMsg(indexInGlyphArray <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
-        
-        UIGlyph *currGlyph = &c->currFont->glyph[indexInGlyphArray];
-        ls_uiGlyph(c, currXPos, currYPos, minX, maxX, minY, maxY, currGlyph, textColor);
-        
-        s32 kernAdvance = 0;
-        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(c, text.data[i], text.data[i+1]); }
-        
-        currXPos += (currGlyph->xAdv + kernAdvance);
-        
-        //NOTETODO VERY BAD!! need to determine
-        if(indexInGlyphArray == (u32)'\n') { currYPos -= c->currFont->pixelHeight; currXPos = xPos; }
-    }
-}
-
 void ls_uiGlyphString(UIContext *c, UIFont *font, s32 xPos, s32 yPos, 
                       s32 minX, s32 maxX, s32 minY, s32 maxY, 
                       utf32 text, Color textColor)
@@ -3272,21 +3245,23 @@ void ls_uiRender__(UIContext *c, u32 threadID)
         for(u32 commandIdx = 0; commandIdx < count; commandIdx++)
         {
             RenderCommand *curr = (RenderCommand *)ls_stackPop(currLayer);
-            s32 xPos          = curr->x;
-            s32 yPos          = curr->y;
-            s32 w             = curr->w;
-            s32 h             = curr->h;
+            s32 xPos                = curr->x;
+            s32 yPos                = curr->y;
+            s32 w                   = curr->w;
+            s32 h                   = curr->h;
             
-            s32 minX          = curr->minX;
-            s32 maxX          = curr->maxX;
-            s32 minY          = curr->minY;
-            s32 maxY          = curr->maxY;
+            s32 minX                = curr->minX;
+            s32 maxX                = curr->maxX;
+            s32 minY                = curr->minY;
+            s32 maxY                = curr->maxY;
             
-            Color bkgColor    = curr->bkgColor;
-            Color borderColor = curr->borderColor;
-            Color textColor   = curr->textColor;
+            Color bkgColor          = curr->bkgColor;
+            Color borderColor       = curr->borderColor;
+            Color textColor         = curr->textColor;
             
-            UIFont *font      = curr->selectedFont;
+            UIFont *font            = curr->selectedFont;
+            
+            ScrollableRegion scroll = curr->scroll;
             
             switch(curr->type)
             {
