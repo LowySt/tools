@@ -262,6 +262,8 @@ struct UIMenu
     //TODO: Add bkgColor and textColor
 };
 
+struct ScrollableRegion { s32 x, y, w = -1, h = -1, diffX, diffY; };
+
 const char* RenderCommandTypeAsString[] = {
     "UI_RC_INVALID",
     "UI_RC_TEXTBOX",
@@ -297,6 +299,7 @@ struct RenderCommand
 {
     RenderCommandType  type;
     
+    //NOTE: The render coord. after threaded dispatch
     s32 x, y, w, h;
     s32 minX, minY, maxX, maxY;
     
@@ -316,7 +319,15 @@ struct RenderCommand
     
     UIFont *selectedFont;
     
+    //NOTE: The original rect, before threaded dispatch
     s32 oX, oY, oW, oH;
+    
+    //NOTE: If the command renders inside a scrollable region
+    //      This are set to the rect of that region.
+    //      (Which might be larger/smaller than the actual BackBuffer/Window)
+    //
+    //      Width/Height default to -1, when there is NO scrollable region.
+    ScrollableRegion scroll;
 };
 
 
@@ -354,6 +365,8 @@ struct UIContext
     Color invTextColor;
     
     UIScissor scissor;
+    
+    ScrollableRegion scroll;
     
     u64 *currentFocus;
     u64 *lastFocus;
@@ -412,6 +425,8 @@ void       ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs);
 void       ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f);
 
 void       ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer);
+void       ls_uiStartScrollableRegion(UIContext *c, s32 x, s32 y, s32 width, s32 height);
+void       ls_uiEndScrollableRegion(UIContext *c);
 
 void       ls_uiFocusChange(UIContext *cxt, u64 *focus);
 b32        ls_uiInFocus(UIContext *cxt, void *p);
@@ -1096,6 +1111,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     AssertMsg(zLayer < 3, "zLayer is invalid. A function call did an oopsie\n");
     
     command.selectedFont = c->currFont;
+    command.scroll       = c->scroll;
     
     __ls_RenderRect commandRect = { command.x, command.y, command.w, command.h };
     
@@ -1162,6 +1178,12 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     
     AssertMsg(FALSE, "Should never reach this case!\n");
 }
+
+void ls_uiStartScrollableRegion(UIContext *c, s32 x, s32 y, s32 width, s32 height)
+{ c->scroll = { x, y, width, height, 0, 0 }; }
+
+void ls_uiEndScrollableRegion(UIContext *c)
+{ c->scroll = { 0, 0, -1, -1, 0, 0 }; }
 
 //TODO:NOTE: Scissors are busted. A smaller scissor doesn't check if it is inside it's own parent!
 void ls_uiPushScissor(UIContext *cxt, s32 x, s32 y, s32 w, s32 h)
@@ -1789,6 +1811,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
     
     s32 maxLines = strMaxH / lineHeight;
     
+    //TODO: SIMD this?
     u32 i = 0;
     if(box->caretLineIdx > maxLines) { 
         yOffset = box->caretLineIdx - maxLines;
@@ -1829,32 +1852,24 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
             code = line.data[lIdx];
             AssertMsg(code <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
             
-#ifdef _DEBUG
-            if(code == (char32_t)'\n')
-            {
-                ls_uiFillRect(c, currXPos+4, currYPos-2, 10, 14, minX, maxX, minY, maxY, RGB(200, 10, 10));
+            Color actualColor = textColor;
+            UIGlyph *currGlyph = &c->currFont->glyph[code];
+            
+            //TODO: Pretty inefficient to keep redrawing the background all the time.
+            if(box->isSelecting && (box->selectBeginLine <= lineIdx) && (box->selectEndLine >= lineIdx)
+               && (box->selectBeginIdx <= i) && (box->selectEndIdx > i))
+            { 
+                actualColor = invTextColor;
+                ls_uiFillRect(c, currXPos, currYPos, currGlyph->xAdv, lineHeight-vertGlyphOff, 
+                              minX, maxX, minY, maxY, c->invWidgetColor);
             }
-            else
-#endif
-            {
-                Color actualColor = textColor;
-                UIGlyph *currGlyph = &c->currFont->glyph[code];
-                
-                //TODO: Pretty inefficient to keep redrawing the background all the time.
-                if(box->isSelecting && (box->selectBeginLine <= lineIdx) && (box->selectEndLine >= lineIdx)
-                   && (box->selectBeginIdx <= i) && (box->selectEndIdx > i))
-                { 
-                    actualColor = invTextColor;
-                    ls_uiFillRect(c, currXPos, currYPos, currGlyph->xAdv, lineHeight-vertGlyphOff, 
-                                  minX, maxX, minY, maxY, c->invWidgetColor);
-                }
-                
-                ls_uiGlyph(c, currXPos, currYPos+vertGlyphOff, minX, maxX, minY, maxY, currGlyph, actualColor);
-                
-                s32 kernAdvance = 0;
-                if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
-                currXPos += (currGlyph->xAdv + kernAdvance);
-            }
+            
+            ls_uiGlyph(c, currXPos, currYPos+vertGlyphOff, minX, maxX, minY, maxY, currGlyph, actualColor);
+            
+            s32 kernAdvance = 0;
+            if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
+            currXPos += (currGlyph->xAdv + kernAdvance);
+            
         }
         
         if(((lineIdx == box->caretLineIdx) && cIdx == line.len)) { caretX = currXPos-3; }
