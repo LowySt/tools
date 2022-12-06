@@ -319,9 +319,6 @@ struct RenderCommand
     
     UIFont *selectedFont;
     
-    //NOTE: The original rect, before threaded dispatch
-    s32 oX, oY, oW, oH;
-    
     //NOTE: If the command renders inside a scrollable region
     //      This are set to the rect of that region.
     //      (Which might be larger/smaller than the actual BackBuffer/Window)
