@@ -229,6 +229,7 @@ utf32  ls_utf32FromAscii(char *s);
 utf32  ls_utf32FromAscii(char *s, u32 len);
 void   ls_utf32FromAscii_t(utf32 *dst, char *src);
 void   ls_utf32FromAscii_t(utf32 *dst, char *src, u32 len);
+void   ls_utf32FromUTF8_t(utf32 *dst, utf8 src);
 utf32  ls_utf32FromUTF8(utf8 src);
 utf32  ls_utf32FromUTF32(const char32_t *s);
 void   ls_utf32FromUTF32_t(utf32 *dst, const char32_t *s);
@@ -2032,12 +2033,13 @@ void ls_utf32FromAscii_t(utf32 *dst, char *src)
     ls_utf32FromAscii_t(dst, src, len);
 }
 
-utf32 ls_utf32FromUTF8(u8 *src, u32 byteLen)
+void ls_utf32FromUTF8_t(utf32 *dst, u8 *src, u32 len)
 {
-    u32 len = ls_utf8Len(src, byteLen);
+    AssertMsg(dst, "Destination pointer is null");
+    AssertMsg(src, "Source pointer is null");
+    AssertMsg(dst->size >= len, "Destination string is not big enough");
     
-    utf32 result = ls_utf32Alloc(len);
-    result.len = len;
+    dst->len = len;
     
     u8 *At = src;
     for(u32 utf32_index = 0, utf8_index = 0; utf32_index < len; utf32_index++)
@@ -2048,7 +2050,7 @@ utf32 ls_utf32FromUTF8(u8 *src, u32 byteLen)
         
         if(c0 <= 0x7F)
         {
-            result.data[utf32_index] = (u32)c0;
+            dst->data[utf32_index] = (u32)c0;
             utf8_index += 1;
         }
         else if(c0 <= 0xDF)
@@ -2060,7 +2062,7 @@ utf32 ls_utf32FromUTF8(u8 *src, u32 byteLen)
             
             u32 codepoint = u32((byte1 << 6) | byte2);
             
-            result.data[utf32_index] = codepoint;
+            dst->data[utf32_index] = codepoint;
             utf8_index += 2;
         }
         else if(c0 <= 0xEF)
@@ -2074,7 +2076,7 @@ utf32 ls_utf32FromUTF8(u8 *src, u32 byteLen)
             
             u32 codepoint = u32((byte1 << 12) | (byte2 << 6) | byte3);
             
-            result.data[utf32_index] = codepoint;
+            dst->data[utf32_index] = codepoint;
             utf8_index += 3;
         }
         else if(c0 <= 0xF7)
@@ -2090,10 +2092,18 @@ utf32 ls_utf32FromUTF8(u8 *src, u32 byteLen)
             
             u32 codepoint = u32((byte1 << 18) | (byte2 << 12) | (byte3 << 6) | byte4);
             
-            result.data[utf32_index] = codepoint;
+            dst->data[utf32_index] = codepoint;
             utf8_index += 4;
         }
     }
+}
+
+utf32 ls_utf32FromUTF8(u8 *src, u32 byteLen)
+{
+    u32 len = ls_utf8Len(src, byteLen);
+    utf32 result = ls_utf32Alloc(len);
+    
+    ls_utf32FromUTF8_t(&result, src, len);
     
     return result;
     
