@@ -1207,20 +1207,22 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
 
 void ls_uiStartScrollableRegion(UIContext *c, ScrollableRegion *scroll)
 { 
-    AssertMsg(FALSE, "Need to fix scrolling relative to page size");
-    
     Input *UserInput = &c->UserInput;
+    
+    const s32 maxSteps = 10;
+    s32 totalHeight = (scroll->y - scroll->minY);
+    s32 pixelsPerStep = totalHeight / maxSteps;
+    
     s32 deltaY = 0;
-    if(KeyPressOrRepeat(keyMap::F8)) deltaY -= 10;
-    if(KeyPressOrRepeat(keyMap::F7)) deltaY += 10;
+    if(KeyPressOrRepeat(keyMap::F8)) deltaY -= pixelsPerStep;
+    if(KeyPressOrRepeat(keyMap::F7)) deltaY += pixelsPerStep;
     
     scroll->deltaY += deltaY;
     scroll->maxX    = scroll->maxX;
     scroll->minY    = scroll->minY;
     
-    s32 scrollBarH = 30;
-    if(scroll->deltaY < (-(scroll->h - scrollBarH - 4))) scroll->deltaY = -(scroll->h - scrollBarH - 4);
-    if(scroll->deltaY > 0)                               scroll->deltaY = 0;
+    if(scroll->deltaY < -totalHeight) scroll->deltaY = -totalHeight;
+    if(scroll->deltaY > 0)            scroll->deltaY = 0;
     
     c->scroll = *scroll;
     
@@ -3699,10 +3701,17 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     ls_uiBorderedRect(c, scrollRectX, yPos, 16, h, threadRect, {});
                     
                     //NOTE: Calculate current scrollbar position
-                    s32 scrollBarH = 30;
-                    s32 scrollBarY = (yPos + h - scrollBarH) + scroll.deltaY;
+                    s32 scrollBarH   = 30;
+                    s32 usableHeight = h - 4;
+                    s32 totalHeight  = scroll.y - scroll.minY;
                     
-                    ls_uiFillRect(c, scrollRectX+2, scrollBarY-2, 12, scrollBarH, threadRect, {}, c->borderColor);
+                    s32 scrollBarYOff = ((f32)-scroll.deltaY / (f32)totalHeight) * usableHeight;
+                    s32 scrollBarY    = (yPos + h) - scrollBarYOff;
+                    
+                    if(scrollBarY < yPos+2)   scrollBarY = yPos+2;
+                    if(scrollBarY > yPos+h-2-scrollBarH) scrollBarY = yPos+h-2-scrollBarH;
+                    
+                    ls_uiFillRect(c, scrollRectX+2, scrollBarY, 12, scrollBarH, threadRect, {}, c->borderColor);
                 } break;
                 
                 default: { 
