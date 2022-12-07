@@ -1994,29 +1994,6 @@ s32 ls_uiGlyphStringLen(UIContext *c, UIFont *font, utf32 text)
     return totalLen;
 }
 
-s32 ls_uiGlyphStringFit(UIContext *c, utf32 text, s32 maxLen)
-{
-    AssertMsg(c, "Context is null\n");
-    AssertMsg(c->currFont, "Current Font is null\n");
-    
-    s32 totalLen = 0;
-    for(s32 i = text.len-1; i > 0; i--)
-    {
-        u32 indexInGlyphArray = text.data[i];
-        AssertMsg(indexInGlyphArray <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
-        
-        UIGlyph *currGlyph = &c->currFont->glyph[indexInGlyphArray];
-        
-        s32 kernAdvance = 0;
-        if(i > 0) { kernAdvance = ls_uiGetKernAdvance(c, text.data[i-1], text.data[i]); }
-        
-        totalLen += (currGlyph->xAdv + kernAdvance);
-        if(totalLen >= maxLen) { return i; }
-    }
-    
-    return 0;
-}
-
 s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
 {
     AssertMsg(c, "Context is null\n");
@@ -2231,7 +2208,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         u32 lineLength     = index-realOffset;
         
         utf32 currLine    = { box->text.data + realOffset, lineLength, lineLength };
-        u32 maxBeginIndex = ls_uiGlyphStringFit(c, currLine, viewAddWidth);
+        u32 maxBeginIndex = ls_uiGlyphStringFit(c, c->currFont, currLine, viewAddWidth);
         
         box->viewBeginIdx = maxBeginIndex;
         
