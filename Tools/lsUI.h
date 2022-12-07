@@ -78,8 +78,8 @@ typedef u32 Color;
 
 union UIRect
 {
-    struct { s32 minX, maxX, minY, maxY; };
-    struct { s32 x, y, w, h; };
+    struct { s32 minX, minY, maxX, maxY; };
+    struct { s32 x,    y,    w,    h; };
 };
 
 struct UIGlyph
@@ -274,6 +274,7 @@ const char* RenderCommandTypeAsString[] = {
     "UI_RC_INVALID",
     "UI_RC_TEXTBOX",
     "UI_RC_LABEL",
+    "UI_RC_LABEL_LAYOUT",
     "UI_RC_BUTTON",
     "UI_RC_LISTBOX",
     "UI_RC_LISTBOX_ARR",
@@ -291,6 +292,7 @@ enum RenderCommandType
     
     UI_RC_TEXTBOX = 1,
     UI_RC_LABEL,
+    UI_RC_LABEL_LAYOUT,
     UI_RC_BUTTON,
     UI_RC_LISTBOX,
     UI_RC_LISTBOX_ARR,
@@ -461,6 +463,7 @@ b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w
 void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer);
 void       ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer);
 s32        ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer);
+s32        ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, s32 zLayer);
 
 void       ls_uiTextBoxClear(UIContext *c, UITextBox *box);
 void       ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s);
@@ -1969,6 +1972,46 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
     }
 }
 
+//TODO: Should I always pass a layout, and maybe only keep an helper when I want no layout, so the layout region
+//      would just be the entire window???
+void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UIRect layout,
+                              UIRect threadRect, ScrollableRegion scroll, utf32 text, Color textColor)
+{
+    AssertMsg(c, "Context is null\n");
+    AssertMsg(font, "Passed font is null\n");
+    
+    //TODO: If we are in a scrollable region, can we pre-skip things outside the region???
+    s32 currXPos = layout.x - scroll.deltaX;
+    s32 currYPos = layout.y - scroll.deltaY;
+    for(u32 i = 0; i < text.len; i++)
+    {
+        u32 indexInGlyphArray = text.data[i];
+        AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        
+        if(indexInGlyphArray == (u32)'\n') {
+            currYPos -= font->pixelHeight;
+            currXPos = layout.x - scroll.deltaX;
+            continue;
+        }
+        
+        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
+        ls_uiGlyph(c, currXPos, currYPos, threadRect, currGlyph, textColor);
+        
+        s32 kernAdvance = 0;
+        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
+        
+        s32 newAdvance = currGlyph->xAdv + kernAdvance;
+        if(currXPos + newAdvance > layout.maxX)
+        { 
+            currYPos -= font->pixelHeight; 
+            currXPos = layout.x - scroll.deltaX;
+            continue;
+        }
+        
+        currXPos += newAdvance;
+    }
+}
+
 //NOTE: Occupied pixel length of a glyph string
 //TODO: Take into consideration newlines inside a string.?
 //      Maybe instead make glyphstring only do 1 line at a time and push line responsibility outside?
@@ -2015,6 +2058,41 @@ s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
     }
     
     return 0;
+}
+
+UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOff)
+{
+    AssertMsg(c, "Context is null\n");
+    AssertMsg(font, "Passed Font is null\n");
+    
+    s32 currXOff = 0;
+    s32 currYOff = 0;
+    for(u32 i = 0; i < text.len; i++)
+    {
+        u32 indexInGlyphArray = text.data[i];
+        AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        
+        if(indexInGlyphArray == (u32)'\n') { currXOff = 0; currYOff -= font->pixelHeight; continue; }
+        
+        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
+        
+        s32 kernAdvance = 0;
+        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
+        
+        s32 newAdvance = currGlyph->xAdv + kernAdvance;
+        if(currXOff + newAdvance > maxXOff) { currXOff = 0; currYOff -= font->pixelHeight; continue; }
+        
+        currXOff += newAdvance;
+    }
+    
+    //NOTE: We need to remove the first line's occupancy
+    currYOff -= font->pixelHeight;
+    
+    //TODO: We need to not only record the real maximumXOff for the string (rather than the limit)
+    //      But we also don't really need a rect, just a V2 delta.
+    UIRect finalLayout = { 0, 0, maxXOff, currYOff };
+    
+    return finalLayout;
 }
 
 void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
@@ -2124,22 +2202,33 @@ void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLa
     ls_uiLabel(c, lab, xPos, yPos, zLayer);
 }
 
-s32 ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer)
+s32 ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer = 0)
 {
     AssertMsg(c, "Context pointer was null");
     AssertMsg(c->currFont, "No font was selected before sizing a label\n");
-#if 0
-    if(label.len == 0) { return; }
     
-    s32 width  = ls_uiGlyphStringLen(c, label);
-    s32 height = c->currFont->pixelHeight;
+    if(label.len == 0) { return 0; }
     
-    RenderCommand command = { UI_RC_LABEL, xPos, yPos, width, height };
+    //TODO: We are not using the layoutRegion.h value 
+    //      (Which is actually inverted from the meaning in the struct 
+    //       because text grows downward and Y grows upward)
+    //      So BE CAREFUL!!! the Y value in layoutRegion.h /layoutRegion.maxY is actually the MINIMUM Y!!!
+    s32 maxXOff = layoutRegion.w - layoutRegion.x;
+    UIRect deltaPos = ls_uiGlyphStringLayout(c, c->currFont, label, maxXOff);
+    
+    RenderCommand command = { UI_RC_LABEL_LAYOUT, layoutRegion.x, layoutRegion.y, layoutRegion.w, deltaPos.h };
     command.label = label;
     command.textColor = c->textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
-#endif
-    return 0;
+    
+    //TODO: I'm only returning the Y occupancy of the string. Should I return more since I have it?
+    return -deltaPos.h;
+}
+
+s32 ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, s32 zLayer = 0)
+{
+    utf32 lab = ls_utf32Constant(label);
+    return ls_uiLabelLayout(c, lab, layoutRegion, zLayer);
 }
 
 void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
@@ -3304,6 +3393,12 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 case UI_RC_LABEL:
                 {
                     ls_uiGlyphString(c, font, xPos, yPos, threadRect, scroll, curr->label, textColor);
+                } break;
+                
+                case UI_RC_LABEL_LAYOUT:
+                {
+                    UIRect layoutRegion = { xPos, yPos, w, h };
+                    ls_uiGlyphStringInLayout(c, font, layoutRegion, threadRect, scroll, curr->label, textColor);
                 } break;
                 
                 case UI_RC_TEXTBOX:
