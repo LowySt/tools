@@ -268,7 +268,13 @@ struct UIMenu
     //TODO: Add bkgColor and textColor
 };
 
-struct ScrollableRegion { s32 x, y, w = -1, h = -1, deltaX, deltaY; };
+struct ScrollableRegion
+{
+    s32 x, y, w = -1, h = -1; 
+    s32 deltaX, deltaY;
+    
+    s32 maxX, minY;
+};
 
 const char* RenderCommandTypeAsString[] = {
     "UI_RC_INVALID",
@@ -435,7 +441,7 @@ void       ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs);
 void       ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f);
 
 void       ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer);
-void       ls_uiStartScrollableRegion(UIContext *c, s32 x, s32 y, s32 width, s32 height);
+void       ls_uiStartScrollableRegion(UIContext *c, ScrollableRegion *scroll);
 void       ls_uiEndScrollableRegion(UIContext *c);
 
 void       ls_uiFocusChange(UIContext *c, u64 *focus);
@@ -895,7 +901,6 @@ UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, Render
             uiContext->renderGroups[i].RenderCommands[2] = ls_stackInit(sizeof(RenderCommand), 64);
         }
         
-        
         InitializeConditionVariable(&uiContext->startRender);
         InitializeCriticalSection(&uiContext->crit);
         
@@ -910,11 +915,10 @@ UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, Render
     }
     else
     {
-        uiContext->renderGroups[0].RenderCommands[0] = ls_stackInit(sizeof(RenderCommand), 512);
+        uiContext->renderGroups[0].RenderCommands[0] = ls_stackInit(sizeof(RenderCommand), 384);
         uiContext->renderGroups[0].RenderCommands[1] = ls_stackInit(sizeof(RenderCommand), 64);
         uiContext->renderGroups[0].RenderCommands[2] = ls_stackInit(sizeof(RenderCommand), 64);
     }
-    
     
     //NOTETODO This is initializing the first scissor, but is this good?
     //         Is this even necessary?
@@ -1201,30 +1205,31 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     AssertMsg(FALSE, "Should never reach this case!\n");
 }
 
-void ls_uiStartScrollableRegion(UIContext *c, s32 x, s32 y, s32 width, s32 height)
+void ls_uiStartScrollableRegion(UIContext *c, ScrollableRegion *scroll)
 { 
+    AssertMsg(FALSE, "Need to fix scrolling relative to page size");
+    
     Input *UserInput = &c->UserInput;
     s32 deltaY = 0;
     if(KeyPressOrRepeat(keyMap::F8)) deltaY -= 10;
     if(KeyPressOrRepeat(keyMap::F7)) deltaY += 10;
     
-    c->scroll.deltaY += deltaY;
+    scroll->deltaY += deltaY;
+    scroll->maxX    = scroll->maxX;
+    scroll->minY    = scroll->minY;
     
-    //TODO: Annoying to keep it here. Tried to move it in the rendering code, but it worked strange,
-    //      And also I was doing a copy left and right of the scroll settings, which doesn't make sense.
     s32 scrollBarH = 30;
-    if(c->scroll.deltaY < (-(height - scrollBarH - 4))) c->scroll.deltaY = -(height - scrollBarH - 4);
-    if(c->scroll.deltaY > 0)                            c->scroll.deltaY = 0;
+    if(scroll->deltaY < (-(scroll->h - scrollBarH - 4))) scroll->deltaY = -(scroll->h - scrollBarH - 4);
+    if(scroll->deltaY > 0)                               scroll->deltaY = 0;
     
-    if(c->scroll.w == -1) c->scroll = { x, y, width, height, 0, 0 };
-    else c->scroll = { x, y, width, height, c->scroll.deltaX, c->scroll.deltaY };
+    c->scroll = *scroll;
     
-    RenderCommand command = { UI_RC_SCROLLBAR, x, y, width, height };
+    RenderCommand command = { UI_RC_SCROLLBAR, scroll->x, scroll->y, scroll->w, scroll->h };
     ls_uiPushRenderCommand(c, command, 0);
 }
 
 void ls_uiEndScrollableRegion(UIContext *c)
-{ c->scroll = { 0, 0, -1, -1, 0, 0 }; }
+{ c->scroll = {}; }
 
 //TODO:NOTE: Scissors are busted. A smaller scissor doesn't check if it is inside it's own parent!
 void ls_uiPushScissor(UIContext *cxt, s32 x, s32 y, s32 w, s32 h)
@@ -2062,6 +2067,12 @@ s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
 
 UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOff)
 {
+    //TODO: Only one quirk remains, the y offset is determined based on the font height of the current element, 
+    //      which obviously generates too large gaps when the font becomes smaller from one call to the 
+    //      other and too small gaps when the font becomes bigger. The solution to this is to consider 
+    //      the y Position when rendering a glyph the top left of the glyph (rather than the bottom left), 
+    //      and subtract the font height to obtain the baseline. This way the y offset in layouting will 
+    //      correctly move the y coordinate of the next line below the current line, regardless of font size.
     AssertMsg(c, "Context is null\n");
     AssertMsg(font, "Passed Font is null\n");
     
