@@ -49,19 +49,22 @@ if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
 #define MiddleClear  ((!UserInput->Mouse.isMiddlePressed && !UserInput->Mouse.wasMiddlePressed))
 #define RightClear   ((!UserInput->Mouse.isRightPressed && !UserInput->Mouse.wasRightPressed))
 
+#define WheelRotated (UserInput->Mouse.isWheelRotated)
+#define WheelDeltaInPixels (UserInput->Mouse.wheelDelta)
 
-#define LeftClickIn(x,y,w,h)    (LeftClick   && MouseInRect(x, y, w, h))
-#define MiddleClickIn(x,y,w,h)  (MiddleClick && MouseInRect(x, y, w, h))
-#define RightClickIn(x,y,w,h)   (RightClick  && MouseInRect(x, y, w, h))
+#define LeftClickIn(x,y,w,h)       (LeftClick   && MouseInRect(x, y, w, h))
+#define MiddleClickIn(x,y,w,h)     (MiddleClick && MouseInRect(x, y, w, h))
+#define RightClickIn(x,y,w,h)      (RightClick  && MouseInRect(x, y, w, h))
 
-#define LeftHoldIn(x,y,w,h)     (LeftHold   && MouseInRect(x, y, w, h))
-#define MiddleHoldIn(x,y,w,h)   (MiddleHold && MouseInRect(x, y, w, h))
-#define RightHoldIn(x,y,w,h)    (RightHold  && MouseInRect(x, y, w, h))
+#define LeftHoldIn(x,y,w,h)        (LeftHold   && MouseInRect(x, y, w, h))
+#define MiddleHoldIn(x,y,w,h)      (MiddleHold && MouseInRect(x, y, w, h))
+#define RightHoldIn(x,y,w,h)       (RightHold  && MouseInRect(x, y, w, h))
 
-#define LeftUpIn(x,y,w,h)       (LeftUp   && MouseInRect(x, y, w, h))
-#define MiddleUpIn(x,y,w,h)     (MiddleUp && MouseInRect(x, y, w, h))
-#define RightUpIn(x,y,w,h)      (RightUp  && MouseInRect(x, y, w, h))
+#define LeftUpIn(x,y,w,h)          (LeftUp   && MouseInRect(x, y, w, h))
+#define MiddleUpIn(x,y,w,h)        (MiddleUp && MouseInRect(x, y, w, h))
+#define RightUpIn(x,y,w,h)         (RightUp  && MouseInRect(x, y, w, h))
 
+#define WheelRotatedIn(x, y, w, h) (WheelRotated && MouseInRect(x, y, w, h))
 
 
 
@@ -700,27 +703,25 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_LBUTTONDOWN:
         {
-            c->hasReceivedInput = TRUE;
-            
+            c->hasReceivedInput  = TRUE;
             Mouse->isLeftPressed = TRUE;
         } break;
         
         case WM_LBUTTONUP:
         {
-            c->hasReceivedInput = TRUE;
-            
+            c->hasReceivedInput  = TRUE;
             Mouse->isLeftPressed = FALSE;
         } break;
         
         case WM_RBUTTONDOWN:
         { 
-            c->hasReceivedInput = TRUE;
+            c->hasReceivedInput   = TRUE;
             Mouse->isRightPressed = TRUE; 
         } break;
         
         case WM_RBUTTONUP:
         { 
-            c->hasReceivedInput = TRUE; 
+            c->hasReceivedInput   = TRUE; 
             Mouse->isRightPressed = FALSE; 
         } break;
         
@@ -734,6 +735,13 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             
             //NOTE: MSDN says to return 0
             return 0;
+        } break;
+        
+        case WM_MOUSEWHEEL:
+        {
+            c->hasReceivedInput   = TRUE;
+            Mouse->wheelDelta     = GET_WHEEL_DELTA_WPARAM(w); //((s16)(w >> 16))*WHEEL_DELTA;
+            Mouse->isWheelRotated = TRUE;
         } break;
         
         case WM_DESTROY:
@@ -948,6 +956,7 @@ void ls_uiFrameBegin(UIContext *c)
     c->UserInput.Mouse.wasLeftPressed   = c->UserInput.Mouse.isLeftPressed;
     c->UserInput.Mouse.wasRightPressed  = c->UserInput.Mouse.isRightPressed;
     c->UserInput.Mouse.wasMiddlePressed = c->UserInput.Mouse.isMiddlePressed;
+    c->UserInput.Mouse.isWheelRotated   = FALSE;
     
     c->focusWasSetThisFrame = FALSE;
     c->lastFocus            = c->currentFocus;
@@ -991,6 +1000,7 @@ void ls_uiFrameBeginChild(UIContext *c)
     c->UserInput.Mouse.wasLeftPressed   = c->UserInput.Mouse.isLeftPressed;
     c->UserInput.Mouse.wasRightPressed  = c->UserInput.Mouse.isRightPressed;
     c->UserInput.Mouse.wasMiddlePressed = c->UserInput.Mouse.isMiddlePressed;
+    c->UserInput.Mouse.isWheelRotated   = FALSE;
     
     c->focusWasSetThisFrame = FALSE;
     c->lastFocus            = c->currentFocus;
@@ -1216,6 +1226,11 @@ void ls_uiStartScrollableRegion(UIContext *c, ScrollableRegion *scroll)
     s32 deltaY = 0;
     if(KeyPressOrRepeat(keyMap::F8)) deltaY -= pixelsPerStep;
     if(KeyPressOrRepeat(keyMap::F7)) deltaY += pixelsPerStep;
+    if(WheelRotatedIn(scroll->x, scroll->y, scroll->w, scroll->h)) 
+    { 
+        ls_printf("Wheel Delta: %d", WheelDeltaInPixels);
+        deltaY += WheelDeltaInPixels;
+    }
     
     scroll->deltaY += deltaY;
     scroll->maxX    = scroll->maxX;

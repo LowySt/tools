@@ -48,12 +48,16 @@ struct MouseInput
     s32 currPosX, currPosY;
     s32 prevPosX, prevPosY;
     
+    s32 wheelDelta;
+    
     b32 isLeftPressed;
     b32 wasLeftPressed;
     b32 isMiddlePressed;
     b32 wasMiddlePressed;
     b32 isRightPressed;
     b32 wasRightPressed;
+    
+    b32 isWheelRotated;
 };
 
 
