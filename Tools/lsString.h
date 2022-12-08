@@ -162,6 +162,7 @@ void  ls_utf8FromInt_t(utf8 *s, s64 x);
 utf8  ls_utf8FromF64(f64 x);
 void  ls_utf8FromF64_t(utf8 *s, f64 x);
 utf8  ls_utf8Constant(const u8 *p);
+utf8  ls_utf8Constant(u8 *p, u32 byteLen);
 
 //Manage
 void  ls_utf8Clear(utf8 *s);
@@ -238,6 +239,8 @@ void   ls_utf32FromInt_t(utf32 *s, s64 x);
 utf32  ls_utf32FromF64(f64 x);
 void   ls_utf32FromF64_t(utf32 *s, f64 x);
 utf32  ls_utf32Constant(const char32_t *p);
+
+u32    ls_utf32CharFromUtf8(utf8 src, u32 characterIndex);
 
 //Manage
 void   ls_utf32Clear(utf32 *s);
@@ -1714,15 +1717,38 @@ utf8 ls_utf8Constant(const u8 *p)
     u8 *At = (u8 *)p;
     while(*At)
     {
-        if(*At <= 0x7F)        { byteLen += 1; At += 1; }
-        else if(*At <= 0x7FF)  { byteLen += 2; At += 2; }
-        else if(*At <= 0xFFFF) { byteLen += 3; At += 3; }
-        else                   { byteLen += 4; At += 4; }
+        if(*At <= 0x7F)      { byteLen += 1; At += 1; }
+        else if(*At <= 0xDF) { byteLen += 2; At += 2; }
+        else if(*At <= 0xEF) { byteLen += 3; At += 3; }
+        else if(*At <= 0xF7) { byteLen += 4; At += 4; }
+        else { AssertMsg(FALSE, "Unsupported utf8 character... This should never be reached?\n"); }
         
         len += 1;
     }
     
     utf8 result = { (u8 *)p, len, byteLen, byteLen };
+    return result;
+}
+
+utf8 ls_utf8Constant(u8 *p, s32 byteLen)
+{
+    u32 copyByteLen = byteLen;
+    u32 len = 0;
+    u8 *At = (u8 *)p;
+    while(byteLen)
+    {
+        if(*At <= 0x7F)      { byteLen -= 1; At += 1; }
+        else if(*At <= 0xDF) { byteLen -= 2; At += 2; }
+        else if(*At <= 0xEF) { byteLen -= 3; At += 3; }
+        else if(*At <= 0xF7) { byteLen -= 4; At += 4; }
+        else { AssertMsg(FALSE, "Unsupported utf8 character... This should never be reached?\n"); }
+        
+        AssertMsg(byteLen >= 0, "The utf8 constant seems malformed\n");
+        
+        len += 1;
+    }
+    
+    utf8 result = { (u8 *)p, len, copyByteLen, copyByteLen };
     return result;
 }
 
@@ -2161,6 +2187,74 @@ utf32 ls_utf32Constant(const char32_t *p)
     
     utf32 Result = { (u32 *)p, len, len };
     return Result;
+}
+
+u32 ls_utf32CharFromUtf8(utf8 src, u32 characterIndex)
+{
+    u8 *At = src.data;
+    
+    u32 utf8_index    = 0;
+    u32 utf8_char_idx = 0;
+    while(utf8_index < src.byteLen)
+    {
+        //TODO: We are assuming a well formed utf8 string... Need error detection.
+        u8 c0 = At[utf8_index];
+        
+        if(utf8_char_idx == characterIndex)
+        {
+            if(c0 <= 0x7F)
+            {
+                return (u32)c0;
+            }
+            else if(c0 <= 0xDF)
+            {
+                u8 c1 = At[utf8_index + 1];
+                
+                u16 byte1 = u16(c0 & 0x1F);
+                u16 byte2 = u16(c1 & 0x3F);
+                
+                u32 codepoint = u32((byte1 << 6) | byte2);
+                return codepoint;
+            }
+            else if(c0 <= 0xEF)
+            {
+                u8 c1 = At[utf8_index + 1];
+                u8 c2 = At[utf8_index + 2];
+                
+                u16 byte1 = u16(c0 & 0x0F);
+                u16 byte2 = u16(c1 & 0x3F);
+                u16 byte3 = u16(c2 & 0x3F);
+                
+                u32 codepoint = u32((byte1 << 12) | (byte2 << 6) | byte3);
+                return codepoint;
+            }
+            else if(c0 <= 0xF7)
+            {
+                u8 c1 = At[utf8_index + 1];
+                u8 c2 = At[utf8_index + 2];
+                u8 c3 = At[utf8_index + 3];
+                
+                u16 byte1 = u16(c0 & 0x07);
+                u16 byte2 = u16(c1 & 0x3F);
+                u16 byte3 = u16(c2 & 0x3F);
+                u16 byte4 = u16(c3 & 0x3F);
+                
+                u32 codepoint = u32((byte1 << 18) | (byte2 << 12) | (byte3 << 6) | byte4);
+                return codepoint;
+            }
+        }
+        
+        if(c0 <= 0x7F)      { utf8_index += 1; }
+        else if(c0 <= 0xDF) { utf8_index += 2; }
+        else if(c0 <= 0xEF) { utf8_index += 3; }
+        else if(c0 <= 0xF7) { utf8_index += 4; }
+        
+        utf8_char_idx += 1;
+    }
+    
+    AssertMsg(FALSE, "The utf8 codepoint could not be converted"
+              "(The index was never found?). Need better error detection.\n");
+    return 0;
 }
 
 //  Create/Destroy  //
