@@ -2061,9 +2061,9 @@ void ls_utf32FromAscii_t(utf32 *dst, char *src)
 
 void ls_utf32FromUTF8_t(utf32 *dst, u8 *src, u32 len)
 {
-    AssertMsg(dst, "Destination pointer is null");
-    AssertMsg(src, "Source pointer is null");
-    AssertMsg(dst->size >= len, "Destination string is not big enough");
+    AssertMsg(dst, "Destination pointer is null\n");
+    AssertMsg(src, "Source pointer is null\n");
+    AssertMsg(dst->size >= len, "Destination string is not big enough\n");
     
     dst->len = len;
     
@@ -2072,7 +2072,7 @@ void ls_utf32FromUTF8_t(utf32 *dst, u8 *src, u32 len)
     {
         u8 c0 = At[utf8_index];
         
-        AssertMsg(c0 <= 0xF7, "UTF8 first byte is out of range [0x0 - 0xF7]");
+        AssertMsg(c0 <= 0xF7, "UTF8 first byte is out of range [0x0 - 0xF7]\n");
         
         if(c0 <= 0x7F)
         {
