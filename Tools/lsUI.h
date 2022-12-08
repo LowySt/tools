@@ -2372,13 +2372,13 @@ void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, 
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
-void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer)
+void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer = 0)
 {
     utf32 lab = ls_utf32Constant(label);
     ls_uiLabel(c, lab, xPos, yPos, textColor, zLayer);
 }
 
-void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer)
+void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer = 0)
 {
     AssertMsg(c, "Context pointer was null");
     AssertMsg(c->currFont, "No font was selected before sizing a label\n");
@@ -2394,13 +2394,13 @@ void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
-void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer)
+void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer = 0)
 {
     utf8 lab = ls_utf8Constant(label);
     ls_uiLabel(c, lab, xPos, yPos, textColor, zLayer);
 }
 
-s32  ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textColor, s32 zLayer)
+s32 ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textColor, s32 zLayer = 0)
 {
     AssertMsg(c, "Context pointer was null");
     AssertMsg(c->currFont, "No font was selected before sizing a label\n");
@@ -2423,7 +2423,7 @@ s32  ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color text
     return -deltaPos.h;
 }
 
-s32  ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, Color textColor, s32 zLayer)
+s32 ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, Color textColor, s32 zLayer = 0)
 {
     utf32 lab = ls_utf32Constant(label);
     return ls_uiLabelLayout(c, lab, layoutRegion, textColor, zLayer);
