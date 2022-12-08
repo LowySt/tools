@@ -137,7 +137,7 @@ struct UIContext;
 
 enum UIButtonStyle { UIBUTTON_TEXT, UIBUTTON_TEXT_NOBORDER, UIBUTTON_NO_TEXT, UIBUTTON_BMP };
 
-typedef b32(*ButtonProc)(UIContext *cxt, void *data);
+typedef b32(*ButtonProc)(UIContext *c, void *userData);
 struct UIButton
 {
     UIButtonStyle style;
@@ -156,7 +156,7 @@ struct UIButton
 };
 
 
-typedef b32(*TextBoxProc)(UIContext *, void *);
+typedef b32(*TextBoxProc)(UIContext *, void *userData);
 struct UITextBox
 {
     utf32 text;
@@ -315,6 +315,7 @@ enum RenderCommandType
     UI_RC_SCROLLBAR,
 };
 
+//TODO: RenderCommand is getting big.
 struct RenderCommand
 {
     RenderCommandType  type;
@@ -475,8 +476,17 @@ b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w
 
 void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer);
 void       ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer);
+void       ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer);
+void       ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer);
 s32        ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer);
 s32        ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, s32 zLayer);
+
+void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
+void       ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
+void       ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
+void       ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
+s32        ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textColor, s32 zLayer);
+s32        ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, Color textColor, s32 zLayer);
 
 void       ls_uiTextBoxClear(UIContext *c, UITextBox *box);
 void       ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s);
@@ -908,9 +918,9 @@ UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, Render
     {
         for(u32 i = 0; i < THREAD_COUNT; i++)
         {
-            uiContext->renderGroups[i].RenderCommands[0] = ls_stackInit(sizeof(RenderCommand), 384);
-            uiContext->renderGroups[i].RenderCommands[1] = ls_stackInit(sizeof(RenderCommand), 64);
-            uiContext->renderGroups[i].RenderCommands[2] = ls_stackInit(sizeof(RenderCommand), 64);
+            uiContext->renderGroups[i].RenderCommands[0] = ls_stackInit(sizeof(RenderCommand), 512);
+            uiContext->renderGroups[i].RenderCommands[1] = ls_stackInit(sizeof(RenderCommand), 256);
+            uiContext->renderGroups[i].RenderCommands[2] = ls_stackInit(sizeof(RenderCommand), 256);
         }
         
         InitializeConditionVariable(&uiContext->startRender);
@@ -927,9 +937,9 @@ UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, Render
     }
     else
     {
-        uiContext->renderGroups[0].RenderCommands[0] = ls_stackInit(sizeof(RenderCommand), 384);
-        uiContext->renderGroups[0].RenderCommands[1] = ls_stackInit(sizeof(RenderCommand), 64);
-        uiContext->renderGroups[0].RenderCommands[2] = ls_stackInit(sizeof(RenderCommand), 64);
+        uiContext->renderGroups[0].RenderCommands[0] = ls_stackInit(sizeof(RenderCommand), 512);
+        uiContext->renderGroups[0].RenderCommands[1] = ls_stackInit(sizeof(RenderCommand), 256);
+        uiContext->renderGroups[0].RenderCommands[2] = ls_stackInit(sizeof(RenderCommand), 256);
     }
     
     //NOTETODO This is initializing the first scissor, but is this good?
@@ -2344,6 +2354,79 @@ s32 ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, s
 {
     utf32 lab = ls_utf32Constant(label);
     return ls_uiLabelLayout(c, lab, layoutRegion, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer = 0)
+{
+    AssertMsg(c, "Context pointer was null");
+    AssertMsg(c->currFont, "No font was selected before sizing a label\n");
+    
+    if(label.len == 0) { return; }
+    
+    s32 width  = ls_uiGlyphStringLen(c, c->currFont, label);
+    s32 height = c->currFont->pixelHeight;
+    
+    RenderCommand command = { UI_RC_LABEL32, xPos, yPos, width, height };
+    command.label32 = label;
+    command.textColor = textColor;
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer)
+{
+    utf32 lab = ls_utf32Constant(label);
+    ls_uiLabel(c, lab, xPos, yPos, textColor, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer)
+{
+    AssertMsg(c, "Context pointer was null");
+    AssertMsg(c->currFont, "No font was selected before sizing a label\n");
+    
+    if(label.len == 0) { return; }
+    
+    s32 width  = ls_uiGlyphStringLen_8(c, c->currFont, label);
+    s32 height = c->currFont->pixelHeight;
+    
+    RenderCommand command = { UI_RC_LABEL8, xPos, yPos, width, height };
+    command.label8 = label;
+    command.textColor = textColor;
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer)
+{
+    utf8 lab = ls_utf8Constant(label);
+    ls_uiLabel(c, lab, xPos, yPos, textColor, zLayer);
+}
+
+s32  ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textColor, s32 zLayer)
+{
+    AssertMsg(c, "Context pointer was null");
+    AssertMsg(c->currFont, "No font was selected before sizing a label\n");
+    
+    if(label.len == 0) { return 0; }
+    
+    //TODO: We are not using the layoutRegion.h value 
+    //      (Which is actually inverted from the meaning in the struct 
+    //       because text grows downward and Y grows upward)
+    //      So BE CAREFUL!!! the Y value in layoutRegion.h /layoutRegion.maxY is actually the MINIMUM Y!!!
+    s32 maxXOff = layoutRegion.w - layoutRegion.x;
+    UIRect deltaPos = ls_uiGlyphStringLayout(c, c->currFont, label, maxXOff);
+    
+    RenderCommand command = { UI_RC_LABEL_LAYOUT, layoutRegion.x, layoutRegion.y, layoutRegion.w, deltaPos.h };
+    command.label32 = label;
+    command.textColor = textColor;
+    ls_uiPushRenderCommand(c, command, zLayer);
+    
+    //TODO: I'm only returning the Y occupancy of the string. Should I return more since I have it?
+    return -deltaPos.h;
+}
+
+s32  ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, Color textColor, s32 zLayer)
+{
+    utf32 lab = ls_utf32Constant(label);
+    return ls_uiLabelLayout(c, lab, layoutRegion, textColor, zLayer);
 }
 
 void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
