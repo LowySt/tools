@@ -391,7 +391,8 @@ MemoryBlock *windows_memAddBlock(size_t size)
     //NOTETODO: @DebugOnlyData
     Memory.totalBytesVirtualAlloc += allocationSize;
     
-    AssertMsg(mem, "VirtualAlloc of block failed\n");
+    LogMsg(mem, "VirtualAlloc of block failed\n");
+    Assert(mem);
     
     MemoryBlock *last = Memory.last;
     
@@ -418,8 +419,10 @@ MemoryBlock *windows_memAddBlock(size_t size)
     //NOTETODO: @DebugOnlyData
     Memory.totalBytesVirtualAlloc += maxSlices*sizeof(MemoryList)*2;
     
-    AssertMsg(header.busy, "VirtualAlloc of busy list failed\n");
-    AssertMsg(header.free, "VirtualAlloc of free list failed\n");
+    LogMsg(header.busy, "VirtualAlloc of busy list failed\n");
+    LogMsg(header.free, "VirtualAlloc of free list failed\n");
+    Assert(header.busy);
+    Assert(header.free);
     
     //NOTE: Is u64 -> u32 allocation size a problem? Shouldn't be. Why is allocation Size u64?
     header.free[0] = { 0, 0, sizeof(MemoryBlock), (u32)(allocationSize - sizeof(MemoryBlock))};
@@ -448,7 +451,8 @@ void windows_addToBusy(MemoryBlock *b, MemoryList *slice)
 
 void *windows_sliceBlockIfNeeded(MemoryBlock *b, MemoryList *slice, size_t size)
 {
-    AssertMsg(slice->sliceSize >= size, "The passed slice can't contain the requested memory.\n");
+    LogMsg(slice->sliceSize >= size, "The passed slice can't contain the requested memory.\n");
+    Assert(slice->sliceSize >= size);
     
     void *Result = (void *)((u8 *)b + slice->relativePtr);
     
@@ -476,6 +480,10 @@ void *windows_sliceBlockIfNeeded(MemoryBlock *b, MemoryList *slice, size_t size)
     return Result;
 }
 
+//NOTE: We can't use the fancy AssertMsg and LogMsgF because if we fail during memory allocation
+//      It might be because we don't have enough memory and it will just cascade into an infinite
+//      recursion of memory allocations to allocate enough space for the stack trace (or the message to print)
+//      that always fails, because we are out of memory. So we just tell you. No fancy shit.
 void *windows_memAlloc(size_t size)
 {
     if(size == 0) { return 0x0; }
@@ -485,8 +493,11 @@ void *windows_memAlloc(size_t size)
     {
         InternalArena *Ar = &Memory.arenas[Memory.currArenaId];
         
-        AssertMsg(Ar->id == Memory.currArenaId, "The arena ID doesn't match the Memory currentArenaID.\n");
-        AssertMsg(Ar->used + size <= Ar->capacity, "Arena is out of space.\n");
+        LogMsg(Ar->id == Memory.currArenaId, "The arena ID doesn't match the Memory currentArenaID.\n");
+        Assert(Ar->id == Memory.currArenaId);
+        
+        LogMsg(Ar->used + size <= Ar->capacity, "Arena is out of space.\n");
+        Assert(Ar->used + size <= Ar->capacity);
         
         u8 *ResultPtr = (u8 *)Ar->data + Ar->used;
         Ar->used += size;
@@ -518,6 +529,7 @@ void *windows_memAlloc(size_t size)
         
         
         MemoryList *free = curr->free;
+        LogMsg(free != 0x0, "This assert was placed here for some reason, but I can't understand why.\n");
         Assert(free != 0x0); //NOTE: What? Why can't free be == 0 here????
         
         do
@@ -654,12 +666,13 @@ void *windows_createArena(u64 arenaSize, u32 *id)
     u32 arId = 0;
     
     for(u32 i = 0; i < MAX_ARENA_NUM; i++) { if(Memory.used[i] == FALSE) { found = TRUE; arId = i; break; } }
-    if(!found) { Assert(!"No More Arenas available"); }
+    if(!found) { LogMsg(FALSE, "No More Arenas available"); Assert(FALSE); }
     
     InternalArena *Ar = &Memory.arenas[arId];
     
     Ar->data = VirtualAlloc(NULL, arenaSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    AssertMsg(Ar->data, "VirtualAlloc failed.\n");
+    LogMsg(Ar->data, "VirtualAlloc failed.\n");
+    Assert(Ar->data);
     
     Ar->capacity = arenaSize;
     Ar->used     = 0;
