@@ -716,7 +716,7 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
         b32 isBinary = FALSE;
         maxLen = -1;
         
-        AssertMsg(i < destLen, "Buffer Overrun");
+        AssertMsg(i < destLen, "Buffer Overrun\n");
         
         // Just copy wathever is not a passed parameter
         if (*p != '%')

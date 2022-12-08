@@ -1254,8 +1254,6 @@ void ls_uiStartScrollableRegion(UIContext *c, ScrollableRegion *scroll)
     s32 pixelsPerStep = totalHeight / maxSteps;
     
     s32 deltaY = 0;
-    if(KeyPressOrRepeat(keyMap::F8)) deltaY -= pixelsPerStep;
-    if(KeyPressOrRepeat(keyMap::F7)) deltaY += pixelsPerStep;
     if(WheelRotatedIn(scroll->x, scroll->y, scroll->w, scroll->h)) { deltaY += WheelDeltaInPixels; }
     
     scroll->deltaY += deltaY;
