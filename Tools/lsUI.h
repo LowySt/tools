@@ -282,7 +282,8 @@ struct ScrollableRegion
 const char* RenderCommandTypeAsString[] = {
     "UI_RC_INVALID",
     "UI_RC_TEXTBOX",
-    "UI_RC_LABEL",
+    "UI_RC_LABEL8",
+    "UI_RC_LABEL32",
     "UI_RC_LABEL_LAYOUT",
     "UI_RC_BUTTON",
     "UI_RC_LISTBOX",
@@ -300,7 +301,8 @@ enum RenderCommandType
     UI_RC_INVALID = 0,
     
     UI_RC_TEXTBOX = 1,
-    UI_RC_LABEL,
+    UI_RC_LABEL8,
+    UI_RC_LABEL32,
     UI_RC_LABEL_LAYOUT,
     UI_RC_BUTTON,
     UI_RC_LISTBOX,
@@ -325,10 +327,12 @@ struct RenderCommand
     //      Maybe just match the ThreadID to the threadRect index in an array?
     UIRect threadRect;
     
+    //TODO: Should I pass the strings as pointers as well?
     union
     {
         UITextBox *textBox;
-        utf32      label;
+        utf32      label32;
+        utf8       label8;
         UIButton  *button;
         UIListBox *listBox;
         UISlider  *slider;
@@ -1160,7 +1164,10 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
             command.threadRect.minY = 0;
             command.threadRect.maxX = c->windowWidth;
             command.threadRect.maxY = c->windowHeight;
-            ls_stackPush(&c->renderGroups[0].RenderCommands[zLayer], (void *)&command);
+            
+            stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+            AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+            ls_stackPush(renderStack, (void *)&command);
             return;
         } break;
         
@@ -1173,7 +1180,10 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
                 command.threadRect.maxX = (c->width / 2)-1;
                 command.threadRect.maxY = c->height;
                 
-                ls_stackPush(&c->renderGroups[0].RenderCommands[zLayer], (void *)&command);
+                stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                
+                ls_stackPush(renderStack, (void *)&command);
                 return;
             }
             else if(ls_uiRectIsInside(commandRect, {(s32)(c->width / 2), 0, (s32)(c->width / 2), (s32)c->height}))
@@ -1183,7 +1193,10 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
                 command.threadRect.maxX = c->width;
                 command.threadRect.maxY = c->height;
                 
-                ls_stackPush(&c->renderGroups[1].RenderCommands[zLayer], (void *)&command);
+                stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                
+                ls_stackPush(renderStack, (void *)&command);
                 return;
             }
             else
@@ -1195,14 +1208,21 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
                 section.threadRect.minY = 0;
                 section.threadRect.maxX = (c->width / 2)-1;
                 section.threadRect.maxY = c->height;
-                ls_stackPush(&c->renderGroups[0].RenderCommands[zLayer], (void *)&section);
+                
+                stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                
+                ls_stackPush(renderStack, (void *)&section);
                 
                 section.threadRect.minX = (c->width / 2);
                 section.threadRect.minY = 0;
                 section.threadRect.maxX = c->width;
                 section.threadRect.maxY = c->height;
                 
-                ls_stackPush(&c->renderGroups[1].RenderCommands[zLayer], (void *)&section);
+                renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                
+                ls_stackPush(renderStack, (void *)&section);
                 
                 return;
             }
@@ -1226,11 +1246,7 @@ void ls_uiStartScrollableRegion(UIContext *c, ScrollableRegion *scroll)
     s32 deltaY = 0;
     if(KeyPressOrRepeat(keyMap::F8)) deltaY -= pixelsPerStep;
     if(KeyPressOrRepeat(keyMap::F7)) deltaY += pixelsPerStep;
-    if(WheelRotatedIn(scroll->x, scroll->y, scroll->w, scroll->h)) 
-    { 
-        ls_printf("Wheel Delta: %d", WheelDeltaInPixels);
-        deltaY += WheelDeltaInPixels;
-    }
+    if(WheelRotatedIn(scroll->x, scroll->y, scroll->w, scroll->h)) { deltaY += WheelDeltaInPixels; }
     
     scroll->deltaY += deltaY;
     scroll->maxX    = scroll->maxX;
@@ -1994,6 +2010,33 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
     }
 }
 
+void ls_uiGlyphString_8(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
+                        UIRect threadRect, ScrollableRegion scroll, utf8 text, Color textColor)
+{
+    AssertMsg(c, "Context is null\n");
+    AssertMsg(font, "Passed font is null\n");
+    
+    //TODO: If we are in a scrollable region, can we pre-skip things outside the region???
+    s32 currXPos = xPos - scroll.deltaX;
+    s32 currYPos = yPos - scroll.deltaY;
+    for(u32 i = 0; i < text.len; i++)
+    {
+        u32 indexInGlyphArray = ls_utf32CharFromUtf8(text, i);
+        AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        
+        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
+        ls_uiGlyph(c, currXPos, currYPos, threadRect, currGlyph, textColor);
+        
+        s32 kernAdvance = 0;
+        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
+        
+        currXPos += (currGlyph->xAdv + kernAdvance);
+        
+        //NOTETODO VERY BAD!! need to determine
+        if(indexInGlyphArray == (u32)'\n') { currYPos -= font->pixelHeight; currXPos = xPos + scroll.deltaX; }
+    }
+}
+
 //TODO: Should I always pass a layout, and maybe only keep an helper when I want no layout, so the layout region
 //      would just be the entire window???
 void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UIRect layout,
@@ -2046,6 +2089,28 @@ s32 ls_uiGlyphStringLen(UIContext *c, UIFont *font, utf32 text)
     for(u32 i = 0; i < text.len; i++)
     {
         u32 indexInGlyphArray = text.data[i];
+        AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        
+        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
+        
+        s32 kernAdvance = 0;
+        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
+        
+        totalLen += (currGlyph->xAdv + kernAdvance);
+    }
+    
+    return totalLen;
+}
+
+s32 ls_uiGlyphStringLen_8(UIContext *c, UIFont *font, utf8 text)
+{
+    AssertMsg(c, "Context is null\n");
+    AssertMsg(font, "Passed Font is null\n");
+    
+    s32 totalLen = 0;
+    for(u32 i = 0; i < text.len; i++)
+    {
+        u32 indexInGlyphArray = ls_utf32CharFromUtf8(text, i);
         AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
         
         UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
@@ -2218,8 +2283,8 @@ void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer = 0)
     s32 width  = ls_uiGlyphStringLen(c, c->currFont, label);
     s32 height = c->currFont->pixelHeight;
     
-    RenderCommand command = { UI_RC_LABEL, xPos, yPos, width, height };
-    command.label = label;
+    RenderCommand command = { UI_RC_LABEL32, xPos, yPos, width, height };
+    command.label32 = label;
     command.textColor = c->textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
 }
@@ -2227,6 +2292,28 @@ void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer = 0)
 void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer = 0)
 {
     utf32 lab = ls_utf32Constant(label);
+    ls_uiLabel(c, lab, xPos, yPos, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer = 0)
+{
+    AssertMsg(c, "Context pointer was null");
+    AssertMsg(c->currFont, "No font was selected before sizing a label\n");
+    
+    if(label.len == 0) { return; }
+    
+    s32 width  = ls_uiGlyphStringLen_8(c, c->currFont, label);
+    s32 height = c->currFont->pixelHeight;
+    
+    RenderCommand command = { UI_RC_LABEL8, xPos, yPos, width, height };
+    command.label8 = label;
+    command.textColor = c->textColor;
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer = 0)
+{
+    utf8 lab = ls_utf8Constant(label);
     ls_uiLabel(c, lab, xPos, yPos, zLayer);
 }
 
@@ -2245,7 +2332,7 @@ s32 ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer 
     UIRect deltaPos = ls_uiGlyphStringLayout(c, c->currFont, label, maxXOff);
     
     RenderCommand command = { UI_RC_LABEL_LAYOUT, layoutRegion.x, layoutRegion.y, layoutRegion.w, deltaPos.h };
-    command.label = label;
+    command.label32 = label;
     command.textColor = c->textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
     
@@ -3418,15 +3505,21 @@ void ls_uiRender__(UIContext *c, u32 threadID)
             switch(curr->type)
             {
                 
-                case UI_RC_LABEL:
+                case UI_RC_LABEL8:
                 {
-                    ls_uiGlyphString(c, font, xPos, yPos, threadRect, scroll, curr->label, textColor);
+                    //TODO: I don't like this.
+                    ls_uiGlyphString_8(c, font, xPos, yPos, threadRect, scroll, curr->label8, textColor);
+                } break;
+                
+                case UI_RC_LABEL32:
+                {
+                    ls_uiGlyphString(c, font, xPos, yPos, threadRect, scroll, curr->label32, textColor);
                 } break;
                 
                 case UI_RC_LABEL_LAYOUT:
                 {
                     UIRect layoutRegion = { xPos, yPos, w, h };
-                    ls_uiGlyphStringInLayout(c, font, layoutRegion, threadRect, scroll, curr->label, textColor);
+                    ls_uiGlyphStringInLayout(c, font, layoutRegion, threadRect, scroll, curr->label32, textColor);
                 } break;
                 
                 case UI_RC_TEXTBOX:
