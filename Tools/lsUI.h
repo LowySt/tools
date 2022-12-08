@@ -3333,7 +3333,7 @@ void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name,
     ls_arrayAppend(&menu->subMenus[subIdx].items, newItem);
 }
 
-b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
+b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 2)
 {
     Input *UserInput = &c->UserInput;
     b32 inputUse = FALSE;
@@ -3444,10 +3444,12 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     
     //NOTE: Only render when the bitmap is set!
     if(menu->closeWindow.bmpData)
-        inputUse |= ls_uiButton(c, &menu->closeWindow, closeX, y + 2, menu->closeWindow.bmpW, menu->closeWindow.bmpH);
+        inputUse |= ls_uiButton(c, &menu->closeWindow, closeX, y + 2, 
+                                menu->closeWindow.bmpW, menu->closeWindow.bmpH, 2);
     
     if(menu->minimize.bmpData)
-        inputUse |= ls_uiButton(c, &menu->minimize, minimizeX, y + 2, menu->closeWindow.bmpW, menu->closeWindow.bmpH);
+        inputUse |= ls_uiButton(c, &menu->minimize, minimizeX, y + 2, 
+                                menu->closeWindow.bmpW, menu->closeWindow.bmpH, 2);
     
     
     RenderCommand command = { UI_RC_MENU, x, y, w, h };
