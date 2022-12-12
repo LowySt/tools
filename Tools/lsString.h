@@ -149,12 +149,13 @@ void  ls_utf8FreeArr(utf8 *s, u32 arrSize);
 b32   ls_utf8AreEqual(utf8 a, utf8 b);
 void  ls_utf8Set(utf8 *toSet, utf8 source);
 
-u32   ls_utf8Len(u8 *src, u32 byteLen);
+u32   ls_utf8Len(u8 *src, s32 byteLen);
 
 utf8  ls_utf8FromAscii(char *s);
 utf8  ls_utf8FromAscii(char *s, u32 len);
 void  ls_utf8FromAscii_t(utf8 *dst, char *src);
 void  ls_utf8FromAscii_t(utf8 *dst, char *src, u32 len);
+utf8  ls_utf8FromUTF32(utf32 s);
 utf8  ls_utf8FromUTF32(const char32_t *s);
 void  ls_utf8FromUTF32_t(utf8 *dst, const char32_t *s);
 utf8  ls_utf8FromInt(s64 x);
@@ -189,6 +190,8 @@ s32   ls_utf8LeftFind(utf8 s, s32 offset, u32 c);
 s32   ls_utf8RightFind(utf8 s, u32 c);
 s32   ls_utf8RightFind(utf8 s, s32 offset, u32 c);
 s32   ls_utf8CountOccurrences(utf8 s, u32 c);
+
+b32   ls_utf8Contains(utf8 haystack, utf8 needle);
 
 //Merge
 utf8  ls_utf8Concat(utf8 s1, utf8 s2);
@@ -225,6 +228,8 @@ void   ls_utf32FreeArr(utf32 *s, u32 arrSize);
 b32    ls_utf32AreEqual(utf32 a, utf32 b);
 b32    ls_utf32AsciiAreEqual(utf32 a, string b);
 void   ls_utf32Set(utf32 *toSet, utf32 source);
+
+u32    ls_utf32Len(const char32_t *s);
 
 utf32  ls_utf32FromAscii(char *s);
 utf32  ls_utf32FromAscii(char *s, u32 len);
@@ -286,6 +291,7 @@ void   ls_utf32Prepend(utf32 *s1, utf32 s2);
 void   ls_utf32PrependChar(utf32 *s, u32 c);
 void   ls_utf32PrependCStr(utf32 *s, char *c);
 void   ls_utf32Append(utf32 *s1, utf32 s2);
+void   ls_utf32AppendWithSeparator(utf32 *s1, const char32_t *sep, utf32 s2);
 void   ls_utf32AppendChar(utf32 *s1, u32 c);
 void   ls_utf32AppendCStr(utf32 *s1, char *c);
 void   ls_utf32AppendNCStr(utf32 *s1, char *c, u32 len);
@@ -1463,16 +1469,18 @@ b32 ls_utf8AreEqual(utf8 a, utf8 b)
     return ls_memcmp(a.data, b.data, a.byteLen*sizeof(u8));
 }
 
-u32 ls_utf8Len(u8 *src, u32 byteLen)
+u32 ls_utf8Len(u8 *src, s32 byteLen)
 {
     u32 len = 0;
     u8 *At = (u8 *)src;
-    while(byteLen)
+    while(byteLen > 0)
     {
         if(*At <= 0x7F)        { byteLen -= 1; At  += 1; }
         else if(*At <= 0x7FF)  { byteLen -= 2; At  += 2; }
         else if(*At <= 0xFFFF) { byteLen -= 3; At  += 3; }
         else                   { byteLen -= 4; At  += 4; }
+        
+        AssertMsg(byteLen >= 0, "Malformed utf8_source or Byte Length.\n");
         
         len += 1;
     }
@@ -1541,6 +1549,83 @@ void ls_utf8FromAscii_t(utf8 *dst, char *src)
     
     u32 len = ls_len(src);
     ls_utf8FromAscii_t(dst, src, len);
+}
+
+utf8 ls_utf8FromUTF32(utf32 s)
+{
+    if(s.data == NULL) { return {}; }
+    
+    u32 byteLen = 0;
+    u32 len = s.len;
+    u32 *At = (u32 *)s.data;
+    while(len--)
+    {
+        if(*At <= 0x7F)        byteLen += 1;
+        else if(*At <= 0x7FF)  byteLen += 2;
+        else if(*At <= 0xFFFF) byteLen += 3;
+        else                   byteLen += 4;
+        
+        At  += 1;
+    }
+    
+    utf8 result = ls_utf8Alloc(byteLen);
+    result.byteLen = byteLen;
+    result.len = s.len;
+    
+    for(u32 utf32_index = 0, utf8_index = 0; utf32_index < s.len; utf32_index++)
+    {
+        u32 utf32_code = s.data[utf32_index];
+        
+        AssertMsg(utf32_code <= 0x10FFFF, "UTF32 codepoint outside valid range [0x0 - 0x10FFFF]");
+        
+        if(utf32_code <= 0x7F)
+        {
+            result.data[utf8_index] = (u8)utf32_code;
+            utf8_index += 1;
+        }
+        else if(utf32_code <= 0x7FF)
+        {
+            u16 base_bytes = (u16)utf32_code;
+            
+            u8 high = (u8)(((0x07C0 & base_bytes) >> 6) | 0xC0);
+            u8 low  = (u8)((0x003F  & base_bytes)       | 0x80);
+            
+            result.data[utf8_index]     = high;
+            result.data[utf8_index + 1] = low;
+            
+            utf8_index += 2;
+        }
+        else if(utf32_code <= 0xFFFF)
+        {
+            u16 base_bytes = (u16)utf32_code;
+            
+            u8 high = (u8)(((0xF000 & base_bytes) >> 12) | 0xE0);
+            u8 mid  = (u8)(((0x0FC0 & base_bytes) >> 6)  | 0x80);
+            u8 low  = (u8)((0x003F  & base_bytes)        | 0x80);
+            
+            result.data[utf8_index]     = high;
+            result.data[utf8_index + 1] = mid;
+            result.data[utf8_index + 2] = low;
+            
+            utf8_index += 3;
+        }
+        else if(utf32_code <= 0x10FFFF)
+        {
+            u8 high = (u8)(((0x001C0000 & utf32_code) >> 18) | 0xF0);
+            u8 midh = (u8)(((0x0003F000 & utf32_code) >> 12) | 0x80);
+            u8 midl = (u8)(((0x00000FC0 & utf32_code) >> 6)  | 0x80);
+            u8 low  = (u8)((0x0000003F  & utf32_code)        | 0x80);
+            
+            result.data[utf8_index]     = high;
+            result.data[utf8_index + 1] = midh;
+            result.data[utf8_index + 2] = midl;
+            result.data[utf8_index + 3] = low;
+            
+            utf8_index += 4;
+        }
+    }
+    
+    return result;
 }
 
 void ls_utf8FromUTF32_t(utf8 *dst, const char32_t *s)
@@ -1730,7 +1815,7 @@ utf8 ls_utf8Constant(const u8 *p)
     return result;
 }
 
-utf8 ls_utf8Constant(u8 *p, s32 byteLen)
+utf8 ls_utf8Constant(u8 *p, u32 byteLen)
 {
     u32 copyByteLen = byteLen;
     u32 len = 0;
@@ -1849,6 +1934,26 @@ s32 ls_utf8CountOccurrences(utf8 s, u32 c)
 {
     AssertMsg(FALSE, "Not implemented yet");
     return 0;
+}
+
+b32 ls_utf8Contains(utf8 haystack, utf8 needle)
+{
+    AssertMsg(haystack.data, "Haystack data is null\n");
+    AssertMsg(needle.data, "Needle data is null\n");
+    
+    u8 *At    = haystack.data;
+    u8 *Check = needle.data;
+    for(u32 i = 0; i < haystack.byteLen; i++)
+    {
+        if((haystack.byteLen - i) < needle.byteLen) { return FALSE; }
+        
+        if(At[i] == Check[0])
+        {
+            if(ls_memcmp(At + i, Check, needle.byteLen) == TRUE) { return TRUE; }
+        }
+    }
+    
+    return FALSE;
 }
 
 //Merge
@@ -2028,6 +2133,14 @@ void ls_utf32Set(utf32 *toSet, utf32 source)
     
     ls_memcpy(source.data, toSet->data, source.len*sizeof(u32));
     toSet->len = source.len;
+}
+
+u32 ls_utf32Len(const char32_t *s)
+{
+    u32 len = 0;
+    u32 *At = (u32 *)s;
+    while(*At) { len += 1; At += 1; }
+    return len;
 }
 
 
@@ -2884,6 +2997,28 @@ void ls_utf32Append(utf32 *s1, utf32 s2)
     
     ls_memcpy(s2.data, s1->data + s1->len, s2.len*4);
     s1->len += s2.len;
+}
+
+void ls_utf32AppendWithSeparator(utf32 *s1, const char32_t *sep, utf32 s2)
+{
+    AssertMsg(s1, "Base utf32 ptr is null\n");
+    AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsg(s2.data, "Input utf32 data is null\n");
+    AssertMsg(sep, "No separator was provided. Do we want to allow this?\n");
+    
+    u32 sepLen = 0;
+    u32 *At = (u32 *)sep;
+    while(*At != 0) { sepLen += 1; At += 1; }
+    
+    if(s1->len + s2.len + sepLen > s1->size)
+    {
+        u32 growSize = ((s1->len + s2.len + sepLen) - s1->size) + 32;
+        ls_utf32Grow(s1, growSize);
+    }
+    
+    ls_memcpy((void *)sep, s1->data + s1->len, sepLen*4);
+    ls_memcpy(s2.data, s1->data + s1->len + sepLen, s2.len*4);
+    s1->len += s2.len + sepLen;
 }
 
 void ls_utf32AppendChar(utf32 *s1, u32 c)

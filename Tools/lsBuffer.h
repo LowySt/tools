@@ -59,7 +59,6 @@ extern "C"
     u32    ls_bufferPeekData32(buffer *buff, void **dataOut);
     void   ls_bufferPeekDataClean(buffer *buff, void **dataOut, u32 numBytes);
     
-    
     u8     ls_bufferReadByte(buffer *buff);
     u16    ls_bufferReadWord(buffer *buff);
     u32    ls_bufferReadDWord(buffer *buff);
