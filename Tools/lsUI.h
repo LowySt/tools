@@ -474,19 +474,19 @@ UIButton   ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHol
 UIButton   ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold, void *userData);
 b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
 
-void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer);
-void       ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer);
-void       ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer);
-void       ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer);
-s32        ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer);
-s32        ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, s32 zLayer);
-
 void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
 void       ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
 void       ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
 void       ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
-s32        ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textColor, s32 zLayer);
-s32        ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, Color textColor, s32 zLayer);
+UIRect     ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textColor, s32 zLayer);
+UIRect     ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, Color textColor, s32 zLayer);
+
+void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer);
+void       ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer);
+void       ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer);
+void       ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer);
+UIRect     ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer);
+UIRect     ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, s32 zLayer);
 
 void       ls_uiTextBoxClear(UIContext *c, UITextBox *box);
 void       ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s);
@@ -2074,7 +2074,7 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UIRect layout,
         if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
         
         s32 newAdvance = currGlyph->xAdv + kernAdvance;
-        if(currXPos + newAdvance > layout.maxX)
+        if((currXPos + newAdvance) > (layout.x + layout.w))
         { 
             currYPos -= font->pixelHeight; 
             currXPos = layout.x - scroll.deltaX;
@@ -2166,6 +2166,7 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOf
     AssertMsg(c, "Context is null\n");
     AssertMsg(font, "Passed Font is null\n");
     
+    s32 largestXOff = 0;
     s32 currXOff = 0;
     s32 currYOff = 0;
     for(u32 i = 0; i < text.len; i++)
@@ -2184,14 +2185,12 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOf
         if(currXOff + newAdvance > maxXOff) { currXOff = 0; currYOff -= font->pixelHeight; continue; }
         
         currXOff += newAdvance;
+        if(largestXOff < currXOff) { largestXOff = currXOff; }
     }
     
-    //NOTE: We need to remove the first line's occupancy
-    currYOff -= font->pixelHeight;
+    s32 firstLineRemoved = currYOff - font->pixelHeight;
     
-    //TODO: We need to not only record the real maximumXOff for the string (rather than the limit)
-    //      But we also don't really need a rect, just a V2 delta.
-    UIRect finalLayout = { 0, 0, maxXOff, currYOff };
+    UIRect finalLayout = { currXOff, -currYOff, largestXOff, -firstLineRemoved};
     
     return finalLayout;
 }
@@ -2281,79 +2280,6 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h
     return inputUse;
 }
 
-void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    AssertMsg(c, "Context pointer was null");
-    AssertMsg(c->currFont, "No font was selected before sizing a label\n");
-    
-    if(label.len == 0) { return; }
-    
-    s32 width  = ls_uiGlyphStringLen(c, c->currFont, label);
-    s32 height = c->currFont->pixelHeight;
-    
-    RenderCommand command = { UI_RC_LABEL32, xPos, yPos, width, height };
-    command.label32 = label;
-    command.textColor = c->textColor;
-    ls_uiPushRenderCommand(c, command, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    utf32 lab = ls_utf32Constant(label);
-    ls_uiLabel(c, lab, xPos, yPos, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    AssertMsg(c, "Context pointer was null");
-    AssertMsg(c->currFont, "No font was selected before sizing a label\n");
-    
-    if(label.len == 0) { return; }
-    
-    s32 width  = ls_uiGlyphStringLen_8(c, c->currFont, label);
-    s32 height = c->currFont->pixelHeight;
-    
-    RenderCommand command = { UI_RC_LABEL8, xPos, yPos, width, height };
-    command.label8 = label;
-    command.textColor = c->textColor;
-    ls_uiPushRenderCommand(c, command, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    utf8 lab = ls_utf8Constant(label);
-    ls_uiLabel(c, lab, xPos, yPos, zLayer);
-}
-
-s32 ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer = 0)
-{
-    AssertMsg(c, "Context pointer was null");
-    AssertMsg(c->currFont, "No font was selected before sizing a label\n");
-    
-    if(label.len == 0) { return 0; }
-    
-    //TODO: We are not using the layoutRegion.h value 
-    //      (Which is actually inverted from the meaning in the struct 
-    //       because text grows downward and Y grows upward)
-    //      So BE CAREFUL!!! the Y value in layoutRegion.h /layoutRegion.maxY is actually the MINIMUM Y!!!
-    s32 maxXOff = layoutRegion.w - layoutRegion.x;
-    UIRect deltaPos = ls_uiGlyphStringLayout(c, c->currFont, label, maxXOff);
-    
-    RenderCommand command = { UI_RC_LABEL_LAYOUT, layoutRegion.x, layoutRegion.y, layoutRegion.w, deltaPos.h };
-    command.label32 = label;
-    command.textColor = c->textColor;
-    ls_uiPushRenderCommand(c, command, zLayer);
-    
-    //TODO: I'm only returning the Y occupancy of the string. Should I return more since I have it?
-    return -deltaPos.h;
-}
-
-s32 ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, s32 zLayer = 0)
-{
-    utf32 lab = ls_utf32Constant(label);
-    return ls_uiLabelLayout(c, lab, layoutRegion, zLayer);
-}
-
 void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer = 0)
 {
     AssertMsg(c, "Context pointer was null");
@@ -2398,12 +2324,12 @@ void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textCol
     ls_uiLabel(c, lab, xPos, yPos, textColor, zLayer);
 }
 
-s32 ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textColor, s32 zLayer = 0)
+UIRect ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textColor, s32 zLayer = 0)
 {
     AssertMsg(c, "Context pointer was null");
     AssertMsg(c->currFont, "No font was selected before sizing a label\n");
     
-    if(label.len == 0) { return 0; }
+    if(label.len == 0) { return {}; }
     
     //TODO: We are not using the layoutRegion.h value 
     //      (Which is actually inverted from the meaning in the struct 
@@ -2412,19 +2338,52 @@ s32 ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textC
     s32 maxXOff = layoutRegion.w - layoutRegion.x;
     UIRect deltaPos = ls_uiGlyphStringLayout(c, c->currFont, label, maxXOff);
     
-    RenderCommand command = { UI_RC_LABEL_LAYOUT, layoutRegion.x, layoutRegion.y, layoutRegion.w, deltaPos.h };
+    RenderCommand command = { UI_RC_LABEL_LAYOUT, layoutRegion.x, layoutRegion.y, maxXOff, deltaPos.h };
     command.label32 = label;
     command.textColor = textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
     
-    //TODO: I'm only returning the Y occupancy of the string. Should I return more since I have it?
-    return -deltaPos.h;
+    UIRect correctedDelta = { layoutRegion.x + deltaPos.x, layoutRegion.y - deltaPos.y, deltaPos.w, deltaPos.h };
+    return correctedDelta;
 }
 
-s32 ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, Color textColor, s32 zLayer = 0)
+UIRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, Color textColor, s32 zLayer = 0)
 {
     utf32 lab = ls_utf32Constant(label);
     return ls_uiLabelLayout(c, lab, layoutRegion, textColor, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer = 0)
+{
+    ls_uiLabel(c, label, xPos, yPos, c->textColor, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer = 0)
+{
+    utf32 lab = ls_utf32Constant(label);
+    ls_uiLabel(c, lab, xPos, yPos, c->textColor, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer = 0)
+{
+    ls_uiLabel(c, label, xPos, yPos, c->textColor, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer = 0)
+{
+    utf8 lab = ls_utf8Constant(label);
+    ls_uiLabel(c, lab, xPos, yPos, c->textColor, zLayer);
+}
+
+UIRect ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer = 0)
+{
+    return ls_uiLabelLayout(c, label, layoutRegion, c->textColor, zLayer);
+}
+
+UIRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, s32 zLayer = 0)
+{
+    utf32 lab = ls_utf32Constant(label);
+    return ls_uiLabelLayout(c, lab, layoutRegion, c->textColor, zLayer);
 }
 
 void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
@@ -2863,8 +2822,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         if(box->dtCaret >= 400) { box->dtCaret = 0; box->isCaretOn = !box->isCaretOn; }
         
         
-        if(box->postInput) 
-        { inputUse |= box->postInput(c, box->data); }
+        if(box->postInput && inputUse)
+        { box->postInput(c, box->data); }
     }
     
     RenderCommand command = {UI_RC_TEXTBOX, xPos, yPos, w, h, 0, 0, 0, 0, box, c->widgetColor, c->textColor};
