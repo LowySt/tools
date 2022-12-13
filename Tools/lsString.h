@@ -2302,6 +2302,7 @@ utf32 ls_utf32Constant(const char32_t *p)
     return Result;
 }
 
+//TODO: This function is fucking stupid. Why am I looking for the character, rathen than just fucking passing it?
 u32 ls_utf32CharFromUtf8(utf8 src, u32 characterIndex)
 {
     u8 *At = src.data;

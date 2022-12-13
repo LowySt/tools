@@ -241,6 +241,7 @@ struct UIMenuItem
 {
     utf32 name;
     
+    b32 isVisible;
     b32 isHot;
     ButtonProc onClick;
     void       *userData;
@@ -3265,6 +3266,7 @@ void ls_uiMenuAddItem(UIContext *c, UIMenu *menu, char32_t *name, ButtonProc onC
 {
     UIMenuItem newItem = {};
     newItem.name       = ls_utf32FromUTF32(name);
+    newItem.isVisible  = TRUE;
     newItem.onClick    = onClick;
     newItem.userData   = userData;
     ls_arrayAppend(&menu->items, newItem);
@@ -3275,6 +3277,7 @@ void ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonPro
     UIMenuItem newItem = {};
     
     newItem.name       = ls_utf32FromUTF32(name);
+    newItem.isVisible  = TRUE;
     newItem.onClick    = onClick;
     newItem.userData   = userData;
     ls_arrayAppend(&sub->items, newItem);
@@ -3285,6 +3288,7 @@ void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name,
     UIMenuItem newItem = {};
     
     newItem.name       = ls_utf32FromUTF32(name);
+    newItem.isVisible  = TRUE;
     newItem.onClick    = onClick;
     newItem.userData   = userData;
     ls_arrayAppend(&menu->subMenus[subIdx].items, newItem);
@@ -3335,7 +3339,9 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
             for(u32 j = 0; j < sub->items.count; j++)
             {
                 UIMenuItem *currItem = sub->items + j;
-                currItem->isHot    = FALSE;
+                if(!currItem->isVisible) continue; 
+                
+                currItem->isHot = FALSE;
                 
                 s32 itemX = subX;
                 s32 itemY = subY - (subH*(j+1));
@@ -3376,11 +3382,11 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     for(u32 i = 0; i < itemCount; i++)
     {
         UIMenuItem *item = menu->items + i;
-        item->isHot      = FALSE;
+        if(!item->isVisible) continue;
         
-        
+        item->isHot   = FALSE;
         s32 realIndex = i + subCount;
-        s32 subX = x + (realIndex*menu->itemWidth);
+        s32 subX      = x + (realIndex*menu->itemWidth);
         
         if(MouseInRect(subX, subY, subW, subH)) {
             item->isHot = TRUE;
