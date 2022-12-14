@@ -3395,8 +3395,7 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
             {
                 ls_uiFocusChange(c, 0);
                 menu->isOpen = FALSE;
-                item->onClick(c, item->userData);
-                inputUse = TRUE;
+                inputUse |= item->onClick(c, item->userData);
             }
         }
     }

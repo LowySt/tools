@@ -508,6 +508,7 @@ void ls_strNCopy(string src, string *dst, size_t size)
     u32 copySize = size;
     if(size > src.len) { copySize = src.len; }
     
+    //TODO: Should the alloc and then maybe grow change???
     if(dst->data == NULL) { *dst = ls_strAlloc(copySize); }
     
     if(dst->size < src.len)
