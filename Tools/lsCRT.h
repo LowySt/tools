@@ -828,9 +828,18 @@ s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_lis
             
             case 's':
             {
-                string tmp = va_arg(argList, string);
-                ls_memcpy(tmp.data, buff + i, tmp.len);
-                i += tmp.len;
+                if(isLong)
+                {
+                    utf32 tmp = va_arg(argList, utf32);
+                    ls_memcpy(tmp.data, buff + i, tmp.len*4);
+                    i += tmp.len*4;
+                }
+                else
+                {
+                    string tmp = va_arg(argList, string);
+                    ls_memcpy(tmp.data, buff + i, tmp.len);
+                    i += tmp.len;
+                }
             } break;
             
             case 'b':
