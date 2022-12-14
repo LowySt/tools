@@ -721,7 +721,7 @@ void ls_bufferReadIntoUTF32(buffer *buff, utf32 *s)
     
     if(s->size < strLen) { ls_utf32Free(s); }
     
-    if(!s->data) { *s = ls_bufferReadUTF32(buff); return; }
+    if(!s->data) { *s = ls_utf32Alloc(strLen + 8); }
     
     u8 *At = (u8 *)buff->data + buff->cursor;
     ls_memcpy(At, s->data, lenInBytes);
