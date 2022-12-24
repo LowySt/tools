@@ -8,15 +8,17 @@ struct Array
     u32 count;
     u32 cap;
     
-    T& operator[](u32 index)
+    T& operator[](s32 index)
     {
         AssertMsg(index < count, "Index out of bounds in Array<>\n"); //NOTE: Should this be a crash or an error?
+        AssertMsg(index >= 0, "Index is negative Array<>\n"); //NOTE: Should this be a crash or an error?
         return data[index];
     }
     
-    T* operator+(u32 index)
+    T* operator+(s32 index)
     {
         AssertMsg(index < count, "Index out of bounds in Array<>\n"); //NOTE: Should this be a crash or an error?
+        AssertMsg(index >= 0, "Index is negative Array<>\n"); //NOTE: Should this be a crash or an error?
         return data + index;
     }
 };
@@ -28,9 +30,9 @@ template<typename T> void     ls_arrayClear(Array<T> *a);
 template<typename T> void     ls_arrayGrow(Array<T> *a, u32 amount);
 
 template<typename T> u32      ls_arrayAppend(Array<T> *a, T val);
-template<typename T> void     ls_arrayInsert(Array<T> *a, T val, u32 index);
-template<typename T> void     ls_arraySet(Array<T> *a, T val, u32 index);
-template<typename T> void     ls_arrayRemove(Array<T> *a, u32 index);
+template<typename T> void     ls_arrayInsert(Array<T> *a, T val, s32 index);
+template<typename T> void     ls_arraySet(Array<T> *a, T val, s32 index);
+template<typename T> void     ls_arrayRemove(Array<T> *a, s32 index);
 
 template<typename T> b32      ls_arrayContains(Array<T> *a, T val);
 
@@ -87,8 +89,10 @@ u32 ls_arrayAppend(Array<T> *a, T val)
 }
 
 template<typename T>
-void ls_arrayInsert(Array<T> *a, T val, u32 index)
+void ls_arrayInsert(Array<T> *a, T val, s32 index)
 {
+    AssertMsg(index >= 0, "Index is negative Array<>\n");
+    
     if(a->count == a->cap) { grow(32); }
     size_t dataSize = sizeof(T);
     
@@ -101,15 +105,19 @@ void ls_arrayInsert(Array<T> *a, T val, u32 index)
 }
 
 template<typename T>
-void ls_arraySet(Array<T> *a, T val, u32 index)
+void ls_arraySet(Array<T> *a, T val, s32 index)
 {
+    AssertMsg(index >= 0, "Index is negative Array<>\n");
+    
     if(index > a->cap) { grow(index - a->cap + 1); }
     a->data[index] = val;
 }
 
 template<typename T>
-void ls_arrayRemove(Array<T> *a, u32 index)
+void ls_arrayRemove(Array<T> *a, s32 index)
 {
+    AssertMsg(index >= 0, "Index is negative Array<>\n");
+    
     size_t dataSize = sizeof(T);
     u32 numElements = a->count - index;
     ls_memcpy(a->data + index + 1, a->data + index, numElements*dataSize);
