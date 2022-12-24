@@ -461,7 +461,7 @@ Color      ls_uiAlphaBlend(Color source, Color dest);
 Color      ls_uiRGBAtoARGB(Color c);
 
 void       ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
-void       ls_uiHSeparator(UIContext *c, s32 y, u32 margins, u32 lineWidth, Color lineColor, s32 zLayer);
+void       ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
 
 UIButton   ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *userData);
 UIButton   ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold, void *userData);
@@ -1552,11 +1552,9 @@ void ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
-void ls_uiHSeparator(UIContext *c, s32 y, s32 margins, s32 lineWidth, Color lineColor, s32 zLayer = 0)
+void ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer = 0)
 {
-    s32 width = c->windowWidth - (margins*2);
-    
-    RenderCommand command = { UI_RC_SEPARATOR, margins, y, width, lineWidth };
+    RenderCommand command = { UI_RC_SEPARATOR, x, y, width, lineWidth };
     command.borderColor = lineColor;
     
     ls_uiPushRenderCommand(c, command, zLayer);
