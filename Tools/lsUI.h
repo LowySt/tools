@@ -3191,6 +3191,7 @@ b32 ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h
     
     RenderCommand command = { UI_RC_SLIDER, xPos, yPos, w, h };
     command.slider = slider;
+    command.borderColor = c->borderColor;
     
     ls_uiPushRenderCommand(c, command, 0);
     
@@ -3718,7 +3719,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     
                     Color rectColor = c->widgetColor;
                     rectColor = SetAlpha(rectColor, opacity);
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, scroll, rectColor);
+                    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, scroll, rectColor, borderColor);
                     
                     s32 strHeight = font->pixelHeight;
                     
