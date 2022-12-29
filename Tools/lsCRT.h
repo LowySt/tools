@@ -9,17 +9,23 @@
 
 #define DEBUG_LOC __FILE__ " : " __FUNCTION__
 
-void __internal_AssertMsg(const char *funcHeader, const char *message);
-#define AssertMsg(condition, msg) { if(!(condition)) __internal_AssertMsg(CAT3("[ASSERT]", __FUNCTION__, ": "), msg); }
+void __internal_logError(const char *funcHeader, const char *message);
+#define LogMsg(condition,msg) \
+{ if(!(condition)) __internal_logError(CAT3("[ERROR]", __FUNCTION__, ": "), msg); }
+
+void __internal_logErrorF(const char *funcHeader, const char *msgFormat, ...);
+#define LogMsgF(condition, msg, ...) \
+{ if(!(condition)) __internal_logErrorF(CAT3("[ERROR]", __FUNCTION__, ": "), msg, __VA_ARGS__); }
 
 #define Assert(condition) if(!(condition)){DebugBreak();}
 
-void __internal_logError(const char *funcHeader, const char *message);
-#define LogMsg(condition, msg) { if(!(condition)) __internal_logError(CAT3("[ERROR]", __FUNCTION__, ": "), msg); }
+void __internal_AssertMsg(const char *funcHeader, const char *message);
+#define AssertMsg(condition,msg) \
+{ if(!(condition)) __internal_AssertMsg(CAT3("[ASSERT]", __FUNCTION__, ": "), msg); }
 
-void __internal_logErrorF(const char *funcHeader, const char *msgFormat, ...);
-#define LogMsgF(condition, msgFormat, ...) \
-{ if(!(condition)) __internal_logErrorF(CAT3("[ERROR]", __FUNCTION__, ": "), msgFormat, __VA_ARGS__); }
+void __internal_AssertMsgF(const char *funcHeader, const char *msgFormat, ...);
+#define AssertMsgF(condition, msg, ...) \
+{ if(!(condition)) __internal_AssertMsgF(CAT3("[ASSERT]", __FUNCTION__, ": "), msg, __VA_ARGS__); }
 
 #else
 #define AssertMsg(condition, msg) ((void)0);
@@ -1323,6 +1329,49 @@ void __internal_AssertMsg(const char * funcHeader, const char* message)
     
     windows_WriteConsole((char *)funcHeader, ls_len((char *)funcHeader));
     windows_WriteConsole((char *)message, ls_len((char *)message));
+    
+    for(u32 i = 0; i < frameCount; i++)
+    {
+        SymFromAddr(process, (u64)(frames[i]), 0, symbol);
+        
+        if(ls_strncmp(symbol->Name, "WinMain", symbol->NameLen) == 0)
+        {
+            windows_WriteConsole("\n", 1);
+            break;
+        }
+        
+        windows_WriteConsole(symbol->Name, symbol->NameLen);
+        windows_WriteConsole("\n", 1);
+    }
+    
+    DebugBreak();
+}
+
+void __internal_AssertMsgF(const char *funcHeader, const char *msgFormat, ...)
+{
+    va_list argList;
+    va_start(argList, msgFormat);
+    
+    char buff[512] = {};
+    
+    s32 msgLen = ls_vsprintf(buff, 512, msgFormat, argList);
+    
+    va_end(argList);
+    
+    void *frames[8];
+    u16   frameCount;
+    SYMBOL_INFO  *symbol;
+    
+    HANDLE process = GetCurrentProcess();
+    SymInitialize(process, NULL, TRUE);
+    
+    frameCount           = RtlCaptureStackBackTrace(2, 8, frames, NULL);
+    symbol               = (SYMBOL_INFO *)ls_alloc(sizeof(SYMBOL_INFO) + 256 * sizeof(char));
+    symbol->MaxNameLen   = 255;
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+    
+    windows_WriteConsole((char *)funcHeader, ls_len((char *)funcHeader));
+    windows_WriteConsole((char *)buff, msgLen);
     
     for(u32 i = 0; i < frameCount; i++)
     {
