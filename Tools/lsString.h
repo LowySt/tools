@@ -163,7 +163,7 @@ void  ls_utf8FromInt_t(utf8 *s, s64 x);
 utf8  ls_utf8FromF64(f64 x);
 void  ls_utf8FromF64_t(utf8 *s, f64 x);
 utf8  ls_utf8Constant(const u8 *p);
-utf8  ls_utf8Constant(u8 *p, u32 byteLen);
+utf8  ls_utf8Constant(const u8 *p, u32 byteLen);
 
 //Manage
 void  ls_utf8Clear(utf8 *s);
@@ -1816,7 +1816,7 @@ utf8 ls_utf8Constant(const u8 *p)
     return result;
 }
 
-utf8 ls_utf8Constant(u8 *p, u32 byteLen)
+utf8 ls_utf8Constant(const u8 *p, u32 byteLen)
 {
     u32 copyByteLen = byteLen;
     u32 len = 0;
