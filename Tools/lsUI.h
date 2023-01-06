@@ -1262,9 +1262,6 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
         if(LeftHold) { scroll->isHeld = TRUE; }
     }
     
-    const s32 maxSteps = 100;
-    s32 factor = totalHeight / maxSteps;
-    
     s32 deltaY = 0;
     if(!scroll->isHeld && WheelRotatedIn(scroll->x, scroll->y, scroll->w, scroll->h)) { deltaY += WheelDeltaInPixels; }
     else if(scroll->isHeld)
