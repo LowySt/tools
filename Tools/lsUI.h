@@ -270,6 +270,8 @@ struct UIScrollableRegion
     s32 deltaX, deltaY;
     
     s32 maxX, minY;
+    
+    b32 isHeld;
 };
 
 const char* RenderCommandTypeAsString[] = {
@@ -1243,12 +1245,32 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
 { 
     Input *UserInput = &c->UserInput;
     
-    const s32 maxSteps = 10;
-    s32 totalHeight = (scroll->y - scroll->minY);
-    s32 pixelsPerStep = totalHeight / maxSteps;
+    if(LeftUp) { scroll->isHeld = FALSE; }
+    
+    s32 usableHeight  = scroll->h - 4;
+    s32 totalHeight   = (scroll->y - scroll->minY);
+    s32 scrollBarYOff = ((f32)-scroll->deltaY / (f32)totalHeight) * usableHeight;
+    s32 scrollBarX    = scroll->x + scroll->w - 14;
+    s32 scrollBarY    = scroll->y + scroll->h - scrollBarYOff - 30;
+    
+    //TODO: Do mouse capture like in the slider??
+    if(MouseInRect(scrollBarX, scrollBarY, 12, 30))
+    {
+        if(LeftHold) { scroll->isHeld = TRUE; }
+    }
+    
+    const s32 maxSteps = 100;
+    s32 factor = totalHeight / maxSteps;
     
     s32 deltaY = 0;
-    if(WheelRotatedIn(scroll->x, scroll->y, scroll->w, scroll->h)) { deltaY += WheelDeltaInPixels; }
+    if(!scroll->isHeld && WheelRotatedIn(scroll->x, scroll->y, scroll->w, scroll->h)) { deltaY += WheelDeltaInPixels; }
+    else if(scroll->isHeld)
+    {
+        s32 mouseDeltaY = (c->UserInput.Mouse.prevPosY - c->UserInput.Mouse.currPosY);
+        s32 scaledDeltaY = (s32)(((f64)mouseDeltaY / (f64)scroll->h)*(f64)totalHeight);
+        
+        deltaY = -scaledDeltaY;
+    }
     
     scroll->deltaY += deltaY;
     scroll->maxX    = scroll->maxX;
