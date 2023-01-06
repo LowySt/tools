@@ -526,6 +526,8 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
     MouseInput *Mouse = &c->UserInput.Mouse;
     Input *UserInput  = &c->UserInput;
     
+    //static b32 mouseTracking = FALSE;
+    
     switch (msg)
     {
         case WM_ERASEBKGND: return TRUE; break;
@@ -560,7 +562,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                 c->UserInput.Mouse.isRightPressed   = FALSE;
                 c->UserInput.Mouse.wasRightPressed  = FALSE;
             }
-        }
+        } break;
         
         case WM_PAINT:
         {
@@ -734,8 +736,31 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             Mouse->isRightPressed = FALSE; 
         } break;
         
+        /*
+        case WM_MOUSELEAVE:
+        {
+            mouseTracking = FALSE;
+            
+            c->UserInput.Mouse.isLeftPressed    = FALSE;
+            c->UserInput.Mouse.isMiddlePressed  = FALSE;
+            c->UserInput.Mouse.isRightPressed   = FALSE;
+        } break;
+        */
         case WM_MOUSEMOVE:
         {
+            /*
+            if(!mouseTracking) 
+            {
+                TRACKMOUSEEVENT tme;
+                tme.cbSize = sizeof(tme);
+                tme.hwndTrack = h;
+                tme.dwFlags = TME_LEAVE;
+                //tme.dwHoverTime = HOVER_DEFAULT;
+                TrackMouseEvent(&tme);
+                mouseTracking = TRUE;
+            }
+            */
+            
             POINTS currMouseClient = *((POINTS *)&l);
             Mouse->currPosX = currMouseClient.x;
             Mouse->currPosY = c->windowHeight - currMouseClient.y;

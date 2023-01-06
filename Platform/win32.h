@@ -1511,6 +1511,21 @@ SYNCHRONIZE)
             UINT uiLengthDrawn;
         } DRAWTEXTPARAMS, *LPDRAWTEXTPARAMS;
         
+        
+        typedef struct tagTRACKMOUSEEVENT {
+            DWORD cbSize;
+            DWORD dwFlags;
+            HWND  hwndTrack;
+            DWORD dwHoverTime;
+        } TRACKMOUSEEVENT, *LPTRACKMOUSEEVENT;
+        
+#define TME_HOVER       0x00000001
+#define TME_LEAVE       0x00000002
+#define TME_NONCLIENT   0x00000010
+#define TME_QUERY       0x40000000
+#define TME_CANCEL      0x80000000
+#define HOVER_DEFAULT   0xFFFFFFFF
+        
         /* size of a device name string */
 #define CCHDEVICENAME 32
         
@@ -3092,6 +3107,8 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         int      ShowCursor(BOOL bShow);
         SHORT    GetAsyncKeyState(int vKey);
         
+        BOOL     TrackMouseEvent(LPTRACKMOUSEEVENT lpEventTrack);
+        
         BOOL     ScreenToClient(HWND hWnd, LPPOINT lpPoint);
         BOOL     ClientToScreen(HWND hWnd, LPPOINT lpPoint);
         BOOL     DragDetect(HWND hwnd, POINT pt);
@@ -3391,6 +3408,16 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
 #else
 #define WM_MOUSELAST                    0x0209
 #endif /* (_WIN32_WINNT >= 0x0600) */
+        
+#if((_WIN32_WINNT >= 0x0400) || (WINVER >= 0x0500))
+#define WM_MOUSEHOVER                   0x02A1
+#define WM_MOUSELEAVE                   0x02A3
+#endif
+#if(WINVER >= 0x0500)
+#define WM_NCMOUSEHOVER                 0x02A0
+#define WM_NCMOUSELEAVE                 0x02A2
+#endif /* WINVER >= 0x0500 */
+        
         
 #if(_WIN32_WINNT >= 0x0400)
         //Value for rolling one detent
