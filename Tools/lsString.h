@@ -185,11 +185,11 @@ utf8 *ls_utf8Split(utf8 s, u32 *outNum, utf8 delim);
 utf8 *ls_utf8Split(utf8 s, u32 *outNum, const u8 *delim);
 utf8 *ls_utf8Split(utf8 s, u32 *outNum, u32 character);
 
-s32   ls_utf8LeftFind(utf8 s, u32 c);
-s32   ls_utf8LeftFind(utf8 s, s32 offset, u32 c);
-s32   ls_utf8RightFind(utf8 s, u32 c);
-s32   ls_utf8RightFind(utf8 s, s32 offset, u32 c);
-s32   ls_utf8CountOccurrences(utf8 s, u32 c);
+s32   ls_utf8LeftFind(utf8 s, u8 c[4]);
+s32   ls_utf8LeftFind(utf8 s, s32 offset, u8 c[4]);
+s32   ls_utf8RightFind(utf8 s, u8 c[4]);
+s32   ls_utf8RightFind(utf8 s, s32 offset, u8 c[4]);
+s32   ls_utf8CountOccurrences(utf8 s, u8 c[4]);
 
 b32   ls_utf8Contains(utf8 haystack, utf8 needle);
 
@@ -1911,27 +1911,77 @@ utf8 *ls_utf8Split(utf8 s, u32 *outNum, u32 character)
     return 0;
 }
 
-s32 ls_utf8LeftFind(utf8 s, u32 c)
+s32 ls_utf8LeftFind(utf8 s, u8 c[4])
+{
+    AssertMsg(s.data, "UTF8 string data is null.\n");
+    AssertMsg(c[0] <= 0xF7, "UTF8 first byte is out of range [0x0 - 0xF7]\n");
+    
+    s8 codepointLen = 0;
+    if     (c[0] <= 0x7F) codepointLen = 1;
+    else if(c[0] <= 0xDF) codepointLen = 2;
+    else if(c[0] <= 0xEF) codepointLen = 3;
+    else                  codepointLen = 4;
+    
+    u8 *At = s.data;
+    s32 i  = 0;
+    while(i < s.len)
+    {
+        if(*At == c[0])
+        {
+            if(ls_memcmp(At, c, codepointLen) == TRUE) { return i; }
+        }
+        
+        if     (*At <= 0x7F) { i += 1; At += 1; }
+        else if(*At <= 0xDF) { i += 2; At += 2; }
+        else if(*At <= 0xEF) { i += 3; At += 3; }
+        else                 { i += 4; At += 4; }
+    }
+    
+    return -1;
+}
+
+s32 ls_utf8LeftFind(utf8 s, s32 offset, u8 c[4])
+{
+    AssertMsg(s.data, "UTF8 string data is null.\n");
+    AssertMsg(c[0] <= 0xF7, "UTF8 first byte is out of range [0x0 - 0xF7]\n");
+    
+    s8 codepointLen = 0;
+    if     (c[0] <= 0x7F) codepointLen = 1;
+    else if(c[0] <= 0xDF) codepointLen = 2;
+    else if(c[0] <= 0xEF) codepointLen = 3;
+    else                  codepointLen = 4;
+    
+    u8 *At = s.data + offset;
+    s32 i  = 0;
+    while(i < s.len)
+    {
+        if(*At == c[0])
+        {
+            if(ls_memcmp(At, c, codepointLen) == TRUE) { return i; }
+        }
+        
+        if     (*At <= 0x7F) { i += 1; At += 1; }
+        else if(*At <= 0xDF) { i += 2; At += 2; }
+        else if(*At <= 0xEF) { i += 3; At += 3; }
+        else                 { i += 4; At += 4; }
+    }
+    
+    return -1;
+}
+
+s32 ls_utf8RightFind(utf8 s, u8 c[4])
 {
     AssertMsg(FALSE, "Not implemented yet");
     return 0;
 }
-s32 ls_utf8LeftFind(utf8 s, s32 offset, u32 c)
+
+s32 ls_utf8RightFind(utf8 s, s32 offset, u8 c[4])
 {
     AssertMsg(FALSE, "Not implemented yet");
     return 0;
 }
-s32 ls_utf8RightFind(utf8 s, u32 c)
-{
-    AssertMsg(FALSE, "Not implemented yet");
-    return 0;
-}
-s32 ls_utf8RightFind(utf8 s, s32 offset, u32 c)
-{
-    AssertMsg(FALSE, "Not implemented yet");
-    return 0;
-}
-s32 ls_utf8CountOccurrences(utf8 s, u32 c)
+
+s32 ls_utf8CountOccurrences(utf8 s, u8 c[4])
 {
     AssertMsg(FALSE, "Not implemented yet");
     return 0;
