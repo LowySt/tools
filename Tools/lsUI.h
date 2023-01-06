@@ -1247,14 +1247,17 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
     
     if(LeftUp) { scroll->isHeld = FALSE; }
     
-    s32 usableHeight  = scroll->h - 4;
-    s32 totalHeight   = (scroll->y - scroll->minY);
+    //NOTE: Calculate current scrollbar position
+    s32 scrollBarH    = 30;
+    s32 usableHeight  = scroll->h - 4 - scrollBarH;
+    s32 totalHeight   = scroll->y - scroll->minY;
+    
     s32 scrollBarYOff = ((f32)-scroll->deltaY / (f32)totalHeight) * usableHeight;
+    s32 scrollBarY    = (scroll->y + scroll->h - 4) - scrollBarYOff - scrollBarH;
     s32 scrollBarX    = scroll->x + scroll->w - 14;
-    s32 scrollBarY    = scroll->y + scroll->h - scrollBarYOff - 30;
     
     //TODO: Do mouse capture like in the slider??
-    if(MouseInRect(scrollBarX, scrollBarY, 12, 30))
+    if(MouseInRect(scrollBarX, scrollBarY, 12, scrollBarH))
     {
         if(LeftHold) { scroll->isHeld = TRUE; }
     }
@@ -3844,15 +3847,15 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 {
                     //TODO: Differentiate between horizontal and vertical scrollbars
                     s32 scrollRectX = xPos + w - 16;
-                    ls_uiBorderedRect(c, scrollRectX, yPos, 16, h, threadRect, scissor, {});
+                    ls_uiBorderedRect(c, scrollRectX, yPos, 16, h-1, threadRect, scissor, {});
                     
                     //NOTE: Calculate current scrollbar position
                     s32 scrollBarH   = 30;
-                    s32 usableHeight = h - 4;
+                    s32 usableHeight = h - 4 - scrollBarH;
                     s32 totalHeight  = scroll.y - scroll.minY;
                     
                     s32 scrollBarYOff = ((f32)-scroll.deltaY / (f32)totalHeight) * usableHeight;
-                    s32 scrollBarY    = (yPos + h) - scrollBarYOff;
+                    s32 scrollBarY    = (yPos + h - 4) - scrollBarYOff - scrollBarH;
                     
                     if(scrollBarY < yPos+2)   scrollBarY = yPos+2;
                     if(scrollBarY > yPos+h-2-scrollBarH) scrollBarY = yPos+h-2-scrollBarH;
