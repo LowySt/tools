@@ -465,8 +465,11 @@ Color      ls_uiRGBAtoARGB(Color c);
 void       ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
 void       ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
 
-UIButton   ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *userData);
-UIButton   ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold, void *userData);
+UIButton   ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *data);
+UIButton   ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold, void *data);
+UIButton   ls_uiButtonInit(UIButtonStyle s, const char32_t *text, ButtonProc onClick, ButtonProc onHold, void *data);
+void       ls_uiButtonInit(UIButton *b, UIButtonStyle s, utf32 t, ButtonProc onClick, ButtonProc onHold, void *data);
+void       ls_uiButtonInit(UIButton *, UIButtonStyle, char32_t *t, ButtonProc onClick, ButtonProc onHold, void *data);
 b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
 
 void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
@@ -2232,23 +2235,40 @@ s32 ls_uiSelectFontByFontSize(UIContext *c, UIFontSize fontSize)
     c->currFont = &c->fonts[fontSize]; return c->currFont->pixelHeight;
 }
 
-UIButton ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *userData)
+UIButton ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold = NULL, void *userData = NULL)
 {
     UIButton Result = {s, {}, 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
     return Result;
 }
 
-UIButton ls_uiButtonInit(UIButtonStyle s, const char32_t *text, ButtonProc onClick, ButtonProc onHold, void *userData)
+UIButton ls_uiButtonInit(UIButtonStyle s, const char32_t *text, ButtonProc onClick, ButtonProc onHold = NULL, void *userData = NULL)
 {
-    
     UIButton Result = {s, ls_utf32FromUTF32(text), 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
     return Result;
 }
 
-UIButton ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold, void *userData)
+UIButton ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold = NULL, void *userData = NULL)
 {
     UIButton Result = {s, text, 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
     return Result;
+}
+
+void ls_uiButtonInit(UIButton *b, UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold = NULL, void *userData = NULL)
+{
+    b->style   = s;
+    b->name    = text;
+    b->onClick = onClick;
+    b->onHold  = onHold;
+    b->data    = userData;
+}
+
+void ls_uiButtonInit(UIButton *b, UIButtonStyle s, char32_t *t, ButtonProc onClick, ButtonProc onHold = NULL, void *data = NULL)
+{
+    b->style   = s;
+    b->name    = ls_utf32FromUTF32(t);
+    b->onClick = onClick;
+    b->onHold  = onHold;
+    b->data    = data;
 }
 
 //TODO:Button autosizing width
