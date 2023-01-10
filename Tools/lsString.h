@@ -3225,7 +3225,7 @@ s64 ls_utf32ToInt(utf32 s)
     if(s.len == 0) { return 0; }
     
     char numBuff[64] = {};
-    AssertMsg(s.len < 64, "Source passed represents a number that contains too many digits.");
+    AssertMsgF(s.len < 64, "Source passed represents a number that contains too many digits (%d)\n", s.len);
     
     u32 i = 0;
     for(i = 0; i < s.len; i++)
