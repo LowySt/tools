@@ -2445,7 +2445,6 @@ void ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s)
     box->viewEndIdx = box->text.len;
 }
 
-
 void ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s)
 {
     ls_utf32Set(&box->text, s);
