@@ -276,6 +276,7 @@ utf32 *ls_utf32SeparateByNumber(utf32 s, u32 *outNum);
 utf32 *ls_utf32BreakBySpaceUntilDelimiter(utf32 s, u32 delimiter, u32 *numOfStrings);
 s32    ls_utf32LeftFind(utf32 s, u32 c);
 s32    ls_utf32LeftFind(utf32 s, s32 offset, u32 c);
+s32    ls_utf32LeftFind(utf32 s, utf32 needle);
 s32    ls_utf32RightFind(utf32 s, u32 c);
 s32    ls_utf32RightFind(utf32 s, s32 offset, u32 c);
 s32    ls_utf32CountOccurrences(utf32 s, u32 c);
@@ -2840,22 +2841,42 @@ s32 ls_utf32LeftFind(utf32 s, s32 off, u32 c)
     AssertMsg(off >= 0, "Offset is negative.\n");
     
     u32 *At = s.data + off;
-    s32 offset = 0;
+    s32 offset = off;
     
-    b32 found = FALSE;
     while (At != (s.data + s.len))
     { 
-        if(*At == c) { found = TRUE; break; }
+        if(*At == c) { return offset; }
         At++; offset++;
     }
     
-    if(found) return offset;
     return -1;
 }
 
 
 s32 ls_utf32LeftFind(utf32 s, u32 c)
 { return ls_utf32LeftFind(s, 0, c); }
+
+s32 ls_utf32LeftFind(utf32 s, utf32 needle)
+{
+    AssertMsg(s.data, "Source data is null.\n");
+    AssertMsg(needle.data, "Needle data is null.\n");
+    
+    u32 *At    = s.data;
+    s32 offset = 0;
+    u32 c      = needle.data[0];
+    while (At != (s.data + s.len))
+    { 
+        //TODO: Maybe integrate this better in the while condition?
+        if(At + needle.len > (s.data + s.len)) { return -1; }
+        
+        if(*At == c) {
+            if(ls_memcmp(At, needle.data, needle.len*sizeof(u32))) { return offset; }
+        }
+        At++; offset++;
+    }
+    
+    return -1;
+}
 
 s32 ls_utf32RightFind(utf32 s, s32 off, u32 c)
 {
