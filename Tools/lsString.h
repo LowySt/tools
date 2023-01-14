@@ -295,8 +295,8 @@ void   ls_utf32Append(utf32 *s1, utf32 s2);
 void   ls_utf32AppendWithSeparator(utf32 *s1, const char32_t *sep, utf32 s2);
 void   ls_utf32AppendChar(utf32 *s1, u32 c);
 void   ls_utf32AppendCStr(utf32 *s1, char *c);
-void   ls_utf32AppendNCStr(utf32 *s1, char *c, u32 len);
-void   ls_utf32AppendBuffer(utf32 *s1, u32 *buff, u32 buffLen);
+void   ls_utf32AppendNCStr(utf32 *s1, char *c, s32 len);
+void   ls_utf32AppendBuffer(utf32 *s1, u32 *buff, s32 buffLen);
 
 // Convert
 s32    ls_utf32ToAscii_t(utf32 *s, char *buff, u32 buffMaxLen);
@@ -1477,10 +1477,11 @@ u32 ls_utf8Len(u8 *src, s32 byteLen)
     u8 *At = (u8 *)src;
     while(byteLen > 0)
     {
-        if(*At <= 0x7F)        { byteLen -= 1; At  += 1; }
-        else if(*At <= 0x7FF)  { byteLen -= 2; At  += 2; }
-        else if(*At <= 0xFFFF) { byteLen -= 3; At  += 3; }
-        else                   { byteLen -= 4; At  += 4; }
+        if(*At <= 0x7F)      { byteLen -= 1; At  += 1; }
+        else if(*At <= 0xDF) { byteLen -= 2; At  += 2; }
+        else if(*At <= 0xEF) { byteLen -= 3; At  += 3; }
+        else if(*At <= 0xF7) { byteLen -= 4; At  += 4; }
+        else { AssertMsgF(FALSE, "Unsupported utf8 character (c0: %d)... This should never be reached?\n", *At); }
         
         AssertMsg(byteLen >= 0, "Malformed utf8_source or Byte Length.\n");
         
@@ -1819,23 +1820,8 @@ utf8 ls_utf8Constant(const u8 *p)
 
 utf8 ls_utf8Constant(const u8 *p, u32 byteLen)
 {
-    u32 copyByteLen = byteLen;
-    u32 len = 0;
-    u8 *At = (u8 *)p;
-    while(byteLen)
-    {
-        if(*At <= 0x7F)      { byteLen -= 1; At += 1; }
-        else if(*At <= 0xDF) { byteLen -= 2; At += 2; }
-        else if(*At <= 0xEF) { byteLen -= 3; At += 3; }
-        else if(*At <= 0xF7) { byteLen -= 4; At += 4; }
-        else { AssertMsg(FALSE, "Unsupported utf8 character... This should never be reached?\n"); }
-        
-        AssertMsg(byteLen >= 0, "The utf8 constant seems malformed\n");
-        
-        len += 1;
-    }
-    
-    utf8 result = { (u8 *)p, len, copyByteLen, copyByteLen };
+    u32 len     = ls_utf8Len((u8 *)p, byteLen);
+    utf8 result = { (u8 *)p, len, byteLen, byteLen };
     return result;
 }
 
@@ -3116,12 +3102,14 @@ void ls_utf32AppendCStr(utf32 *s1, char *c)
     ls_utf32AppendNCStr(s1, c, len);
 }
 
-void ls_utf32AppendNCStr(utf32 *s1, char *c, u32 s2Len)
+void ls_utf32AppendNCStr(utf32 *s1, char *c, s32 s2Len)
 {
     //NOTE: We are assuming a classical C String is ASCII
     AssertMsg(s1, "Base utf32 ptr is null\n");
     AssertMsg(s1->data, "Base utf32 data is null\n");
     AssertMsg(c, "C String ptr is null\n");
+    
+    if(s2Len <= 0) { return; }
     
     if(s1->len + s2Len > s1->size)
     {
@@ -3134,13 +3122,13 @@ void ls_utf32AppendNCStr(utf32 *s1, char *c, u32 s2Len)
     s1->len += s2Len;
 }
 
-void ls_utf32AppendBuffer(utf32 *s1, u32 *buff, u32 buffLen)
+void ls_utf32AppendBuffer(utf32 *s1, u32 *buff, s32 buffLen)
 {
     AssertMsg(s1, "Base utf32 ptr is null\n");
     AssertMsg(s1->data, "Base utf32 data is null\n");
     AssertMsg(buff, "C String ptr is null\n");
     
-    if(buffLen == 0) { return; }
+    if(buffLen <= 0) { return; }
     
     if(s1->len + buffLen > s1->size)
     {

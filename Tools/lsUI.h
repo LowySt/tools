@@ -264,9 +264,20 @@ struct UIMenu
     //TODO: Add bkgColor and textColor
 };
 
+#if 0
 struct UIScrollableRegion
 {
     s32 x, y, w = -1, h = -1; 
+    s32 deltaX, deltaY;
+    
+    s32 maxX, minY;
+    
+    b32 isHeld;
+};
+#endif
+struct UIScrollableRegion
+{
+    s32 x, y, w, h; 
     s32 deltaX, deltaY;
     
     s32 maxX, minY;
@@ -469,7 +480,7 @@ UIButton   ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHol
 UIButton   ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold, void *data);
 UIButton   ls_uiButtonInit(UIButtonStyle s, const char32_t *text, ButtonProc onClick, ButtonProc onHold, void *data);
 void       ls_uiButtonInit(UIButton *b, UIButtonStyle s, utf32 t, ButtonProc onClick, ButtonProc onHold, void *data);
-void       ls_uiButtonInit(UIButton *, UIButtonStyle, char32_t *t, ButtonProc onClick, ButtonProc onHold, void *data);
+void       ls_uiButtonInit(UIButton *, UIButtonStyle, const char32_t *t, ButtonProc onClick, ButtonProc onHold, void *data);
 b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
 
 void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
@@ -503,10 +514,10 @@ b32        ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w
 
 UIButton   ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 height);
 void       ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub);
-void       ls_uiMenuAddSub(UIContext *c, UIMenu *menu, char32_t *name);
-void       ls_uiMenuAddItem(UIContext *c, UIMenu *menu, char32_t *name, ButtonProc onClick, void *userData);
-void       ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonProc onClick, void *userData);
-void       ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name, ButtonProc onClick, void *data);
+void       ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name);
+void       ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, ButtonProc onClick, void *userData);
+void       ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, ButtonProc onClick, void *userData);
+void       ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, ButtonProc onClick, void *data);
 b32        ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer);
 
 void       ls_uiRender(UIContext *c);
@@ -656,6 +667,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                 case VK_LEFT:    KeySetAndRepeat(keyMap::LArrow, rep);    break;
                 case VK_RIGHT:   KeySetAndRepeat(keyMap::RArrow, rep);    break;
                 
+                case VK_ESCAPE:  KeySetAndRepeat(keyMap::Escape, rep);    break;
                 case VK_RETURN:  KeySetAndRepeat(keyMap::Enter, rep);     break;
                 case VK_BACK:    KeySetAndRepeat(keyMap::Backspace, rep); break;
                 case VK_DELETE:  KeySetAndRepeat(keyMap::Delete, rep);    break;
@@ -697,6 +709,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                 case VK_LEFT:    KeyUnset(keyMap::LArrow);    break;
                 case VK_RIGHT:   KeyUnset(keyMap::RArrow);    break;
                 
+                case VK_ESCAPE:  KeyUnset(keyMap::Escape);    break;
                 case VK_RETURN:  KeyUnset(keyMap::Enter);     break;
                 case VK_BACK:    KeyUnset(keyMap::Backspace); break;
                 case VK_DELETE:  KeyUnset(keyMap::Delete);    break;
@@ -937,7 +950,7 @@ UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, Render
     uiContext->invWidgetColor  = RGBg(0xBA);
     uiContext->invTextColor    = RGBg(0x33);
     uiContext->scroll          = {};
-    uiContext->scissor         = {0, 0, (s32)width, (s32)height};
+    uiContext->scissor         = UIRect { 0, 0, s32(width), s32(height) };
     
     if(THREAD_COUNT != 0)
     {
@@ -1307,8 +1320,8 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
     if(scroll->deltaY < -totalHeight) scroll->deltaY = -totalHeight;
     if(scroll->deltaY > 0)            scroll->deltaY = 0;
     
-    c->scroll  = *scroll;
-    c->scissor = { scroll->x, scroll->y, scroll->w, scroll->h-2 };
+    c->scroll    = *scroll;
+    c->scissor   = UIRect { scroll->x, scroll->y, scroll->w, scroll->h-2 };
     
     RenderCommand command = { UI_RC_SCROLLBAR, scroll->x, scroll->y, scroll->w, scroll->h };
     ls_uiPushRenderCommand(c, command, 0);
@@ -1316,8 +1329,8 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
 
 void ls_uiEndScrollableRegion(UIContext *c)
 { 
-    c->scroll = {};
-    c->scissor = {0, 0, (s32)c->width, (s32)c->height};
+    c->scroll  = {};
+    c->scissor = UIRect { 0, 0, s32(c->width), s32(c->height) };
 }
 
 Color ls_uiDarkenRGB(Color c, u32 factor)
@@ -2241,19 +2254,22 @@ UIButton ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold 
     return Result;
 }
 
-UIButton ls_uiButtonInit(UIButtonStyle s, const char32_t *text, ButtonProc onClick, ButtonProc onHold = NULL, void *userData = NULL)
+UIButton ls_uiButtonInit(UIButtonStyle s, const char32_t *text, ButtonProc onClick,
+                         ButtonProc onHold = NULL, void *userData = NULL)
 {
     UIButton Result = {s, ls_utf32FromUTF32(text), 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
     return Result;
 }
 
-UIButton ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold = NULL, void *userData = NULL)
+UIButton ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick,
+                         ButtonProc onHold = NULL, void *userData = NULL)
 {
     UIButton Result = {s, text, 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
     return Result;
 }
 
-void ls_uiButtonInit(UIButton *b, UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold = NULL, void *userData = NULL)
+void ls_uiButtonInit(UIButton *b, UIButtonStyle s, utf32 text, ButtonProc onClick,
+                     ButtonProc onHold = NULL, void *userData = NULL)
 {
     b->style   = s;
     b->name    = text;
@@ -2262,7 +2278,8 @@ void ls_uiButtonInit(UIButton *b, UIButtonStyle s, utf32 text, ButtonProc onClic
     b->data    = userData;
 }
 
-void ls_uiButtonInit(UIButton *b, UIButtonStyle s, char32_t *t, ButtonProc onClick, ButtonProc onHold = NULL, void *data = NULL)
+void ls_uiButtonInit(UIButton *b, UIButtonStyle s, const char32_t *t, ButtonProc onClick,
+                     ButtonProc onHold = NULL, void *data = NULL)
 {
     b->style   = s;
     b->name    = ls_utf32FromUTF32(t);
@@ -2362,6 +2379,30 @@ void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textCol
     ls_uiLabel(c, lab, xPos, yPos, textColor, zLayer);
 }
 
+void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer = 0)
+{
+    ls_uiLabel(c, label, xPos, yPos, c->textColor, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer = 0)
+{
+    utf32 lab = ls_utf32Constant(label);
+    ls_uiLabel(c, lab, xPos, yPos, c->textColor, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer = 0)
+{
+    ls_uiLabel(c, label, xPos, yPos, c->textColor, zLayer);
+}
+
+void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer = 0)
+{
+    utf8 lab = ls_utf8Constant(label);
+    ls_uiLabel(c, lab, xPos, yPos, c->textColor, zLayer);
+}
+
+//TODO: To be fixed the layout system has to use a 6 point bound, rather than just 4 points
+//      So that we have a minimumX and a baseX, to know where to position the newline. @NewLayout
 UIRect ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textColor, s32 zLayer = 0)
 {
     AssertMsg(c, "Context pointer was null");
@@ -2389,28 +2430,6 @@ UIRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion
 {
     utf32 lab = ls_utf32Constant(label);
     return ls_uiLabelLayout(c, lab, layoutRegion, textColor, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    ls_uiLabel(c, label, xPos, yPos, c->textColor, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    utf32 lab = ls_utf32Constant(label);
-    ls_uiLabel(c, lab, xPos, yPos, c->textColor, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    ls_uiLabel(c, label, xPos, yPos, c->textColor, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    utf8 lab = ls_utf8Constant(label);
-    ls_uiLabel(c, lab, xPos, yPos, c->textColor, zLayer);
 }
 
 UIRect ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer = 0)
@@ -3278,14 +3297,14 @@ UIButton ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 heig
 inline void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub)
 { ls_arrayAppend(&menu->subMenus, sub); }
 
-void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, char32_t *name)
+void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name)
 { 
     UISubMenu newSub = {};
     newSub.name = ls_utf32FromUTF32(name);
     ls_arrayAppend(&menu->subMenus, newSub);
 }
 
-void ls_uiMenuAddItem(UIContext *c, UIMenu *menu, char32_t *name, ButtonProc onClick, void *userData)
+void ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, ButtonProc onClick, void *userData)
 {
     UIMenuItem newItem = {};
     newItem.name       = ls_utf32FromUTF32(name);
@@ -3295,7 +3314,7 @@ void ls_uiMenuAddItem(UIContext *c, UIMenu *menu, char32_t *name, ButtonProc onC
     ls_arrayAppend(&menu->items, newItem);
 }
 
-void ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonProc onClick, void *userData)
+void ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, ButtonProc onClick, void *userData)
 {
     UIMenuItem newItem = {};
     
@@ -3306,7 +3325,7 @@ void ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, char32_t *name, ButtonPro
     ls_arrayAppend(&sub->items, newItem);
 }
 
-void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, char32_t *name, ButtonProc onClick, void *userData)
+void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, ButtonProc onClick, void *userData)
 {
     UIMenuItem newItem = {};
     

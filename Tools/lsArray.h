@@ -93,7 +93,7 @@ void ls_arrayInsert(Array<T> *a, T val, s32 index)
 {
     AssertMsg(index >= 0, "Index is negative Array<>\n");
     
-    if(a->count == a->cap) { grow(32); }
+    if(a->count == a->cap) { Array<T>::grow(32); }
     size_t dataSize = sizeof(T);
     
     u32 numElements = a->count - index;

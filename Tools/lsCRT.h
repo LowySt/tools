@@ -28,6 +28,7 @@ void __internal_AssertMsgF(const char *funcHeader, const char *msgFormat, ...);
 { if(!(condition)) __internal_AssertMsgF(CAT3("[ASSERT]", __FUNCTION__, ": "), msg, __VA_ARGS__); }
 
 #else
+#define AssertMsgF(condition, msg, ...) ((void)0);
 #define AssertMsg(condition, msg) ((void)0);
 #define Assert(condition) ((void)0);
 #define LogMsg(condition, msg) ((void)0);
