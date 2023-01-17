@@ -28,8 +28,8 @@ struct utf8
 struct utf32
 {
     u32 *data;
-    u32  len;
-    u32  size;
+    s32  len;
+    s32  size;
 };
 
 struct view
@@ -59,7 +59,6 @@ string *ls_strAllocArr(u32 numStrings, s32 initialSize);
 void    ls_strFree(string *s);
 void    ls_strFreePtr(string *s);
 void    ls_strFreeArr(string *s, s32 arrSize);
-
 
 //Manage
 string  ls_strInit(char *s);
@@ -144,7 +143,7 @@ b32     ls_strIsEqualNCStr(string s1, char *s2, u32 len);
 utf8  ls_utf8Alloc(s32 size);
 utf8 *ls_utf8AllocArr(u32 numStrings, s32 initialSize);
 void  ls_utf8Free(utf8 *s);
-void  ls_utf8FreeArr(utf8 *s, u32 arrSize);
+void  ls_utf8FreeArr(utf8 *s, s32 arrSize);
 
 b32   ls_utf8AreEqual(utf8 a, utf8 b);
 void  ls_utf8Set(utf8 *toSet, utf8 source);
@@ -220,23 +219,23 @@ b32   ls_utf8IsNumber(u32 c);
 //-----------------------------//
 
 //Create/Destroy
-utf32  ls_utf32Alloc(u32 size);
+utf32  ls_utf32Alloc(s32 size);
 utf32 *ls_utf32AllocArr(u32 numStrings, s32 initialSize);
 void   ls_utf32Free(utf32 *s);
-void   ls_utf32FreeArr(utf32 *s, u32 arrSize);
+void   ls_utf32FreeArr(utf32 *s, s32 arrSize);
 
 b32    ls_utf32AreEqual(utf32 a, utf32 b);
 b32    ls_utf32AsciiAreEqual(utf32 a, string b);
 void   ls_utf32Set(utf32 *toSet, utf32 source);
 
-u32    ls_utf32Len(const char32_t *s);
+s32    ls_utf32Len(const char32_t *s);
 
 utf32  ls_utf32FromAscii(char *s);
-utf32  ls_utf32FromAscii(char *s, u32 len);
+utf32  ls_utf32FromAscii(char *s, s32 len);
 void   ls_utf32FromAscii_t(utf32 *dst, char *src);
-void   ls_utf32FromAscii_t(utf32 *dst, char *src, u32 len);
-void   ls_utf32FromUTF8_t(utf32 *dst, utf8 src);
-utf32  ls_utf32FromUTF8(utf8 src);
+void   ls_utf32FromAscii_t(utf32 *dst, char *src, s32 len);
+void   ls_utf32FromUTF8_t(utf32 *dst, utf8 src, s32 len);
+utf32  ls_utf32FromUTF8(utf8 src, s32 byteLen);
 utf32  ls_utf32FromUTF32(const char32_t *s);
 void   ls_utf32FromUTF32_t(utf32 *dst, const char32_t *s);
 utf32  ls_utf32FromInt(s64 x);
@@ -245,24 +244,24 @@ utf32  ls_utf32FromF64(f64 x);
 void   ls_utf32FromF64_t(utf32 *s, f64 x);
 utf32  ls_utf32Constant(const char32_t *p);
 
-u32    ls_utf32CharFromUtf8(utf8 src, u32 characterIndex);
+u32    ls_utf32CharFromUtf8(utf8 src, s32 characterIndex);
 
 //Manage
 void   ls_utf32Clear(utf32 *s);
 utf32  ls_utf32Copy(utf32 s);
-void   ls_utf32NCopy(utf32 s, utf32 *dst, size_t size);
+void   ls_utf32NCopy(utf32 s, utf32 *dst, s32 size);
 utf32  ls_utf32CopySubstr(utf32 s, u32 beginIdx, u32 _endIdx = (u32)-1);
 
 //OperateOn
 void   ls_utf32Reverse(utf32 *s);
-void   ls_utf32RmSubstr(utf32 *s, u32 beginIdx, u32 endIdx);
+void   ls_utf32RmSubstr(utf32 *s, u32 beginIdx, u32 endIdx);  //TODO: Make indices signed as well.
 void   ls_utf32RmIdx(utf32 *s, u32 idx);
 void   ls_utf32TrimRight(utf32 *s, u32 numChars);
 
 void   ls_utf32InsertSubstr(utf32 *s, utf32 toInsert, u32 insertIdx);
 void   ls_utf32InsertChar(utf32 *s, u32 c, u32 idx);
 void   ls_utf32InsertCStr(utf32 *s, char *toInsert, u32 insertIdx);
-void   ls_utf32InsertBuffer(utf32 *s, u32 *toInsert, u32 buffLen, u32 insertIdx);
+void   ls_utf32InsertBuffer(utf32 *s, u32 *toInsert, s32 buffLen, u32 insertIdx);
 
 utf32 *ls_utf32Split(utf32 s, u32 *outNum, utf32 delim);
 utf32 *ls_utf32Split(utf32 s, u32 *outNum, const char32_t *a);
@@ -299,7 +298,7 @@ void   ls_utf32AppendNCStr(utf32 *s1, char *c, s32 len);
 void   ls_utf32AppendBuffer(utf32 *s1, u32 *buff, s32 buffLen);
 
 // Convert
-s32    ls_utf32ToAscii_t(utf32 *s, char *buff, u32 buffMaxLen);
+s32    ls_utf32ToAscii_t(utf32 *s, char *buff, s32 buffMaxLen);
 s64    ls_utf32ToInt(utf32 s);
 
 b32    ls_utf32IsNumber(u32 c);
@@ -417,7 +416,7 @@ string *ls_strAllocArr(u32 numStrings, s32 initialSize = 0)
 void ls_strFree(string *a)
 {
     AssertMsg(a, "Trying to free a null pointer string\n");
-    AssertMsgF(a->size > 0, "Trying to free a Non-Positive sized string: %d\n", a->size);
+    AssertMsgF(a->size >= 0, "Trying to free a Non-Positive sized string: %d\n", a->size);
     
     ls_free(a->data);
     a->data = 0;
@@ -1515,7 +1514,7 @@ utf8 *ls_utf8AllocArr(u32 numStrings, s32 initialSize)
 void ls_utf8Free(utf8 *s)
 {
     AssertMsg(s, "Null string pointer\n");
-    AssertMsgF(s->size > 0, "Trying to free a Non-Positive sized string: %d\n", s->size);
+    AssertMsgF(s->size >= 0, "Trying to free a Non-Positive sized string: %d\n", s->size);
     
     ls_free(s->data);
     s->data     = 0;
@@ -1524,9 +1523,10 @@ void ls_utf8Free(utf8 *s)
     s->size     = 0;
 }
 
-void ls_utf8FreeArr(utf8 *s, u32 arrSize)
+void ls_utf8FreeArr(utf8 *s, s32 arrSize)
 {
     AssertMsg(s, "Null string pointer\n");
+    AssertMsgF(arrSize > 0, "Non-Positive number of elements in array: %d\n", arrSize);
     
     for(u32 i = 0; i < arrSize; i++)
     { ls_utf8Free(&s[i]);}
@@ -1572,7 +1572,7 @@ s32 ls_utf8Len(u8 *src, s32 byteLen)
 void ls_utf8Set(utf8 *toSet, utf8 source)
 {
     AssertMsg(toSet, "String to be set pointer is null\n");
-    AssertMsgF(toSet->size > 0, "Trying to write to a Non-Positive sized string: %d\n", toSet->size);
+    AssertMsgF(toSet->size >= 0, "Trying to write to a Non-Positive sized string: %d\n", toSet->size);
     
     if(toSet->size < source.byteLen) { ls_utf8Free(toSet); }
     
@@ -2205,8 +2205,10 @@ b32 ls_utf8IsNumber(u32 c)
 //------------------//
 //  Create/Destroy  //
 
-utf32 ls_utf32Alloc(u32 size)
+utf32 ls_utf32Alloc(s32 size)
 {
+    AssertMsgF(size > 0, "Non-Positive size when allocating: %d\n", size);
+    
     u32 *data = (u32 *)ls_alloc(sizeof(u32)*size);
     utf32 Result = {data, 0, size};
     
@@ -2215,6 +2217,8 @@ utf32 ls_utf32Alloc(u32 size)
 
 utf32 *ls_utf32AllocArr(u32 numStrings, s32 initialSize)
 {
+    AssertMsgF(initialSize >= 0, "Non-Positive initial size: %d\n", initialSize);
+    
     if(numStrings == 0) { return 0x0; }
     
     utf32 *s = (utf32 *)ls_alloc(sizeof(utf32)*numStrings);
@@ -2228,15 +2232,21 @@ utf32 *ls_utf32AllocArr(u32 numStrings, s32 initialSize)
 
 void ls_utf32Free(utf32 *s)
 {
+    AssertMsg(s, "Null string pointer\n");
+    AssertMsgF(s->size >= 0, "Trying to free Non-Positive sized string: %d\n", s->size);
+    
     ls_free(s->data);
     s->data = 0;
     s->len  = 0;
     s->size = 0;
 }
 
-void ls_utf32FreeArr(utf32 *s, u32 arrSize)
+void ls_utf32FreeArr(utf32 *s, s32 arrSize)
 {
-    for(u32 i = 0; i < arrSize; i++)
+    AssertMsg(s, "Null string array pointer\n");
+    AssertMsgF(arrSize > 0, "Non-Positive number of elements in array: %d\n", arrSize);
+    
+    for(s32 i = 0; i < arrSize; i++)
     { ls_utf32Free(&s[i]);}
     
     ls_free(s);
@@ -2270,6 +2280,7 @@ b32 ls_utf32AsciiAreEqual(utf32 a, string b)
 void ls_utf32Set(utf32 *toSet, utf32 source)
 {
     AssertMsg(toSet, "String to be set pointer is null\n");
+    AssertMsgF(toSet->size >= 0, "Trying to write to a Non-Positive sized string: %d\n", toSet->size);
     
     if(toSet->size < source.len) { ls_utf32Free(toSet); }
     
@@ -2287,19 +2298,23 @@ void ls_utf32Set(utf32 *toSet, utf32 source)
     toSet->len = source.len;
 }
 
-u32 ls_utf32Len(const char32_t *s)
+s32 ls_utf32Len(const char32_t *s)
 {
-    u32 len = 0;
+    AssertMsg(s, "Null source literal string\n");
+    
+    s32 len = 0;
     u32 *At = (u32 *)s;
     while(*At) { len += 1; At += 1; }
     return len;
 }
 
 
-utf32 ls_utf32FromAscii(char *s, u32 len)
+utf32 ls_utf32FromAscii(char *s, s32 len)
 {
-    utf32 Result = ls_utf32Alloc(len);
+    AssertMsg(s, "Null source literal string\n");
+    AssertMsg(len > 0, "Non-Positive len\n");
     
+    utf32 Result = ls_utf32Alloc(len);
     for(u32 i = 0; i < len; i++) { Result.data[i] = (u32)s[i]; }
     Result.len = len;
     
@@ -2308,26 +2323,39 @@ utf32 ls_utf32FromAscii(char *s, u32 len)
 
 utf32 ls_utf32FromAscii(char *s)
 {
-    u32 len = ls_len(s);
+    AssertMsg(s, "Null source literal string\n");
+    
+    s32 len = ls_len(s);
     return ls_utf32FromAscii(s, len);
 }
 
-void ls_utf32FromAscii_t(utf32 *dst, char *src, u32 len)
+void ls_utf32FromAscii_t(utf32 *dst, char *src, s32 len)
 {
+    AssertMsg(src, "Null source literal c string\n");
+    AssertMsg(dst, "Null destination string\n");
+    AssertMsgF(dst->size > 0, "Trying to write to a Non-Positive sized string: %d\n", dst->size);
+    AssertMsg(len > 0, "Non-Positive len\n");
+    
     for(u32 i = 0; i < len; i++) { dst->data[i] = (u32)src[i]; }
     dst->len = len;
 }
 
 void ls_utf32FromAscii_t(utf32 *dst, char *src)
 {
+    AssertMsg(src, "Null source literal c string\n");
+    AssertMsg(dst, "Null destination string\n");
+    AssertMsgF(dst->size > 0, "Trying to write to a Non-Positive sized string: %d\n", dst->size);
+    
     u32 len = ls_len(src);
     ls_utf32FromAscii_t(dst, src, len);
 }
 
-void ls_utf32FromUTF8_t(utf32 *dst, u8 *src, u32 len)
+void ls_utf32FromUTF8_t(utf32 *dst, u8 *src, s32 len)
 {
     AssertMsg(dst, "Destination pointer is null\n");
     AssertMsg(src, "Source pointer is null\n");
+    AssertMsgF(dst->size > 0, "Trying to write to a Non-Positive sized string: %d\n", dst->size);
+    AssertMsg(len > 0, "Non-Positive len\n");
     AssertMsg(dst->size >= len, "Destination string is not big enough\n");
     
     dst->len = len;
@@ -2389,9 +2417,12 @@ void ls_utf32FromUTF8_t(utf32 *dst, u8 *src, u32 len)
     }
 }
 
-utf32 ls_utf32FromUTF8(u8 *src, u32 byteLen)
+utf32 ls_utf32FromUTF8(u8 *src, s32 byteLen)
 {
-    u32 len = ls_utf8Len(src, byteLen);
+    AssertMsg(src, "Null source pointer\n");
+    AssertMsg(byteLen > 0, "Non-Positive bytelen\n");
+    
+    s32 len = ls_utf8Len(src, byteLen);
     utf32 result = ls_utf32Alloc(len);
     
     ls_utf32FromUTF8_t(&result, src, len);
@@ -2402,9 +2433,11 @@ utf32 ls_utf32FromUTF8(u8 *src, u32 byteLen)
 
 utf32 ls_utf32FromUTF32(const char32_t *s)
 {
+    AssertMsg(s, "Null source literal string\n");
+    
     if(s == NULL) { return {}; }
     
-    u32 len = 0;
+    s32 len = 0;
     u32 *At = (u32 *)s;
     while(*At) { len += 1; At += 1; }
     
@@ -2418,6 +2451,9 @@ utf32 ls_utf32FromUTF32(const char32_t *s)
 void ls_utf32FromUTF32_t(utf32 *dst, const char32_t *s)
 {
     AssertMsg(dst, "Destination utf32 pointer is null\n");
+    AssertMsgF(dst->size > 0, "Trying to write to a Non-Positive sized string: %d\n", dst->size);
+    AssertMsg(s, "Null source literal string\n");
+    
     if(s == NULL) { return; }
     
     u32 len = 0;
@@ -2446,17 +2482,21 @@ void ls_utf32FromUTF32_t(utf32 *dst, const char32_t *s)
 
 utf32 ls_utf32Constant(const char32_t *p)
 {
-    u32 len = 0;
+    AssertMsg(p, "Null source literal string\n");
+    
+    s32 len = 0;
     u32 *At = (u32 *)p;
     while(*At != 0) { len += 1; At += 1; }
     
-    utf32 Result = { (u32 *)p, len, len };
+    utf32 Result = { (u32 *)p, len, -7878 };
     return Result;
 }
 
 //TODO: This function is fucking stupid. Why am I looking for the character, rathen than just fucking passing it?
-u32 ls_utf32CharFromUtf8(utf8 src, u32 characterIndex)
+u32 ls_utf32CharFromUtf8(utf8 src, s32 characterIndex)
 {
+    AssertMsg(characterIndex >= 0, "Negative character index\n");
+    
     u8 *At = src.data;
     
     u32 utf8_index    = 0;
@@ -2531,7 +2571,11 @@ u32 ls_utf32CharFromUtf8(utf8 src, u32 characterIndex)
 
 
 void ls_utf32Clear(utf32 *s)
-{ s->len = 0; }
+{ 
+    AssertMsg(s, "Null source string pointer\n");
+    AssertMsgF(s->size > 0, "Trying to clear a Non-Positive sized string: %d\n", s->size);
+    s->len = 0;
+}
 
 utf32 ls_utf32Copy(utf32 s)
 {
@@ -2542,8 +2586,12 @@ utf32 ls_utf32Copy(utf32 s)
     return Result;
 }
 
-void ls_utf32NCopy(utf32 src, utf32 *dst, size_t size)
+void ls_utf32NCopy(utf32 src, utf32 *dst, s32 size)
 {
+    AssertMsg(dst, "Null destination string pointer\n");
+    AssertMsg(dst->size > 0, "Trying to write to a Non-Positive sized string.\n");
+    AssertMsg(size >= 0, "Negative copy size passed\n");
+    
     u32 copySize = size;
     if(size > src.len) { copySize = src.len; }
     
@@ -2586,6 +2634,9 @@ utf32 ls_utf32CopySubstr(utf32 s, u32 beginIdx, u32 _endIdx)
 
 void ls_utf32Reverse(utf32 *s)
 {
+    AssertMsg(s, "Null source string\n");
+    AssertMsgF(s->size > 0, "Trying to reverse a Non-Positive sized string: %d\n", s->size);
+    
     u32 *Begin = s->data;
     u32 *End   = s->data + s->len;
     u32 temp = 0;
@@ -2604,9 +2655,13 @@ void ls_utf32Reverse(utf32 *s)
 void ls_utf32RmSubstr(utf32 *s, u32 beginIdx, u32 endIdx)
 {
     AssertMsg(s, "Source pointer is null\n");
+    AssertMsgF(s->size > 0, "Trying to remove substring of a Non-Positive sized string: %d\n", s->size);
     AssertMsg(beginIdx < s->len, "Begin Index is out of bounds. Larger than string length\n");
     AssertMsg(endIdx   < s->len, "End Index is out of bounds. Larger than string length\n");
     AssertMsg((endIdx - beginIdx) < s->len, "Index Range is larger than string length. How??\n");
+    
+    if(s->data == NULL) { return; }
+    if(s->len  == 0)    { return; }
     
     u32 remove  = ((endIdx - beginIdx) + 1);
     u32 copyLen = s->len - (endIdx + 1);
@@ -2624,14 +2679,21 @@ void ls_utf32RmIdx(utf32 *s, u32 idx)
 void ls_utf32TrimRight(utf32 *s, u32 numChars)
 { 
     AssertMsg(s, "Null utf32 pointer passed\n");
+    AssertMsg(s->data, "Null source string data\n");
+    AssertMsgF(s->size > 0, "Trying to trim a Non-Positive sized string: %d\n", s->size);
     AssertMsg(s->len > 0, "Trying to trim an empty utf32\n");
     AssertMsg(numChars <= s->len, "Trying to trim more than the string length.\n");
+    
+    if(s->data == NULL)       { return; }
+    if(s->len - numChars < 0) { return; }
+    
     s->len -= numChars; 
 }
 
 void ls_utf32InsertSubstr(utf32 *s, utf32 toInsert, u32 insertIdx)
 {
     AssertMsg(s, "Null utf32 pointer passed\n");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
     AssertMsg(insertIdx < s->len, "Insertion index past utf32 length\n");
     
     if(s->len + toInsert.len > s->size)
@@ -2663,6 +2725,7 @@ void ls_utf32InsertChar(utf32 *s, u32 c, u32 idx)
 void ls_utf32InsertCStr(utf32 *s, char *toInsert, u32 insertIdx)
 {
     AssertMsg(s, "Null utf32 pointer passed\n");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n");
     AssertMsg(toInsert, "C String pointer passed is null\n");
     AssertMsg(insertIdx < s->len, "Insertion index past utf32 length\n");
     
@@ -2681,12 +2744,13 @@ void ls_utf32InsertCStr(utf32 *s, char *toInsert, u32 insertIdx)
     s->len += len;
 }
 
-void ls_utf32InsertBuffer(utf32 *s, u32 *toInsert, u32 buffLen, u32 insertIdx)
+void ls_utf32InsertBuffer(utf32 *s, u32 *toInsert, s32 buffLen, u32 insertIdx)
 {
     AssertMsg(s, "Dest string pointer is null\n");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
     AssertMsg(toInsert, "To Insert string pointer is null\n");
     
-    if(buffLen == 0) { return; }
+    if(buffLen <= 0) { return; }
     
     utf32 insertString = {toInsert, buffLen, buffLen};
     ls_utf32InsertSubstr(s, insertString, insertIdx);
@@ -2727,7 +2791,7 @@ utf32 *ls_utf32Split(utf32 s, u32 *outNum, utf32 delim)
         utf32 test = { At, delim.len, delim.len };
         if(ls_utf32AreEqual(test, delim) == TRUE)
         {
-            utf32 toCopy = { BeginString, (u32)(At - BeginString), (u32)(At - BeginString)};
+            utf32 toCopy = { BeginString, (s32)(At - BeginString), (s32)(At - BeginString)};
             ls_utf32Set(Result + idx, toCopy);
             idx += 1;
             
@@ -2744,7 +2808,7 @@ utf32 *ls_utf32Split(utf32 s, u32 *outNum, utf32 delim)
     
     if(BeginString != At)
     {
-        utf32 toCopy = { BeginString, (u32)(At - BeginString), (u32)(At - BeginString)};
+        utf32 toCopy = { BeginString, (s32)(At - BeginString), (s32)(At - BeginString)};
         ls_utf32Set(Result + idx, toCopy);
         idx += 1;
     }
@@ -2780,6 +2844,7 @@ utf32 *ls_utf32Split(utf32 s, u32 *outNum, char c)
 
 utf32 *ls_utf32Split(utf32 s, u32 *outNum, const char *c)
 {
+    //TODO: Maybe use FromAscii_t
     utf32 delim = ls_utf32FromAscii((char *)c);
     utf32 *result = ls_utf32Split(s, outNum, delim);
     
@@ -2793,7 +2858,7 @@ utf32 *ls_utf32SeparateByNumber(utf32 s, u32 *outNum)
     AssertMsg(outNum, "Output parameter outNum is null\n");
     
     u32 count = 0;
-    u32 len = 0;
+    s32 len = 0;
     u32 *At = s.data;
     while(At < (s.data + s.len))
     {
@@ -2842,7 +2907,7 @@ utf32 *ls_utf32SeparateByNumber(utf32 s, u32 *outNum)
                 At += 1;
             }
             
-            utf32 number = { BeginString, (u32)(At - BeginString), (u32)(At - BeginString)};
+            utf32 number = { BeginString, (s32)(At - BeginString), (s32)(At - BeginString)};
             ls_utf32Set(Result + idx, number);
             idx += 1;
             
@@ -2940,6 +3005,9 @@ s32 ls_utf32LeftFind(utf32 s, s32 off, u32 c)
     AssertMsg(s.data, "Source data is null.\n");
     AssertMsg(off >= 0, "Offset is negative.\n");
     
+    if(s.data == NULL) { return -1; }
+    if(s.len  == 0)    { return -1; }
+    
     u32 *At = s.data + off;
     s32 offset = off;
     
@@ -2960,6 +3028,9 @@ s32 ls_utf32LeftFind(utf32 s, utf32 needle)
 {
     AssertMsg(s.data, "Source data is null.\n");
     AssertMsg(needle.data, "Needle data is null.\n");
+    
+    if(s.data == NULL) { return -1; }
+    if(s.len  == 0)    { return -1; }
     
     u32 *At    = s.data;
     s32 offset = 0;
@@ -2983,17 +3054,18 @@ s32 ls_utf32RightFind(utf32 s, s32 off, u32 c)
     AssertMsg(s.data, "Source data is null.\n");
     AssertMsg(off >= 0, "Offset is negative.\n");
     
+    if(s.data == NULL) { return -1; }
+    if(s.len  == 0)    { return -1; }
+    
     u32 *At = s.data + off;
     s32 offset = off;
     
-    b32 found = FALSE;
     while(At != s.data)
     {
-        if(*At == c) { found = TRUE; break; }
+        if(*At == c) { return offset; }
         At--; offset--;
     }
     
-    if(found) return offset;
     return -1;
 }
 
@@ -3004,6 +3076,7 @@ s32 ls_utf32RightFind(utf32 s, u32 c)
 s32 ls_utf32CountOccurrences(utf32 s, u32 c)
 {
     AssertMsg(s.data, "Source data is null.\n");
+    
     u32 *At = s.data;
     u32 *End = s.data + s.len;
     
@@ -3047,6 +3120,7 @@ void ls_utf32ConcatOn(utf32 s1, utf32 s2, utf32 *out)
 {
     AssertMsg(out, "Output utf32 ptr is null\n");
     AssertMsg(out->data, "Output utf32 data is null\n");
+    AssertMsgF(out->size > 0, "Trying to write to a Non-Positive sized string: %d\n", out->size);
     AssertMsg((out->size > (s1.len + s2.len)), "Output utf32 is too small to fit inputs\n");
     
     if(s1.len) { ls_memcpy(s1.data, out->data, s1.len*4); }
@@ -3087,6 +3161,7 @@ void ls_utf32Prepend(utf32 *s1, utf32 s2)
 {
     AssertMsg(s1,       "Base utf32 ptr is null\n");
     AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s2.data,  "Input utf32 data is null\n");
     
     if(s1->len + s2.len > s1->size)
@@ -3112,6 +3187,7 @@ void ls_utf32Prepend(utf32 *s1, utf32 s2)
 void ls_utf32PrependChar(utf32 *s1, u32 c)
 {
     AssertMsg(s1, "Base utf32 ptr is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s1->data, "Base utf32 data is null\n");
     
     if(s1->len + 1 > s1->size)
@@ -3160,6 +3236,7 @@ void ls_utf32Append(utf32 *s1, utf32 s2)
 {
     AssertMsg(s1, "Base utf32 ptr is null\n");
     AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s2.data, "Input utf32 data is null\n");
     
     if(s1->len + s2.len > s1->size)
@@ -3176,6 +3253,7 @@ void ls_utf32AppendWithSeparator(utf32 *s1, const char32_t *sep, utf32 s2)
 {
     AssertMsg(s1, "Base utf32 ptr is null\n");
     AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s2.data, "Input utf32 data is null\n");
     AssertMsg(sep, "No separator was provided. Do we want to allow this?\n");
     
@@ -3198,6 +3276,7 @@ void ls_utf32AppendChar(utf32 *s1, u32 c)
 {
     AssertMsg(s1, "Base utf32 ptr is null\n");
     AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s1->size);
     
     if(s1->len + 1 > s1->size)
     { ls_utf32Grow(s1, 32); }
@@ -3210,6 +3289,7 @@ void ls_utf32AppendCStr(utf32 *s1, char *c)
 {
     AssertMsg(s1, "Base utf32 ptr is null\n");
     AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s1->size);
     AssertMsg(c, "C String ptr is null\n");
     
     u32 len = ls_len(c);
@@ -3221,6 +3301,7 @@ void ls_utf32AppendNCStr(utf32 *s1, char *c, s32 s2Len)
     //NOTE: We are assuming a classical C String is ASCII
     AssertMsg(s1, "Base utf32 ptr is null\n");
     AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s1->size);
     AssertMsg(c, "C String ptr is null\n");
     
     if(s2Len <= 0) { return; }
@@ -3240,6 +3321,7 @@ void ls_utf32AppendBuffer(utf32 *s1, u32 *buff, s32 buffLen)
 {
     AssertMsg(s1, "Base utf32 ptr is null\n");
     AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s1->size);
     AssertMsg(buff, "C String ptr is null\n");
     
     if(buffLen <= 0) { return; }
@@ -3276,6 +3358,7 @@ utf32  ls_utf32FromInt(s64 x)
 void ls_utf32FromInt_t(utf32 *s, s64 x)
 {
     AssertMsg(s, "Source pointer is null");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
     
     char buff[32] = {};
     s32 len = ls_itoa_t(x, buff, 32);
@@ -3306,6 +3389,7 @@ utf32 ls_utf32FromF64(f64 x)
 void ls_utf32FromF64_t(utf32 *s, f64 x)
 {
     AssertMsg(s, "Source ptr is null\n");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
     
     char buff[32] = {};
     u32 len = ls_ftoa_t(x, buff, 32);
@@ -3325,10 +3409,14 @@ void ls_utf32FromF64_t(utf32 *s, f64 x)
     }
 }
 
-s32 ls_utf32ToAscii_t(utf32 *s, char *buff, u32 buffMaxLen)
+s32 ls_utf32ToAscii_t(utf32 *s, char *buff, s32 buffMaxLen)
 {
     AssertMsg(s, "Source pointer is null\n");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
     AssertMsg(buff, "Output buffer pointer is null\n");
+    AssertMsg(buffMaxLen > 0, "Non-Positive buff max len\n");
+    
+    if(buffMaxLen <= 0) { return 0; }
     
     u32 *At = s->data;
     u32 idx = 0;
@@ -3578,7 +3666,7 @@ uview ls_uviewNextNChars(uview v, u32 n)
 {
     uview Result = {};
     
-    Result.s = {v.next, n, n};
+    Result.s = {v.next, (s32)n, (s32)n};
     Result.next = v.next + n;
     Result.len  = v.len - n;
     
@@ -3591,7 +3679,7 @@ uview ls_uviewNextDelimiter(uview v, u32 c)
     
     v = ls_uviewEatWhitespace(v);
     
-    u32 wordLen = 0;
+    s32 wordLen = 0;
     u32 *At = v.next;
     
     //NOTETODO: add found, and return original if not found? Or return error?
@@ -3626,7 +3714,7 @@ uview ls_uviewNextWord(uview v)
     
     v = ls_uviewEatWhitespace(v);
     
-    u32 wordLen = 0;
+    s32 wordLen = 0;
     u32 *At = v.next;
     while(wordLen < v.len)
     {
@@ -3648,7 +3736,7 @@ uview ls_uviewNextLine(uview v)
 {
     uview Result = {};
     
-    u32 lineLen = 0;
+    s32 lineLen = 0;
     u32 *At = v.next;
     while(lineLen < v.len)
     {
@@ -3673,7 +3761,7 @@ uview ls_uviewNextLineSkipWS(uview v)
     
     v = ls_uviewEatWhitespace(v);
     
-    u32 lineLen   = 0;
+    s32 lineLen   = 0;
     u32 skipWhite = 0;
     
     u32 *At = v.next;
