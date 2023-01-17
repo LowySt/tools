@@ -1947,7 +1947,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
     s32 maxLines = strMaxH / lineHeight;
     
     //TODO: SIMD this?
-    u32 i = 0;
+    s32 i = 0;
     if(box->caretLineIdx > maxLines) { 
         yOffset = box->caretLineIdx - maxLines;
         
@@ -2504,7 +2504,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         s32 realOffset = beginOffset+1;
         if(beginOffset == -1) { realOffset = 0; }
         
-        u32 lineLength     = index-realOffset;
+        s32 lineLength     = index-realOffset;
         
         utf32 currLine    = { box->text.data + realOffset, lineLength, lineLength };
         u32 maxBeginIndex = ls_uiGlyphStringFit(c, c->currFont, currLine, viewAddWidth);
@@ -2843,7 +2843,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             u32 buff[4096] = {};
             u32 copiedLen = GetClipboard(buff, 4096);
             
-            u32 realCopyLen = copiedLen;
+            s32 realCopyLen = copiedLen;
             
             //NOTE: maxLen == 0 means there's no max len.
             if(box->maxLen != 0) 
