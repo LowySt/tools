@@ -4,17 +4,17 @@
 #include "win32.h"
 #include "lsCRT.h"
 
-//TODO: Make size = -1 meaning undefined, and size = 0, meaning a constant string,
+//TODO: Make size = -6969 meaning undefined, and size = -7878 meaning a constant string,
 //      to allow the string functions to know if they're dealing with constant strings or not.
 
-//NOTE: The minus 1 is to ignore the NULL terminator at the end of string literals.
-#define ls_strConst(s) {s, sizeof(s)/sizeof(s[0])-1, sizeof(s)/sizeof(s[0])-1}
+//NOTE: When creating a constant string (basically a view into a pointer on the stack)
+//          Size is set to -7878, a sentinel value to recognize constant strings
 
 struct string
 {
     char *data;
-    u32  len;
-    u32  size;
+    s32  len;
+    s32  size;
 };
 
 struct utf8
@@ -53,12 +53,12 @@ struct uview
 //-----------------------------//
 
 //Create/Destroy
-string  ls_strAlloc(u32 size);
-string *ls_strAllocPtr(u32 size);
+string  ls_strAlloc(s32 size);
+string *ls_strAllocPtr(s32 size);
 string *ls_strAllocArr(u32 numStrings, s32 initialSize);
 void    ls_strFree(string *s);
 void    ls_strFreePtr(string *s);
-void    ls_strFreeArr(string *s, u32 arrSize);
+void    ls_strFreeArr(string *s, s32 arrSize);
 
 
 //Manage
@@ -381,16 +381,20 @@ static void ls_utf32Grow(utf32 *s, u32 amount)
 //------------------//
 //  Create/Destroy  //
 
-string ls_strAlloc(u32 size)
+string ls_strAlloc(s32 size)
 {
+    AssertMsg(size > 0, "Non-Positive size when allocating string\n");
+    
     char *data = (char *)ls_alloc(sizeof(char)*size);
     string Result = {data, 0, size};
     
     return Result;
 }
 
-string *ls_strAllocPtr(u32 size)
+string *ls_strAllocPtr(s32 size)
 {
+    AssertMsg(size > 0, "Non-Positive size when allocating string\n");
+    
     string *Result = (string *)ls_alloc(sizeof(string));
     *Result = ls_strAlloc(size);
     
@@ -399,6 +403,8 @@ string *ls_strAllocPtr(u32 size)
 
 string *ls_strAllocArr(u32 numStrings, s32 initialSize = 0)
 {
+    AssertMsg(initialSize >= 0, "Non-Positive initialSize when allocating string array\n");
+    
     string *s = (string *)ls_alloc(sizeof(string)*numStrings);
     if(initialSize > 0)
     {
@@ -410,6 +416,9 @@ string *ls_strAllocArr(u32 numStrings, s32 initialSize = 0)
 
 void ls_strFree(string *a)
 {
+    AssertMsg(a, "Trying to free a null pointer string\n");
+    AssertMsgF(a->size > 0, "Trying to free a Non-Positive sized string: %d\n", a->size);
+    
     ls_free(a->data);
     a->data = 0;
     a->len = 0;
@@ -418,6 +427,9 @@ void ls_strFree(string *a)
 
 void ls_strFreePtr(string *a)
 {
+    AssertMsg(a, "Trying to free a null pointer string\n");
+    AssertMsgF(a->size > 0, "Trying to free a Non-Positive sized string: %d\n", a->size);
+    
     ls_free(a->data);
     a->data = 0;
     a->len = 0;
@@ -426,39 +438,44 @@ void ls_strFreePtr(string *a)
     ls_free(a);
 }
 
-void ls_strFreeArr(string *s, u32 arrSize)
+void ls_strFreeArr(string *s, s32 arrSize)
 {
+    AssertMsg(s, "Trying to free a null pointer string\n");
+    AssertMsg(arrSize > 0, "Non-Positive number of elements in array\n");
+    
     for(u32 i = 0; i < arrSize; i++)
     { ls_strFree(&s[i]);}
     
     ls_free(s);
 }
 
-//TODO: This stack living string is always strange... 
-//      for example in printf it seemed to work not that good...
-string  ls_strConstant(const char *p)
+string ls_strConstant(const char *p)
 {
-    u32 len = ls_len((char *)p);
-    string s = {(char *)p, len, len};
+    s32 len = ls_len((char *)p);
+    string s = { (char *)p, len, -7878 };
     return s;
 }
 
 string ls_strConstant(char *p)
 {
-    u32 len = ls_len(p);
-    string s = {p, len, len};
+    s32 len = ls_len(p);
+    string s = { p, len, -7878 };
     return s;
 }
 
-string  ls_strConstant(char *p, u32 len)
+string ls_strConstant(char *p, s32 len)
 {
-    string s = {p, len, len};
+    AssertMsg(len > 0, "Non-Positive len in constant string\n");
+    
+    string s = {p, len, -7878 };
     return s;
 }
 
 string ls_strConstChar(char *c)
 {
-    string s = {c, 1, 1};
+    AssertMsg(c, "Null character address\n");
+    
+    string s = {c, 1, -7878};
     return s;
 }
 
@@ -472,6 +489,8 @@ string ls_strConstChar(char *c)
 
 string ls_strInit(char *s)
 {
+    AssertMsg(s, "Null pointer to string constant\n");
+    
     u32 len = ls_len(s);
     
     string Result = ls_strAlloc(len);
@@ -483,6 +502,8 @@ string ls_strInit(char *s)
 
 string ls_strInit(const char *s)
 {
+    AssertMsg(s, "Null pointer to string constant\n");
+    
     u32 len = ls_len((char *)s);
     
     string Result = ls_strAlloc(len);
@@ -493,7 +514,12 @@ string ls_strInit(const char *s)
 }
 
 void ls_strClear(string *s)
-{ s->len = 0; }
+{ 
+    AssertMsg(s, "Null pointer to string\n");
+    AssertMsgF(s->size > 0, "Trying to clear a Non-Positive sized string: %d\n", s->size);
+    
+    s->len = 0;
+}
 
 string ls_strCopy(string s)
 {
@@ -506,6 +532,8 @@ string ls_strCopy(string s)
 
 void ls_strNCopy(string src, string *dst, size_t size)
 {
+    AssertMsg(dst, "Null pointer to dest\n");
+    
     u32 copySize = size;
     if(size > src.len) { copySize = src.len; }
     
@@ -554,6 +582,9 @@ string ls_strCopySubstr(string s, u32 beginIdx, u32 _endIdx)
 
 void ls_strNullTerminate(string *s)
 {
+    AssertMsg(s, "Null pointer to string\n");
+    AssertMsgF(s->size > 0, "Trying to null terminate a Non-Positive sized string: %d\n", s->size);
+    
     if(s->len == s->size)
     { ls_strGrow(s, 1); }
     
@@ -571,6 +602,7 @@ char *ls_strToCStr(string s)
 
 void ls_strToCStr_t(string s, char *buff, s32 buffSize)
 {
+    AssertMsg(buff, "Null pointer to dest buff\n");
     AssertMsg(buffSize >= s.len+1, "C String Buff not large enough\n");
     
     ls_memcpy(s.data, buff, s.len);
@@ -587,6 +619,9 @@ void ls_strToCStr_t(string s, char *buff, s32 buffSize)
 
 void ls_strReverse(string *s)
 {
+    AssertMsg(s, "Null pointer to string\n");
+    AssertMsgF(s->size > 0, "Trying to reverse a Non-Positive sized string: %d\n", s->size);
+    
     char *Begin = s->data;
     char *End = s->data + s->len;
     if(*End == 0) { End--; } //Ignore null-terminator
@@ -602,7 +637,9 @@ void ls_strReverse(string *s)
 
 void ls_strRmSubstr(string *s, u32 beginIdx, u32 endIdx)
 {
-    AssertMsg(s, "String pointer is null\n");
+    AssertMsg(s, "Null pointer to string\n");
+    AssertMsgF(s->size > 0, "Trying to remove from a Non-Positive sized string: %d\n", s->size);
+    
     AssertMsg(beginIdx < s->len, "Begin Index Out of Bounds. Larger than string length\n");
     AssertMsg(endIdx < s->len, "End Index Out of Bounds. Larger than string length\n");
     AssertMsg(beginIdx < endIdx, "Begin Index is larger than End Index\n");
@@ -626,6 +663,9 @@ void ls_strRmIdx(string *s, u32 idx)
 
 void ls_strRmAllNonTextChar(string *s)
 {
+    AssertMsg(s, "Null pointer to string\n");
+    AssertMsgF(s->size > 0, "Trying to remove from a Non-Positive sized string: %d\n", s->size);
+    
     string *Result = ls_strAllocPtr(s->size);
     
     for(u32 i = 0; i < s->len; i++)
@@ -653,17 +693,19 @@ void ls_strTrimRight(string *s, u32 numChars)
 { 
     AssertMsg(s, "Null string pointer passed\n");
     AssertMsg(s->len > 0, "Trying to trim an empty string\n");
+    AssertMsgF(s->size > 0, "Trying to trim a Non-Positive sized string: %d\n", s->size);
+    
     s->len -= numChars; 
 }
 
 void ls_strInsertSubstr(string *s, string toInsert, u32 insertIdx)
 {
     AssertMsg(s, "Null string pointer passed\n");
+    AssertMsgF(s->size > 0, "Trying to insert into a Non-Positive sized string: %d\n", s->size);
     AssertMsg(insertIdx < s->len, "Insertion index past string length\n");
     
     if(s->size < s->len + toInsert.len)
     { ls_strGrow(s, toInsert.len); }
-    
     
     //TODO:Make a better reverse memcpy for non byte-boundary blocks.
     s32 moveBytes = s->len - insertIdx;
@@ -681,12 +723,20 @@ void ls_strInsertSubstr(string *s, string toInsert, u32 insertIdx)
 
 void ls_strInsertChar(string *s, char c, u32 idx)
 {
+    AssertMsg(s, "Null pointer to string\n");
+    AssertMsgF(s->size > 0, "Trying to insert into a Non-Positive sized string: %d\n", s->size);
+    
+    //NOTE: This looks horrible. Even though it shouldn't create any problem since everything is copied.
     string insertString = ls_strConstChar(&c);
     ls_strInsertSubstr(s, insertString, idx);
 }
 
 void ls_strInsertCStr(string *s, char *toInsert, u32 insertIdx)
 {
+    AssertMsg(s, "Null pointer to string\n");
+    AssertMsg(toInsert, "Null pointer toInsert C string\n");
+    AssertMsgF(s->size > 0, "Trying to insert into a Non-Positive sized string: %d\n", s->size);
+    
     string insertString = ls_strConstant(toInsert);
     ls_strInsertSubstr(s, insertString, insertIdx);
 }
@@ -695,10 +745,14 @@ void ls_strInsertCStr(string *s, char *toInsert, u32 insertIdx)
 
 string *ls_strBreakByDelimeter(string s, u32 *numOfStrings, char c)
 {
-    if(s.data == NULL) { return NULL; } //TODO: This should probably be an AssertMsg()
+    AssertMsg(numOfStrings, "Null pointer to out param numOfStrings\n");
+    
+    if(s.data == NULL) { return NULL; }
+    if(s.len == 0)     { return NULL; }
     
     string *Result = 0;
-    //The thing could crash if this buff overflows
+    //TODO: The thing could crash if this buff overflows
+    //      It's trivial to first count the occurence of the delimiter and allocate the necessary strings.
     string buff[16384] = {};
     u32 buffIdx = 0;
     char *At = s.data;
@@ -707,7 +761,7 @@ string *ls_strBreakByDelimeter(string s, u32 *numOfStrings, char c)
     u32 done = 0;
     do
     {
-        Assert(buffIdx < 16384);
+        AssertMsg(buffIdx < 16384, "Buffer overflow\n");
         
         if (*At == c)
         {
@@ -755,7 +809,10 @@ string *ls_strBreakByDelimeter(string s, u32 *numOfStrings, char c)
 
 string *ls_strBreakByLine(string s, u32 *numOfLines)
 {
+    AssertMsg(numOfLines, "Null pointer to out param numOfLines\n");
+    
     if(s.data == NULL) { return NULL; }
+    if(s.len  == 0)    { return NULL; }
     
     u32 numLines = 1; // NOTE: Last line doesn't have newline in string? Can it?
     char *bAt = s.data;
@@ -814,9 +871,14 @@ string *ls_strBreakByLine(string s, u32 *numOfLines)
 
 string *ls_strBreakByWhitespace(string s, u32 *numOfStrings)
 {
+    AssertMsg(numOfStrings, "Null pointer to out param numOfStrings\n");
+    
     if(s.data == NULL) { return NULL; }
+    if(s.len  == 0)    { return NULL; }
     
     string *Result = 0;
+    //TODO: The thing could crash if this buff overflows
+    //      It's trivial to first count the occurence of the delimiter and allocate the necessary strings.
     string buff[16384] = {};
     u32 buffIdx = 0;
     char *At = s.data;
@@ -825,11 +887,10 @@ string *ls_strBreakByWhitespace(string s, u32 *numOfStrings)
     u32 done = 0;
     do
     {
-        Assert(buffIdx < 16384);
+        AssertMsg(buffIdx < 16384, "Buffer Overflow\n");
         
         if ((*At == ' ') || (*At == '\n') || (*At == '\t') || (*At == '\r') )
         {
-            //TODO: Test this
             if((*At == '\r') && (*(At + 1) == '\n'))
             {
                 done++;
@@ -880,13 +941,20 @@ string *ls_strBreakByWhitespace(string s, u32 *numOfStrings)
 
 string *ls_strBreakBySpace(string s, u32 *numOfStrings)
 {
-    Assert(s.len != 0);
     return ls_strBreakByDelimeter(s, numOfStrings, ' ');
 }
 
 string *ls_strBreakBySpaceUntilDelimiter(string s, char delimiter, u32 *numOfStrings)
 {
+    AssertMsg(numOfStrings, "Null pointer to out param numOfStrings\n");
+    
+    if(s.data == NULL) { return NULL; }
+    if(s.len  == 0)    { return NULL; }
+    
     string *Result = 0;
+    
+    //TODO: The thing could crash if this buff overflows
+    //      It's trivial to first count the occurence of the delimiter and allocate the necessary strings.
     string buff[256] = {};
     u32 buffIdx = 0;
     char *At = s.data;
@@ -895,7 +963,7 @@ string *ls_strBreakBySpaceUntilDelimiter(string s, char delimiter, u32 *numOfStr
     u32 done = 0;
     do
     {
-        Assert(buffIdx < 256);
+        AssertMsg(buffIdx < 256, "Buffer overflow\n");
         
         if (*At == delimiter)
         {
@@ -948,39 +1016,35 @@ string *ls_strBreakBySpaceUntilDelimiter(string s, char delimiter, u32 *numOfStr
 
 s32 ls_strLeftFind(string s, char c)
 {
-    AssertMsg(s.data, "Source data is null.\n");
+    if(s.data == NULL) { return -1; }
+    if(s.len  == 0)    { return -1; }
     
     char *At = s.data;
     s32 offset = 0;
-    
-    b32 found = FALSE;
     while (At != (s.data + s.len))
     { 
-        if(*At == c) { found = TRUE; break; }
+        if(*At == c) { return offset; }
         At++; offset++;
     }
-    
-    if(found) return offset;
     
     return -1;
 }
 
 s32 ls_strRightFind(string s, char c)
 {
-    AssertMsg(s.data, "Source data is null.\n");
+    if(s.data == NULL) { return -1; }
+    if(s.len  == 0)    { return -1; }
     
     char *At = s.data + s.len;
     s32 offset = s.len;
     
-    b32 found = FALSE;
     while(At != s.data)
     {
-        if(*At == c) { found = TRUE; break; }
+        if(*At == c) { return offset; }
         At--;
         offset--;
     }
     
-    if(found) return offset;
     return -1;
 }
 
@@ -1003,6 +1067,10 @@ string ls_strConcat(string s1, string s2)
 
 void ls_strConcatOn(string s1, string s2, string *out)
 {
+    AssertMsg(out, "Null out param out\n");
+    AssertMsg(out->data, "Out param is not allocated\n");
+    AssertMsgF(out->size > 0, "Out param is a Non-Positive sized string: %d\n", out->size);
+    
     if(out == 0x0) return;
     if(out->data == 0x0) return;
     if(out->size < (s1.len + s2.len)) { return; }
@@ -1024,7 +1092,8 @@ string ls_strCatChar(string s, char c)
 
 string ls_strCatCStr(string s1, char *s2)
 {
-    u32 s2Len = ls_len(s2);
+    AssertMsg(s2, "Null input c string s2\n");
+    s32 s2Len = ls_len(s2);
     
     string Result = ls_strAlloc(s1.len + s2Len);
     if(s1.len) { ls_memcpy(s1.data, Result.data, s1.len); }
@@ -1037,6 +1106,7 @@ string ls_strCatCStr(string s1, char *s2)
 void ls_strPrepend(string *s1, string s2)
 {
     AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s1->data, "Base string data is null\n");
     AssertMsg(s2.data, "Input string data is null\n");
     
@@ -1063,6 +1133,7 @@ void ls_strPrepend(string *s1, string s2)
 void ls_strPrependChar(string *s1, char c)
 {
     AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s1->data, "Base string data is null\n");
     
     if(s1->len + 1 > s1->size)
@@ -1087,6 +1158,7 @@ void ls_strPrependChar(string *s1, char c)
 void ls_strPrependCStr(string *s1, char *s2)
 {
     AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s1->data, "Base string data is null\n");
     AssertMsg(s2, "C string ptr is null\n");
     
@@ -1109,6 +1181,7 @@ void ls_strPrependCStr(string *s1, char *s2)
 void ls_strAppend(string *s1, string s2)
 {
     AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s1->data, "Base string data is null\n");
     AssertMsg(s2.data, "Input string data is null\n");
     
@@ -1125,6 +1198,7 @@ void ls_strAppend(string *s1, string s2)
 void ls_strAppend(string *s, view v)
 {
     AssertMsg(s, "Base string ptr is null\n");
+    AssertMsgF(s->size > 0, "Trying to write to Non-Positive sized string: %d\n", s->size);
     AssertMsg(s->data, "Base string data is null\n");
     
     if(s->len + v.s.len > s->size)
@@ -1140,6 +1214,7 @@ void ls_strAppend(string *s, view v)
 void ls_strAppend(string *s1, char c)
 {
     AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s1->data, "Base string data is null\n");
     
     if(s1->len + 1 > s1->size)
@@ -1152,6 +1227,7 @@ void ls_strAppend(string *s1, char c)
 void ls_strAppend(string *s1, char *c)
 {
     AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s1->data, "Base string data is null\n");
     AssertMsg(c, "C String ptr is null\n");
     
@@ -1162,6 +1238,7 @@ void ls_strAppend(string *s1, char *c)
 void ls_strAppend(string *s1, const char *c)
 {
     AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s1->data, "Base string data is null\n");
     AssertMsg(c, "C String ptr is null\n");
     
@@ -1171,8 +1248,8 @@ void ls_strAppend(string *s1, const char *c)
 
 void ls_strAppend(string *s1, char *c, u32 s2Len)
 {
-    //NOTE: Do I want these asserts?
     AssertMsg(s1, "Base string ptr is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s1->data, "Base string data is null\n");
     AssertMsg(c, "C String ptr is null\n");
     
@@ -1213,9 +1290,8 @@ string ls_itos(s64 x)
 
 void ls_itosOn(s64 x, string *out)
 {
-    Assert(out != 0x0);
-    Assert(out->data != 0x0);
-    Assert(out->size > 20);
+    AssertMsg(out, "Null out param out\n");
+    AssertMsg(out->data, "Out param is not allocated\n");
     
     bool isNegative = x < 0;
     s64 value = isNegative ? -x : x;
@@ -1229,23 +1305,13 @@ void ls_itosOn(s64 x, string *out)
         return;
     }
     
-    //My Log10 Function is not super precise at the boundaries between values i.e. 999999 - 1000000. So just to be sure, I give it an extra byte, which is super fine.
-    
-    //Update months Later: BTW I think this is a fuckin waste of time and processor power, considering no number to be printed is ever going to be bigger than 128 char long
-    //I should just waste this 0.000000016% of the average computer FUCKING Memory to just allocate a little bit more than necessary.
-    
-    //I'm not going to change it now just because it's good training for me to approximate trascendental functions and stuff like that
-    
-    //Update few days later: Fuck it I'm changing this shitty Log10 functions that sucks freakin balls.
-    
-    //@TODO @CLEANUP @FIXME: Make a Log2 / Log10 / LOGN Function Tables so that I quit having this stupid shitty problem. (Or maybe see if theres cool ASM for them)
-    
     s32 i = 0;
-    
     while (value != 0)
     {
         out->data[i++] = value % 10 + '0';
         value = value / 10;
+        
+        AssertMsg(out->len > i, "Out string is not large enough to contain the number");
     }
     
     if (isNegative) { out->data[i++] = '-'; }
@@ -1537,6 +1603,7 @@ utf8 ls_utf8FromAscii(char *s)
 void ls_utf8FromAscii_t(utf8 *dst, char *src, u32 len)
 {
     AssertMsg(dst, "Destination pointer is null\n");
+    AssertMsg(dst->size >= len, "TODO: Dst growth in this function.");
     if(src == NULL) { return; }
     if(len == 0)    { return; }
     
@@ -3304,7 +3371,7 @@ view ls_viewNextNChars(view v, u32 n)
 {
     view Result = {};
     
-    Result.s = {v.next, n, n};
+    Result.s = {v.next, (s32)n, (s32)n};
     Result.next = v.next + n;
     Result.len  = v.len - n;
     
@@ -3339,7 +3406,7 @@ view ls_viewNextDelimiter(view v, char c)
     if(wordLen == v.len)
     { nextLen = wordLen; }
     
-    Result.s = {v.next, wordLen, wordLen};
+    Result.s = {v.next, (s32)wordLen, (s32)wordLen};
     Result.next = v.next + nextLen;
     Result.len  = v.len - nextLen;
     
@@ -3363,7 +3430,7 @@ view ls_viewNextWord(view v)
         At++;
     }
     
-    Result.s = {v.next, wordLen, wordLen};
+    Result.s = {v.next, (s32)wordLen, (s32)wordLen};
     Result.next = v.next + wordLen;
     Result.len  = v.len - wordLen;
     
@@ -3399,7 +3466,7 @@ view ls_viewNextLineSkipWS(view v)
         At++;
     }
     
-    Result.s = {v.next, lineLen, lineLen};
+    Result.s = {v.next, (s32)lineLen, (s32)lineLen};
     Result.next = v.next + lineLen + skipWhite;
     Result.len  = v.len - (lineLen + skipWhite);
     
@@ -3422,7 +3489,7 @@ view ls_viewNextLine(view v)
         At++;
     }
     
-    Result.s = {v.next, lineLen, lineLen};
+    Result.s = {v.next, (s32)lineLen, (s32)lineLen};
     Result.next = v.next + lineLen;
     Result.len  = v.len - lineLen;
     

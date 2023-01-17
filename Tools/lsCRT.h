@@ -154,7 +154,7 @@ linuxDate linux_GetDate(b32);
 //	STRING FUNCTIONS
 ////////////////////////////////////////////////////
 
-u32     ls_len(char *s);
+s32     ls_len(char *s);
 char    ls_lowerCase(char c);
 b32     ls_isWritable(char c);
 b32	 ls_isANumber(char c);
@@ -307,9 +307,9 @@ ls_dangerousNotToBeCalledInitFunctionHere();
 //	STRING FUNCTIONS
 ////////////////////////////////////////////////////
 
-u32 ls_len(char *s)
+s32 ls_len(char *s)
 {
-    u32 len = 0;
+    s32 len = 0;
     char *At = s;
     while(*At != 0) { len++; At++; }
     
