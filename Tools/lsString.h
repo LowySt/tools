@@ -20,9 +20,9 @@ struct string
 struct utf8
 {
     u8  *data;
-    u32  len;
-    u32  byteLen;
-    u32  size;
+    s32  len;
+    s32  byteLen;
+    s32  size;
 };
 
 struct utf32
@@ -85,7 +85,7 @@ void    ls_strToCStr_t(string s, char *buff, s32 buffSize);
 
 //OperateOn
 void    ls_strReverse(string *s);
-void    ls_strRmSubstr(string *s, u32 beginIdx, u32 endIdx);
+void    ls_strRmSubstr(string *s, u32 beginIdx, u32 endIdx); //TODO: Make indices signed as well.
 void    ls_strRmIdx(string *s, u32 idx);
 void    ls_strRmAllNonTextChar(string *s);
 void    ls_strTrimRight(string *s, u32 numChars);
@@ -141,7 +141,7 @@ b32     ls_strIsEqualNCStr(string s1, char *s2, u32 len);
 //-----------------------------//
 
 //Create/Destroy
-utf8  ls_utf8Alloc(u32 size);
+utf8  ls_utf8Alloc(s32 size);
 utf8 *ls_utf8AllocArr(u32 numStrings, s32 initialSize);
 void  ls_utf8Free(utf8 *s);
 void  ls_utf8FreeArr(utf8 *s, u32 arrSize);
@@ -149,12 +149,12 @@ void  ls_utf8FreeArr(utf8 *s, u32 arrSize);
 b32   ls_utf8AreEqual(utf8 a, utf8 b);
 void  ls_utf8Set(utf8 *toSet, utf8 source);
 
-u32   ls_utf8Len(u8 *src, s32 byteLen);
+s32   ls_utf8Len(u8 *src, s32 byteLen);
 
 utf8  ls_utf8FromAscii(char *s);
-utf8  ls_utf8FromAscii(char *s, u32 len);
+utf8  ls_utf8FromAscii(char *s, s32 len);
 void  ls_utf8FromAscii_t(utf8 *dst, char *src);
-void  ls_utf8FromAscii_t(utf8 *dst, char *src, u32 len);
+void  ls_utf8FromAscii_t(utf8 *dst, char *src, s32 len);
 utf8  ls_utf8FromUTF32(utf32 s);
 utf8  ls_utf8FromUTF32(const char32_t *s);
 void  ls_utf8FromUTF32_t(utf8 *dst, const char32_t *s);
@@ -163,7 +163,7 @@ void  ls_utf8FromInt_t(utf8 *s, s64 x);
 utf8  ls_utf8FromF64(f64 x);
 void  ls_utf8FromF64_t(utf8 *s, f64 x);
 utf8  ls_utf8Constant(const u8 *p);
-utf8  ls_utf8Constant(const u8 *p, u32 byteLen);
+utf8  ls_utf8Constant(const u8 *p, s32 byteLen);
 
 //Manage
 void  ls_utf8Clear(utf8 *s);
@@ -171,12 +171,12 @@ utf8  ls_utf8Copy(utf8 s);
 
 //OperateOn
 void  ls_utf8Reverse(utf8 *s);
-void  ls_utf8RmSubstr(utf8 *s, u32 beginIdx, u32 endIdx);
+void  ls_utf8RmSubstr(utf8 *s, u32 beginIdx, u32 endIdx);  //TODO: Make indices signed as well.
 void  ls_utf8RmIdx(utf8 *s, u32 idx);
 void  ls_utf8RmAllNonTextChar(utf8 *s);
 void  ls_utf8TrimRight(utf8 *s, u32 numChars);
 
-void  ls_utf8InsertSubstr(utf8 *s, utf8 toInsert, u32 insertIdx);
+void  ls_utf8InsertSubstr(utf8 *s, utf8 toInsert, u32 insertIdx);  //TODO: Make indices signed as well.
 void  ls_utf8InsertChar(utf8 *s, u32 c, u32 idx);
 void  ls_utf8InsertCStr(utf8 *s, char *toInsert, u32 insertIdx);
 void  ls_utf8InsertBuffer(utf8 *s, u8 *toInsert, u32 buffLen, u32 insertIdx);
@@ -1488,8 +1488,10 @@ b32 ls_strIsEqualNCStr(string s1, char *s2, u32 len)
 //    UTF8  STRINGS
 
 //Create/Destroy
-utf8 ls_utf8Alloc(u32 size)
+utf8 ls_utf8Alloc(s32 size)
 {
+    AssertMsg(size > 0, "Non-Positive size when allocating string\n");
+    
     u8 *data = (u8 *)ls_alloc(sizeof(u8) * size);
     utf8 result = { data, 0, 0, size };
     return result;
@@ -1497,6 +1499,8 @@ utf8 ls_utf8Alloc(u32 size)
 
 utf8 *ls_utf8AllocArr(u32 numStrings, s32 initialSize)
 {
+    AssertMsg(initialSize >= 0, "Non-Positive initialSize when allocating string array\n");
+    
     if(numStrings == 0) { return 0x0; }
     
     utf8 *result = (utf8 *)ls_alloc(sizeof(utf8)*numStrings);
@@ -1510,6 +1514,9 @@ utf8 *ls_utf8AllocArr(u32 numStrings, s32 initialSize)
 
 void ls_utf8Free(utf8 *s)
 {
+    AssertMsg(s, "Null string pointer\n");
+    AssertMsgF(s->size > 0, "Trying to free a Non-Positive sized string: %d\n", s->size);
+    
     ls_free(s->data);
     s->data     = 0;
     s->len      = 0;
@@ -1519,6 +1526,8 @@ void ls_utf8Free(utf8 *s)
 
 void ls_utf8FreeArr(utf8 *s, u32 arrSize)
 {
+    AssertMsg(s, "Null string pointer\n");
+    
     for(u32 i = 0; i < arrSize; i++)
     { ls_utf8Free(&s[i]);}
     
@@ -1537,9 +1546,12 @@ b32 ls_utf8AreEqual(utf8 a, utf8 b)
     return ls_memcmp(a.data, b.data, a.byteLen*sizeof(u8));
 }
 
-u32 ls_utf8Len(u8 *src, s32 byteLen)
+s32 ls_utf8Len(u8 *src, s32 byteLen)
 {
-    u32 len = 0;
+    AssertMsg(src, "Null source pointer\n");
+    AssertMsgF(byteLen > 0, "Non-Positive byteLen: %d\n", byteLen);
+    
+    s32 len = 0;
     u8 *At = (u8 *)src;
     while(byteLen > 0)
     {
@@ -1560,6 +1572,7 @@ u32 ls_utf8Len(u8 *src, s32 byteLen)
 void ls_utf8Set(utf8 *toSet, utf8 source)
 {
     AssertMsg(toSet, "String to be set pointer is null\n");
+    AssertMsgF(toSet->size > 0, "Trying to write to a Non-Positive sized string: %d\n", toSet->size);
     
     if(toSet->size < source.byteLen) { ls_utf8Free(toSet); }
     
@@ -1579,8 +1592,10 @@ void ls_utf8Set(utf8 *toSet, utf8 source)
     toSet->byteLen = source.byteLen;
 }
 
-utf8 ls_utf8FromAscii(char *s, u32 len)
+utf8 ls_utf8FromAscii(char *s, s32 len)
 {
+    AssertMsg(s, "Null source c string\n");
+    
     if(s == NULL) { return {}; }
     if(len == 0)  { return {}; }
     
@@ -1596,14 +1611,17 @@ utf8 ls_utf8FromAscii(char *s, u32 len)
 
 utf8 ls_utf8FromAscii(char *s)
 {
-    u32 len = ls_len(s);
+    s32 len = ls_len(s);
     return ls_utf8FromAscii(s, len);
 }
 
-void ls_utf8FromAscii_t(utf8 *dst, char *src, u32 len)
+void ls_utf8FromAscii_t(utf8 *dst, char *src, s32 len)
 {
     AssertMsg(dst, "Destination pointer is null\n");
-    AssertMsg(dst->size >= len, "TODO: Dst growth in this function.");
+    AssertMsgF(dst->size > 0, "Trying to write to a Non-Positive sized string: %d\n", dst->size);
+    AssertMsg(src, "Null source c string\n");
+    AssertMsg(dst->size >= len, "TODO: Dst growth in this function\n");
+    
     if(src == NULL) { return; }
     if(len == 0)    { return; }
     
@@ -1615,6 +1633,9 @@ void ls_utf8FromAscii_t(utf8 *dst, char *src, u32 len)
 void ls_utf8FromAscii_t(utf8 *dst, char *src)
 {
     AssertMsg(dst, "Destination pointer is null\n");
+    AssertMsgF(dst->size > 0, "Trying to write to a Non-Positive sized string: %d\n", dst->size);
+    AssertMsg(src, "Null source c string\n");
+    
     if(src == NULL) { return; }
     
     u32 len = ls_len(src);
@@ -1623,6 +1644,8 @@ void ls_utf8FromAscii_t(utf8 *dst, char *src)
 
 utf8 ls_utf8FromUTF32(utf32 s)
 {
+    AssertMsg(s.data, "Null source string data\n");
+    
     if(s.data == NULL) { return {}; }
     
     u32 byteLen = 0;
@@ -1701,6 +1724,8 @@ utf8 ls_utf8FromUTF32(utf32 s)
 void ls_utf8FromUTF32_t(utf8 *dst, const char32_t *s)
 {
     AssertMsg(dst, "Destination pointer is null\n");
+    AssertMsgF(dst->size > 0, "Trying to write to a Non-Positive sized string: %d\n", dst->size);
+    AssertMsg(s, "Null c string pointer\n");
     
     if(s == NULL) { return; }
     
@@ -1792,6 +1817,8 @@ void ls_utf8FromUTF32_t(utf8 *dst, const char32_t *s)
 
 utf8 ls_utf8FromUTF32(const char32_t *s)
 {
+    AssertMsg(s, "Null literal pointer\n");
+    
     if(s == NULL) { return {}; }
     
     utf8 result = {};
@@ -1812,6 +1839,7 @@ utf8 ls_utf8FromInt(s64 x)
 void ls_utf8FromInt_t(utf8 *s, s64 x)
 {
     AssertMsg(s, "Source pointer is null");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
     
     char buff[32] = {};
     s32 len = ls_itoa_t(x, buff, 32);
@@ -1844,6 +1872,7 @@ utf8 ls_utf8FromF64(f64 x)
 void ls_utf8FromF64_t(utf8 *s, f64 x)
 {
     AssertMsg(s, "Source ptr is null\n");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
     
     char buff[32] = {};
     u32 len = ls_ftoa_t(x, buff, 32);
@@ -1867,8 +1896,10 @@ void ls_utf8FromF64_t(utf8 *s, f64 x)
 
 utf8 ls_utf8Constant(const u8 *p)
 {
-    u32 byteLen = 0;
-    u32 len = 0;
+    AssertMsg(p, "Null literal source string\n");
+    
+    s32 byteLen = 0;
+    s32 len = 0;
     u8 *At = (u8 *)p;
     while(*At)
     {
@@ -1881,20 +1912,25 @@ utf8 ls_utf8Constant(const u8 *p)
         len += 1;
     }
     
-    utf8 result = { (u8 *)p, len, byteLen, byteLen };
+    utf8 result = { (u8 *)p, len, byteLen, -7878 };
     return result;
 }
 
-utf8 ls_utf8Constant(const u8 *p, u32 byteLen)
+utf8 ls_utf8Constant(const u8 *p, s32 byteLen)
 {
-    u32 len     = ls_utf8Len((u8 *)p, byteLen);
-    utf8 result = { (u8 *)p, len, byteLen, byteLen };
+    AssertMsg(p, "Null literal source string\n");
+    
+    s32 len     = ls_utf8Len((u8 *)p, byteLen);
+    utf8 result = { (u8 *)p, len, byteLen, -7878 };
     return result;
 }
 
 //Manage
 void ls_utf8Clear(utf8 *s)
 {
+    AssertMsg(s, "Null source string\n");
+    AssertMsgF(s->size > 0, "Trying to clear a Non-Positive sized string: %d\n", s->size);
+    
     s->len     = 0;
     s->byteLen = 0;
 }
@@ -1970,6 +2006,9 @@ s32 ls_utf8LeftFind(utf8 s, u8 c[4])
     AssertMsg(s.data, "UTF8 string data is null.\n");
     AssertMsg(c[0] <= 0xF7, "UTF8 first byte is out of range [0x0 - 0xF7]\n");
     
+    if(s.data == NULL) { return -1; }
+    if(s.len  == 0)    { return -1; }
+    
     s8 codepointLen = 0;
     if     (c[0] <= 0x7F) codepointLen = 1;
     else if(c[0] <= 0xDF) codepointLen = 2;
@@ -1998,6 +2037,9 @@ s32 ls_utf8LeftFind(utf8 s, s32 offset, u8 c[4])
 {
     AssertMsg(s.data, "UTF8 string data is null.\n");
     AssertMsg(c[0] <= 0xF7, "UTF8 first byte is out of range [0x0 - 0xF7]\n");
+    
+    if(s.data == NULL) { return -1; }
+    if(s.len  == 0)    { return -1; }
     
     s8 codepointLen = 0;
     if     (c[0] <= 0x7F) codepointLen = 1;
@@ -2045,6 +2087,11 @@ b32 ls_utf8Contains(utf8 haystack, utf8 needle)
 {
     AssertMsg(haystack.data, "Haystack data is null\n");
     AssertMsg(needle.data, "Needle data is null\n");
+    
+    if(haystack.data == NULL) { return FALSE; }
+    if(needle.data   == NULL) { return FALSE; }
+    if(haystack.len  == 0)    { return FALSE; }
+    if(needle.len    == 0)    { return FALSE; }
     
     u8 *At    = haystack.data;
     u8 *Check = needle.data;
