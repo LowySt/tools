@@ -225,6 +225,7 @@ void   ls_utf32Free(utf32 *s);
 void   ls_utf32FreeArr(utf32 *s, s32 arrSize);
 
 b32    ls_utf32AreEqual(utf32 a, utf32 b);
+b32    ls_utf32AreEqualUpTo(utf32 a, utf32 b, s32 len);
 b32    ls_utf32AsciiAreEqual(utf32 a, string b);
 void   ls_utf32Set(utf32 *toSet, utf32 source);
 
@@ -2261,6 +2262,18 @@ b32 ls_utf32AreEqual(utf32 a, utf32 b)
     if(a.data == b.data) { return TRUE; }
     
     return ls_memcmp(a.data, b.data, a.len*sizeof(u32));
+}
+
+b32 ls_utf32AreEqualUpTo(utf32 a, utf32 b, s32 len)
+{
+    AssertMsg(a.data, "First string's data pointer is null");
+    AssertMsg(b.data, "Second string's data pointer is null");
+    
+    if(a.len < len)      { return FALSE; }
+    if(b.len < len)      { return FALSE; }
+    if(a.data == b.data) { return TRUE; }
+    
+    return ls_memcmp(a.data, b.data, len*sizeof(u32));
 }
 
 b32 ls_utf32AsciiAreEqual(utf32 a, string b)
