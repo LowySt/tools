@@ -3020,6 +3020,7 @@ s32 ls_utf32LeftFind(utf32 s, s32 off, u32 c)
     
     if(s.data == NULL) { return -1; }
     if(s.len  == 0)    { return -1; }
+    if(off >= s.len)   { return -1; }
     
     u32 *At = s.data + off;
     s32 offset = off;
@@ -3062,6 +3063,7 @@ s32 ls_utf32LeftFind(utf32 s, utf32 needle)
     return -1;
 }
 
+//NOTE: ??? Offset is suuuper strange here?? Shouldn't it go from the end towards the beginning??
 s32 ls_utf32RightFind(utf32 s, s32 off, u32 c)
 {
     AssertMsg(s.data, "Source data is null.\n");
@@ -3069,6 +3071,7 @@ s32 ls_utf32RightFind(utf32 s, s32 off, u32 c)
     
     if(s.data == NULL) { return -1; }
     if(s.len  == 0)    { return -1; }
+    if(off >= s.len)   { return -1; }
     
     u32 *At = s.data + off;
     s32 offset = off;
