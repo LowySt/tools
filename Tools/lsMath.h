@@ -8,15 +8,15 @@
 
 #define LS_EPSILON 0.00001f
 
-#define ls_min(a, b) (a < b ? a : b)
-#define ls_max(a, b) (a > b ? a : b)
-
 /////////////
 // GENERAL //
 /////////////
 
 extern "C"
 {
+    s32 ls_min(s32 a, s32 b);
+    s32 ls_max(s32 a, s32 b);
+    
     s32 ls_floor(f64 v);
     s32 ls_ceil(f64 v);
     
@@ -208,8 +208,20 @@ extern "C"
 // GENERAL //
 /////////////
 
+s32 ls_min(s32 a, s32 b)
+{
+    if(a <= b) return a;
+    return b;
+}
+
+s32 ls_max(s32 a, s32 b)
+{
+    if(a >= b) return a;
+    return b;
+}
+
 s32 ls_floor(f64 v)
-{ return (s32)v; }
+{ return s32(v); }
 
 s32 ls_ceil(f64 v)
 { return (s32)(v+1); };
