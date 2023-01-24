@@ -2322,6 +2322,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         
         box->viewBeginIdx = maxBeginIndex;
         
+        ls_printf("ViewAddWidth: %d, beginOffset: %d, lineLength: %d, maxBeginIndex: %d\n", viewAddWidth, beginOffset, lineLength, maxBeginIndex);
+        
         //NOTE:TODO: As of right now viewEndIdx does absolutely nothing.
         box->viewEndIdx   = 0xFEFEFE; // = lineLength; //TODONOTE Strange that an idx == lenght.
         
@@ -2492,7 +2494,11 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->caretIndex += 1;
             box->isCaretOn = TRUE; box->dtCaret = 0;
             
-            setIndices(box->caretIndex);
+            ls_printf("[PRE] LineCount: %d, CurrLineBeg: %d, CaretLine: %d, CaretIndex: %d, ViewBegin: %d\n", box->lineCount, box->currLineBeginIdx, box->caretLineIdx, box->caretIndex, box->viewBeginIdx);
+            
+            setIndices(box->caretIndex-1);
+            
+            ls_printf("[POST] LineCount: %d, CurrLineBeg: %d, CaretLine: %d, CaretIndex: %d, ViewBegin: %d\n", box->lineCount, box->currLineBeginIdx, box->caretLineIdx, box->caretIndex, box->viewBeginIdx);
             
             inputUse = TRUE;
         }
@@ -2567,7 +2573,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             else
             { newLineBeginIdx = setIndices(box->caretIndex); }
             */
-            newLineBeginIdx = setIndices(box->caretIndex);
+            newLineBeginIdx = setIndices(box->caretIndex-1);
             
             AssertMsg(newLineBeginIdx != -1, "Fucked Up line index in LArrow\n");
             
@@ -2595,7 +2601,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             else
             { newLineBeginIdx = setIndices(box->caretIndex); }
             */
-            newLineBeginIdx = setIndices(box->caretIndex);
+            newLineBeginIdx = setIndices(box->caretIndex-1);
             
             AssertMsg(newLineBeginIdx != -1, "Fucked Up line index in RArrow");
             
@@ -2627,7 +2633,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->caretIndex   = box->text.len;
             box->caretLineIdx = box->lineCount;
             
-            box->currLineBeginIdx = setIndices(box->caretIndex);
+            box->currLineBeginIdx = setIndices(box->caretIndex-1);
         }
         
         else if(KeyHeld(keyMap::Control) && KeyPress(keyMap::A))
@@ -2676,7 +2682,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->caretIndex      += realCopyLen;
             box->lineCount       += addedLines;
             box->caretLineIdx    += addedLines;
-            box->currLineBeginIdx = setIndices(box->caretIndex);
+            box->currLineBeginIdx = setIndices(box->caretIndex-1);
             
             inputUse = TRUE;
         }
