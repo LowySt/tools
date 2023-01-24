@@ -192,6 +192,8 @@ s32   ls_utf8CountOccurrences(utf8 s, u8 c[4]);
 
 b32   ls_utf8Contains(utf8 haystack, utf8 needle);
 
+void  ls_utf8ToLower(utf8 *out, utf8 source);
+
 //Merge
 utf8  ls_utf8Concat(utf8 s1, utf8 s2);
 void  ls_utf8ConcatOn(utf8 s1, utf8 s2, utf8 *out);
@@ -2107,6 +2109,56 @@ b32 ls_utf8Contains(utf8 haystack, utf8 needle)
     }
     
     return FALSE;
+}
+
+void ls_utf8ToLower(utf8 *out, utf8 source)
+{
+    AssertMsg(out, "Null out pointer\n");
+    AssertMsg(out->data, "Out data is null\n");
+    AssertMsg(out->size >= source.byteLen, "Out is not long enough\n");
+    
+    if(out->data   == NULL) { return; }
+    if(source.data == NULL) { return; }
+    if(source.len  == 0)    { return; }
+    
+    for(u32 i = 0; i < source.len;)
+    {
+        u8 c0 = source.data[i];
+        
+        if(c0 <= 0x7F)
+        {
+            if(c0 >= 'A' && c0 <= 'Z') { out->data[i] = c0 + 0x20; }
+            else                       { out->data[i] = c0;}
+            
+            i += 1;
+        }
+        else if(c0 <= 0xDF)
+        { 
+            out->data[i] = c0;
+            out->data[i+1] = source.data[i+1];
+            i += 2;
+        }
+        else if(c0 <= 0xEF)
+        { 
+            out->data[i] = c0;
+            out->data[i+1] = source.data[i+1];
+            out->data[i+2] = source.data[i+2];
+            i += 3;
+        }
+        else if(c0 <= 0xF7)
+        {
+            out->data[i] = c0;
+            out->data[i+1] = source.data[i+1];
+            out->data[i+2] = source.data[i+2];
+            out->data[i+3] = source.data[i+3];
+            i += 4;
+        }
+    }
+    
+    out->byteLen = source.byteLen;
+    out->len     = source.len;
+    
+    return;
 }
 
 //Merge
