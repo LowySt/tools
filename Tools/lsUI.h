@@ -1766,7 +1766,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
         while(yOffset)
         {
             u32 code = box->text.data[i];
-            AssertMsg(code <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
+            AssertMsgF(code <= c->currFont->maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
             
             if(code == (char32_t)'\n') { yOffset -= 1; }
             i += 1;
@@ -1796,7 +1796,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
             if(currXPos >= strMaxX) { i += line.len - lIdx; break; }
             
             code = line.data[lIdx];
-            AssertMsg(code <= c->currFont->maxCodepoint, "GlyphIndex OutOfBounds\n");
+            AssertMsgF(code <= c->currFont->maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
             
             Color actualColor = textColor;
             UIGlyph *currGlyph = &c->currFont->glyph[code];
@@ -1847,7 +1847,7 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
     for(u32 i = 0; i < text.len; i++)
     {
         u32 indexInGlyphArray = text.data[i];
-        AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
         
         UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
         ls_uiGlyph(c, currXPos, currYPos, threadRect, scissor, currGlyph, textColor);
@@ -1874,7 +1874,7 @@ void ls_uiGlyphString_8(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
     for(u32 i = 0; i < text.len; i++)
     {
         u32 indexInGlyphArray = ls_utf32CharFromUtf8(text, i);
-        AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
         
         UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
         ls_uiGlyph(c, currXPos, currYPos, threadRect, scissor, currGlyph, textColor);
@@ -1904,7 +1904,7 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UIRect layout,
     for(u32 i = 0; i < text.len; i++)
     {
         u32 indexInGlyphArray = text.data[i];
-        AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
         
         if(indexInGlyphArray == (u32)'\n') {
             currYPos -= font->pixelHeight;
@@ -1942,7 +1942,7 @@ s32 ls_uiGlyphStringLen(UIContext *c, UIFont *font, utf32 text)
     for(u32 i = 0; i < text.len; i++)
     {
         u32 indexInGlyphArray = text.data[i];
-        AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
         
         UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
         
@@ -1964,7 +1964,7 @@ s32 ls_uiGlyphStringLen_8(UIContext *c, UIFont *font, utf8 text)
     for(u32 i = 0; i < text.len; i++)
     {
         u32 indexInGlyphArray = ls_utf32CharFromUtf8(text, i);
-        AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
         
         UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
         
@@ -1986,7 +1986,7 @@ s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
     for(s32 i = text.len-1; i > 0; i--)
     {
         u32 indexInGlyphArray = text.data[i];
-        AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
         
         UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
         
@@ -2017,7 +2017,7 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOf
     for(u32 i = 0; i < text.len; i++)
     {
         u32 indexInGlyphArray = text.data[i];
-        AssertMsg(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex OutOfBounds\n");
+        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
         
         if(indexInGlyphArray == (u32)'\n') { currXOff = 0; currYOff -= font->pixelHeight; continue; }
         
