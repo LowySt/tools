@@ -1727,7 +1727,7 @@ utf8 ls_utf8FromUTF32(utf32 s)
 void ls_utf8FromUTF32_t(utf8 *dst, const char32_t *s)
 {
     AssertMsg(dst, "Destination pointer is null\n");
-    AssertMsgF(dst->size > 0, "Trying to write to a Non-Positive sized string: %d\n", dst->size);
+    AssertMsgF(dst->size >= 0, "Trying to write to a Non-Positive sized string: %d\n", dst->size);
     AssertMsg(s, "Null c string pointer\n");
     
     if(s == NULL) { return; }
@@ -1745,7 +1745,6 @@ void ls_utf8FromUTF32_t(utf8 *dst, const char32_t *s)
         At  += 1;
         len += 1;
     }
-    
     
     if(dst->size < byteLen) { ls_utf8Free(dst); }
     
