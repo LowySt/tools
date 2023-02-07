@@ -176,13 +176,13 @@ f32     ls_atof(char *s, u32 len);
 s32     ls_strcmp(char *a, char *b);
 s32     ls_strncmp(char *a, char *b, u32 n);
 
+char    ls_getc();
+
 //TODO: Add precision Modifiers to Floating Point Printing
 s32     ls_vsprintf(char *dest, u32 buffSize, const char *fmt, va_list argList);
 s32 	ls_sprintf(char *dest, u32 buffSize, const char *format, ...);
 s32     ls_vprintf(const char *fmt, va_list argList);
 s32 	ls_printf(const char *format, ...);
-char    ls_getc();
-
 
 ////////////////////////////////////////////////////
 //	FILE MANIPULATION FUNCTIONS
@@ -697,6 +697,15 @@ s32 ls_strncmp(char *a, char *b, u32 n)
 u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite);
 u64 ls_readConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite);
 
+char ls_getc()
+{
+    char Result = 0;
+    ls_readConsole(LS_STDIN, &Result, 1);
+    
+    return Result;
+}
+
+
 //TODO: Instead of Buffer Overrun return written characters and gracefully exit? 
 //      I'd like to signal errors better, but C++ sucks and I can't have multiple return values :(
 s32 ls_formatStringInternal_(const char *format, char *dest, u32 destLen, va_list argList)
@@ -926,14 +935,6 @@ s32 ls_printf(const char *format, ...)
     va_end(argList);
     
     return ret;
-}
-
-char ls_getc()
-{
-    char Result = 0;
-    ls_readConsole(LS_STDIN, &Result, 1);
-    
-    return Result;
 }
 
 ////////////////////////////////////////////////////
