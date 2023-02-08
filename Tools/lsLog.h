@@ -24,6 +24,16 @@ s32 ls_log(const char *format, ...);
 
 static Array<LogRegisteredType> __internal_logRegisteredTypes = {};
 
+s32 ls_vlogFormatPTR(char *dst, va_list *argList)
+{
+    u64 intValue = (u64)va_arg(*argList, void *);
+    
+    char intBuff[32] = {};
+    s32 sLen = ls_utoax_t(intValue, intBuff, 32);
+    ls_memcpy(intBuff, dst, sLen);
+    return sLen;
+}
+
 s32 ls_vlogFormatB32(char *dst, va_list *argList)
 {
     s64 intValue = va_arg(*argList, s64);
@@ -50,6 +60,26 @@ s32 ls_vlogFormatS64(char *dst, va_list *argList)
     
     char intBuff[32] = {};
     s32 sLen = ls_itoa_t(intValue, intBuff, 32);
+    ls_memcpy(intBuff, dst, sLen);
+    return sLen;
+}
+
+s32 ls_vlogFormatU32(char *dst, va_list *argList)
+{
+    u32 intValue = va_arg(*argList, u32);
+    
+    char intBuff[32] = {};
+    s32 sLen = ls_utoa_t(intValue, intBuff, 32);
+    ls_memcpy(intBuff, dst, sLen);
+    return sLen;
+}
+
+s32 ls_vlogFormatU64(char *dst, va_list *argList)
+{
+    u64 intValue = va_arg(*argList, u64);
+    
+    char intBuff[32] = {};
+    s32 sLen = ls_utoa_t(intValue, intBuff, 32);
     ls_memcpy(intBuff, dst, sLen);
     return sLen;
 }
@@ -146,16 +176,21 @@ s32 ls_log(const char *format, ...)
     static b32 initialize = FALSE;
     if (!initialize)
     {
-        ls_vlogRegister("b32", ls_vlogFormatB32);
-        ls_vlogRegister("s8", ls_vlogFormatS32);
-        ls_vlogRegister("s16", ls_vlogFormatS32);
-        ls_vlogRegister("s32", ls_vlogFormatS32);
-        ls_vlogRegister("s64", ls_vlogFormatS64);
-        ls_vlogRegister("f32", ls_vlogFormatF64);
-        ls_vlogRegister("f64", ls_vlogFormatF64);
+        ls_vlogRegister("ptr",    ls_vlogFormatPTR);
+        ls_vlogRegister("b32",    ls_vlogFormatB32);
+        ls_vlogRegister("s8",     ls_vlogFormatS32);
+        ls_vlogRegister("s16",    ls_vlogFormatS32);
+        ls_vlogRegister("s32",    ls_vlogFormatS32);
+        ls_vlogRegister("s64",    ls_vlogFormatS64);
+        ls_vlogRegister("u8",     ls_vlogFormatU32);
+        ls_vlogRegister("u16",    ls_vlogFormatU32);
+        ls_vlogRegister("u32",    ls_vlogFormatU32);
+        ls_vlogRegister("u64",    ls_vlogFormatU64);
+        ls_vlogRegister("f32",    ls_vlogFormatF64);
+        ls_vlogRegister("f64",    ls_vlogFormatF64);
         ls_vlogRegister("string", ls_vlogFormatString);
-        ls_vlogRegister("utf8", ls_vlogFormatUTF8);
-        ls_vlogRegister("utf32", ls_vlogFormatUTF32);
+        ls_vlogRegister("utf8",   ls_vlogFormatUTF8);
+        ls_vlogRegister("utf32",  ls_vlogFormatUTF32);
         
         initialize = TRUE;
     }
