@@ -168,6 +168,8 @@ char   *ls_ftoa(f64 x);
 
 //NOTE: On stack
 u32    ls_itoa_t(s64 x, char *buff, u32 buffMax);
+u32    ls_utoax_t(u64 value, char *buff, u32 buffMax);
+u32    ls_utoa_t(u64 value, char *buff, u32 buffMax);
 u32    ls_ftoa_t(f64 x, char *buff, u32 buffMax);
 
 char   *ls_strstr(char *a, char *b);
@@ -401,6 +403,7 @@ char *ls_itoa(s64 x)
     return Result;
 }
 
+//TODO: Should this add a null pointer at the end? Probably not!
 u32 ls_itoa_t(s64 x, char *buff, u32 buffMax)
 {
     char *Result = buff;
@@ -426,6 +429,69 @@ u32 ls_itoa_t(s64 x, char *buff, u32 buffMax)
     if (isNegative) { 
         if(i == buffMax) { return i; }
         Result[i++] = '-'; 
+    }
+    
+    if(i == buffMax) { return i; }
+    Result[i] = '\0';
+    
+    //Flip string, it's in reverse.
+    for (int t = 0; t < i / 2; t++)
+    {
+        Result[t] ^= Result[i - t - 1];
+        Result[i - t - 1] ^= Result[t];
+        Result[t] ^= Result[i - t - 1];
+    }
+    
+    return i;
+}
+
+u32 ls_utoa_t(u64 value, char *buff, u32 buffMax)
+{
+    char *Result = buff;
+    
+    if(buffMax < 2) { return 0; }
+    
+    if (value == 0) { Result[0] = '0'; Result[1] = '\0'; return 1; }
+    
+    s32 i = 0;
+    while (value != 0)
+    {
+        if(i == buffMax) { return i; }
+        Result[i++] = value % 10 + '0';
+        value = value / 10;
+    }
+    
+    if(i == buffMax) { return i; }
+    Result[i] = '\0';
+    
+    //Flip string, it's in reverse.
+    for (int t = 0; t < i / 2; t++)
+    {
+        Result[t] ^= Result[i - t - 1];
+        Result[i - t - 1] ^= Result[t];
+        Result[t] ^= Result[i - t - 1];
+    }
+    
+    return i;
+}
+
+u32 ls_utoax_t(u64 value, char *buff, u32 buffMax)
+{
+    char *Result = buff;
+    
+    if(buffMax < 2) { return 0; }
+    
+    if (value == 0) { Result[0] = '0'; Result[1] = '\0'; return 1; }
+    
+    s32 i = 0;
+    while (value != 0)
+    {
+        if(i == buffMax) { return i; }
+        
+        s32 unit = (value & 0x0F);
+        if(unit < 10) { Result[i++] = unit + '0'; }
+        else          { Result[i++] = unit - 10 + 'A'; }
+        value = value >> 4;
     }
     
     if(i == buffMax) { return i; }
