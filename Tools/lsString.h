@@ -4,12 +4,8 @@
 #include "win32.h"
 #include "lsCRT.h"
 
-//TODO: Make size = -6969 meaning undefined, and size = -7878 meaning a constant string,
-//      to allow the string functions to know if they're dealing with constant strings or not.
-
 //NOTE: When creating a constant string (basically a view into a pointer on the stack)
 //          Size is set to -7878, a sentinel value to recognize constant strings
-
 struct string
 {
     char *data;
@@ -32,6 +28,12 @@ struct utf32
     s32  size;
 };
 
+//TODO I hate views
+//     This single struct tries to act both as a view and as an iterator over the string
+//     It shouldn't.
+//     Either we just use constant strings (which we made possible through size = -7878)
+//     Or we make the view really just a view.
+//     And the iterator should happen separately!
 struct view
 {
     string s;
