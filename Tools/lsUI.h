@@ -1734,11 +1734,13 @@ s32 ls_uiGetKernAdvance(UIFont *font, s32 codepoint1, s32 codepoint2)
 
 void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, 
                              UIRect threadRect, UIRect scissor, UIScrollableRegion scroll,
-                             s32 cIdx, Color textColor, Color invTextColor)
+                             Color textColor, Color invTextColor)
 {
     AssertMsg(c, "Context is null\n");
     AssertMsg(box, "TextBox is null\n");
     AssertMsg(c->currFont, "Current Font is null\n");
+    
+    s32 cIdx = box->caretIndex-box->currLineBeginIdx;
     
     //NOTETODO Hacky shit.
     const s32 lineHeight = 18;
@@ -1793,7 +1795,11 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
         for(; lIdx < line.len; lIdx++, i++)
         {
             if((lineIdx == box->caretLineIdx) && (cIdx == lIdx)) { caretX = currXPos-3; }
-            if(currXPos >= strMaxX) { i += line.len - lIdx; break; }
+            if(currXPos > strMaxX)
+            {
+                if((lineIdx == box->caretLineIdx) && (cIdx == lIdx+1)) { caretX = currXPos-3; }
+                i += line.len - lIdx; break;
+            }
             
             code = line.data[lIdx];
             AssertMsgF(code <= c->currFont->maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
@@ -1820,7 +1826,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
         
         if(((lineIdx == box->caretLineIdx) && cIdx == line.len)) { caretX = currXPos-3; }
         
-        if((cIdx != -1) && (lineIdx == box->caretLineIdx))
+        if(box->isCaretOn && (c->currentFocus == (u64 *)box) && (lineIdx == box->caretLineIdx))
         {
             UIGlyph *currGlyph = &c->currFont->glyph[(char32_t)'|'];
             ls_uiGlyph(c, caretX, currYPos+vertGlyphOff, threadRect, scissor, currGlyph, textColor);
@@ -2260,13 +2266,19 @@ void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
     
     ls_utf32Clear(&box->text);
     
-    box->caretIndex     = 0;
-    box->isReadonly     = FALSE;
-    box->selectBeginIdx = 0;
-    box->selectEndIdx   = 0;
-    box->isSelecting    = FALSE;
-    box->viewBeginIdx   = 0;
-    box->viewEndIdx     = 0;
+    box->isReadonly       = FALSE;
+    box->caretIndex       = 0;
+    box->caretLineIdx     = 0;
+    box->lineCount        = 1;
+    box->currLineBeginIdx = 0;
+    
+    box->selectBeginLine  = 0;
+    box->selectEndLine    = 0;
+    box->selectBeginIdx   = 0;
+    box->selectEndIdx     = 0;
+    box->isSelecting      = FALSE;
+    box->viewBeginIdx     = 0;
+    box->viewEndIdx       = 0;
 }
 
 void ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s)
@@ -2283,8 +2295,6 @@ void ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s)
 
 //TODO: Text Alignment
 //TODO: Apron when moving Left/Right
-//TODO: When moving left/right special characters (like newlines) should be skipped.
-//TODO: In small boxes the newline fucks up rendering of the caret
 b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
 {
     Input *UserInput = &c->UserInput;
@@ -2296,7 +2306,12 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         box->isCaretOn = TRUE; 
     }
     
-    const s32 horzOff   = 8;
+    //TODOHACKHACK
+    if(box->lineCount == 0) box->lineCount = 1;
+    //TODOHACKHACK
+    
+    //TODO: Hardcoded values.
+    const s32 horzOff   = 12;
     const s32 viewAddWidth    = w - 2*horzOff;
     
     auto setIndices = [c, box, viewAddWidth](s32 index) -> u32 {
@@ -2323,7 +2338,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         box->viewBeginIdx = maxBeginIndex;
         
         //NOTE:TODO: As of right now viewEndIdx does absolutely nothing.
-        box->viewEndIdx   = 0xFEFEFE; // = lineLength; //TODONOTE Strange that an idx == lenght.
+        box->viewEndIdx = lineLength; //TODONOTE Strange that an idx == lenght.
         
         return realOffset;
     };
@@ -2492,7 +2507,13 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->caretIndex += 1;
             box->isCaretOn = TRUE; box->dtCaret = 0;
             
+            ls_log("LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
+                   box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
+            
             setIndices(box->caretIndex-1);
+            
+            ls_log("LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
+                   box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
             
             inputUse = TRUE;
         }
@@ -2559,24 +2580,27 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->dtCaret        = 0;
             box->caretIndex    -= 1;
             
-            s32 newLineBeginIdx = -1;
-            
-            /* NOTETODO: Why did I even need this?
+            AssertMsg(FALSE, "It's fucked on multiline");
             if(box->text.data[box->caretIndex] == (char32_t)'\n')
-            { newLineBeginIdx = setIndices(box->caretIndex-1); }
+            { 
+                s32 newLineBeginIdx = setIndices(box->caretIndex-1);
+                if(newLineBeginIdx < box->currLineBeginIdx)
+                {
+                    box->caretLineIdx    -= 1;
+                    box->currLineBeginIdx = newLineBeginIdx;
+                }
+            }
             else
-            { newLineBeginIdx = setIndices(box->caretIndex); }
-            */
-            newLineBeginIdx = setIndices(box->caretIndex-1);
-            
-            AssertMsg(newLineBeginIdx != -1, "Fucked Up line index in LArrow\n");
-            
-            if(newLineBeginIdx < box->currLineBeginIdx)
-            {
-                box->caretLineIdx    -= 1;
-                box->currLineBeginIdx = newLineBeginIdx;
+            { 
+                if(box->caretIndex < box->viewBeginIdx)
+                {
+                    box->viewBeginIdx -= 1;
+                    box->viewEndIdx   -= 1;
+                }
             }
             
+            ls_log("LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
+                   box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
         }
         
         else if(KeyPressOrRepeat(keyMap::RArrow) && box->caretIndex < box->text.len)
@@ -2587,24 +2611,27 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->dtCaret        = 0;
             box->caretIndex    += 1;
             
-            s32 newLineBeginIdx = -1;
-            
-            /* NOTETODO: Why did I even need this?
+            AssertMsg(FALSE, "It's fucked on multiline");
             if(box->text.data[box->caretIndex] == (char32_t)'\n')
-            { newLineBeginIdx = setIndices(box->caretIndex-1); }
+            { 
+                s32 newLineBeginIdx = setIndices(box->caretIndex+1);
+                if(newLineBeginIdx > box->currLineBeginIdx)
+                {
+                    box->caretLineIdx    += 1;
+                    box->currLineBeginIdx = newLineBeginIdx;
+                }
+            }
             else
-            { newLineBeginIdx = setIndices(box->caretIndex); }
-            */
-            newLineBeginIdx = setIndices(box->caretIndex-1);
-            
-            AssertMsg(newLineBeginIdx != -1, "Fucked Up line index in RArrow");
-            
-            if(newLineBeginIdx > box->currLineBeginIdx)
-            {
-                box->caretLineIdx    += 1;
-                box->currLineBeginIdx = newLineBeginIdx;
+            { 
+                if(box->caretIndex > box->viewEndIdx)
+                {
+                    box->viewEndIdx   += 1;
+                    box->viewBeginIdx += 1;
+                }
             }
             
+            ls_log("LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
+                   box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
         }
         
         else if(KeyPress(keyMap::Home))
@@ -2625,7 +2652,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             
             box->isCaretOn    = TRUE; box->dtCaret = 0; 
             box->caretIndex   = box->text.len;
-            box->caretLineIdx = box->lineCount;
+            box->caretLineIdx = box->lineCount-1;
             
             box->currLineBeginIdx = setIndices(box->caretIndex-1);
         }
@@ -2918,13 +2945,13 @@ inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, char *s)
     utf32 text = ls_utf32FromAscii(s);
     UIListBoxItem item = { text, cxt->widgetColor, cxt->textColor };
     
-    return ls_arrayAppend(&list->list, item);
+    return ls_arrayAppendIndex(&list->list, item);
 }
 
 inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, utf32 s)
 {
     UIListBoxItem item = { s, cxt->widgetColor, cxt->textColor };
-    return ls_arrayAppend(&list->list, item);
+    return ls_arrayAppendIndex(&list->list, item);
 }
 
 inline void ls_uiListBoxRemoveEntry(UIContext *cxt, UIListBox *list, u32 index)
@@ -3439,12 +3466,8 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     s32 strY = yPos + h - strPixelHeight;
                     
                     //NOTETODO: For now we double draw for selected strings. We can improve with 3-segment drawing.
-                    if(box->isCaretOn && c->currentFocus == (u64 *)box)
-                    { ls_uiRenderStringOnRect(c, box, strX, strY, w, h, threadRect, scissor, scroll,
-                                              box->caretIndex-box->currLineBeginIdx, textColor, c->invTextColor); }
-                    else
-                    { ls_uiRenderStringOnRect(c, box, strX, strY, w, h, threadRect, scissor, scroll,
-                                              -1, textColor, c->invTextColor); }
+                    ls_uiRenderStringOnRect(c, box, strX, strY, w, h, threadRect, scissor, scroll,
+                                            textColor, c->invTextColor);
                     
                 } break;
                 
