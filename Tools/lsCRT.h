@@ -3,36 +3,40 @@
 
 #ifdef _DEBUG
 
-#define CAT(a,b) a##b
-#define CAT2(a,b) CAT(a,b)
-#define CAT3(a,b,c) CAT2(a,CAT2(b,c))
-
-#define DEBUG_LOC __FILE__ " : " __FUNCTION__
+#define CAT(a,b)      a##b
+#define CAT2(a,b)     CAT(a,b)
+#define CAT3(a,b,c)   CAT2(a,CAT2(b,c))
 
 void __internal_logError(const char *funcHeader, const char *message);
 #define LogMsg(condition,msg) \
-{ if(!(condition)) __internal_logError(CAT3("[ERROR]", __FUNCTION__, ": "), msg); }
+{ if(!(condition)) __internal_logError(CAT3("[ERROR]",__FUNCTION__, ":"), msg); }
 
 void __internal_logErrorF(const char *funcHeader, const char *msgFormat, ...);
 #define LogMsgF(condition, msg, ...) \
-{ if(!(condition)) __internal_logErrorF(CAT3("[ERROR]", __FUNCTION__, ": "), msg, __VA_ARGS__); }
+{ if(!(condition)) __internal_logErrorF(CAT3("[ERROR]",__FUNCTION__, ":"), msg, __VA_ARGS__); }
 
 #define Assert(condition) if(!(condition)){DebugBreak();}
 
 void __internal_AssertMsg(const char *funcHeader, const char *message);
 #define AssertMsg(condition,msg) \
-{ if(!(condition)) __internal_AssertMsg(CAT3("[ASSERT]", __FUNCTION__, ": "), msg); }
+{ if(!(condition)) __internal_AssertMsg(CAT3("[ASSERT]",__FUNCTION__,":"), msg); }
 
 void __internal_AssertMsgF(const char *funcHeader, const char *msgFormat, ...);
 #define AssertMsgF(condition, msg, ...) \
-{ if(!(condition)) __internal_AssertMsgF(CAT3("[ASSERT]", __FUNCTION__, ": "), msg, __VA_ARGS__); }
+{ if(!(condition)) __internal_AssertMsgF(CAT3("[ASSERT]",__FUNCTION__,":"), msg, __VA_ARGS__); }
+
+#define TODO AssertMsg(FALSE, "[TODO] Not implemented yet\n")
+
+#define UNREACHABLE AssertMsg(FALSE, "Unreachable\n")
 
 #else
-#define AssertMsgF(condition, msg, ...) ((void)0);
-#define AssertMsg(condition, msg) ((void)0);
-#define Assert(condition) ((void)0);
-#define LogMsg(condition, msg) ((void)0);
-#define LogMsgF(condition, msg, ...) ((void)0);
+#define UNREACHABLE                     ((void)0)
+#define TODO                            ((void)0)
+#define AssertMsgF(condition, msg, ...) ((void)0)
+#define AssertMsg(condition, msg)       ((void)0)
+#define Assert(condition)               ((void)0)
+#define LogMsg(condition, msg)          ((void)0)
+#define LogMsgF(condition, msg, ...)    ((void)0)
 
 #undef CAT
 #undef CAT2
