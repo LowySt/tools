@@ -23,23 +23,6 @@ struct Array
     }
 };
 
-template<typename T> Array<T> ls_arrayAlloc(u32 n);
-template<typename T> void     ls_arrayFromPointer(Array<T> *arr, void *src, u32 count);
-template<typename T> void     ls_arrayFree(Array<T> *a);
-template<typename T> void     ls_arrayClear(Array<T> *a);
-template<typename T> void     ls_arrayGrow(Array<T> *a, u32 amount);
-
-template<typename T> u32      ls_arrayAppend(Array<T> *a, T val);
-template<typename T> void     ls_arrayInsert(Array<T> *a, T val, s32 index);
-template<typename T> void     ls_arraySet(Array<T> *a, T val, s32 index);
-template<typename T> void     ls_arrayRemove(Array<T> *a, s32 index);
-
-template<typename T> b32      ls_arrayContains(Array<T> *a, T val);
-
-#endif //LS_ARRAY_H
-
-#ifdef LS_ARRAY_IMPLEMENTATION
-
 template<typename T>
 Array<T> ls_arrayAlloc(u32 n)
 { 
@@ -80,10 +63,22 @@ void ls_arrayGrow(Array<T> *a, u32 amount)
 }
 
 template<typename T>
-u32 ls_arrayAppend(Array<T> *a, T val)
+T *ls_arrayAppend(Array<T> *a, T val)
 {
     if(a->count == a->cap) { ls_arrayGrow(a, 32); }
-    a->data[a->count++] = val;
+    a->data[a->count] = val;
+    T *toReturn = a->data + a->count;
+    a->count += 1;
+    
+    return toReturn;
+}
+
+template<typename T>
+u32 ls_arrayAppendIndex(Array<T> *a, T val)
+{
+    if(a->count == a->cap) { ls_arrayGrow(a, 32); }
+    a->data[a->count] = val;
+    a->count += 1;
     
     return (a->count - 1);
 }
