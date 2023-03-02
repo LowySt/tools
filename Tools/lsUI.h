@@ -168,9 +168,6 @@ struct UITextBox
     //NOTE:TODO: Call this viewMinIdx;
     s32 viewBeginIdx;
     
-    // @DeprecateThis
-    s32 viewEndIdx;
-    
     s32 selectBeginLine;
     s32 selectEndLine;
     s32 selectBeginIdx;
@@ -2035,6 +2032,15 @@ s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
     return 0;
 }
 
+s32 ls_uiMonoGlyphMaxIndexDiff(UIContext *c, UIFont *font, s32 width)
+{
+    s32 kernAdvance = ls_uiGetKernAdvance(font, 'a', 'w');
+    UIGlyph *aGlyph = &font->glyph['a'];
+    
+    s32 maxGlyphs = width / (aGlyph->xAdv + kernAdvance);
+    return maxGlyphs;
+}
+
 UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOff)
 {
     //TODO: Only one quirk remains, the y offset is determined based on the font height of the current element, 
@@ -2043,6 +2049,8 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOf
     //      the y Position when rendering a glyph the top left of the glyph (rather than the bottom left), 
     //      and subtract the font height to obtain the baseline. This way the y offset in layouting will 
     //      correctly move the y coordinate of the next line below the current line, regardless of font size.
+    //      P.S.
+    //      The baseline should already be present in the font, so why should I compute it?
     AssertMsg(c, "Context is null\n");
     AssertMsg(font, "Passed Font is null\n");
     
@@ -2307,20 +2315,17 @@ void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
     box->selectEndIdx     = 0;
     box->isSelecting      = FALSE;
     box->viewBeginIdx     = 0;
-    box->viewEndIdx       = 0;
 }
 
 //TODO: Now that viewEndIdx is deprecated these functions are a lot less usefuk
 void ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s)
 {
     ls_utf32FromUTF32_t(&box->text, s);
-    box->viewEndIdx = box->text.len;
 }
 
 void ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s)
 {
     ls_utf32Set(&box->text, s);
-    box->viewEndIdx = box->text.len;
 }
 
 //TODO: Text Alignment
@@ -2340,17 +2345,17 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
     //TODOHACKHACK
     
     //TODO: Hardcoded values.
-    const s32 horzOff   = 12;
-    const s32 viewAddWidth    = w - 2*horzOff;
+    const s32 horzOff      = 12;
+    const s32 viewAddWidth = w - 2*horzOff;
+    const s32 maxIndexDiff = ls_uiMonoGlyphMaxIndexDiff(c, c->currFont, viewAddWidth);
     
     auto setIndices = [c, box, viewAddWidth](s32 index) -> u32 {
         
         if(index <= 0) { 
-            box->viewBeginIdx = 0; 
-            box->viewEndIdx = 0;
+            box->viewBeginIdx = 0;
             
             //TODONOTE: Very wrong.
-            if(box->text.data[0] == (char32_t)'\n') { TODO; return 1; }
+            //if(box->text.data[0] == (char32_t)'\n') { return 1; }
             return 0;
         }
         
@@ -2365,9 +2370,6 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         u32 maxBeginIndex = ls_uiGlyphStringFit(c, c->currFont, currLine, viewAddWidth);
         
         box->viewBeginIdx = maxBeginIndex;
-        
-        //NOTE:TODO: As of right now viewEndIdx does absolutely nothing.
-        box->viewEndIdx = lineLength; //TODONOTE Strange that an idx == lenght.
         
         return realOffset;
     };
@@ -2587,8 +2589,6 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                 else { ls_utf32RmIdx(&box->text, box->caretIndex); }
                 
                 if(isCR) { box->lineCount -= 1; }
-                
-                if((box->text.len < box->viewEndIdx) && !isCR) { box->viewEndIdx -= 1; }
             }
             
             box->isCaretOn = TRUE; box->dtCaret = 0;
@@ -2604,55 +2604,55 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->caretIndex    -= 1;
             
             if(box->text.data[box->caretIndex] == (char32_t)'\n')
-            { 
-                s32 newLineBeginIdx = setIndices(box->caretIndex-1);
-                if(newLineBeginIdx < box->currLineBeginIdx)
+            {
+                if(box->caretIndex == 0)
                 {
-                    box->caretLineIdx    -= 1;
-                    box->currLineBeginIdx = newLineBeginIdx;
+                    box->caretLineIdx     = 0;
+                    box->currLineBeginIdx = 0;
+                    box->viewBeginIdx     = 0;
+                }
+                else
+                {
+                    s32 newLineBeginIdx = setIndices(box->caretIndex-1);
+                    if(newLineBeginIdx < box->currLineBeginIdx)
+                    {
+                        box->caretLineIdx    -= 1;
+                        box->currLineBeginIdx = newLineBeginIdx;
+                    }
                 }
             }
             else
             { 
-                if(box->caretIndex < box->viewBeginIdx)
-                {
-                    box->viewBeginIdx -= 1;
-                    box->viewEndIdx   -= 1;
-                }
+                s32 lineIdx = box->caretIndex - box->currLineBeginIdx;
+                if(lineIdx < box->viewBeginIdx) { box->viewBeginIdx -= 1; }
             }
             
-            ls_uiDebugLog(c, 20, 800, "LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
-                          box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
+            ls_uiDebugLog(c, 20, 800, "LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}",
+                          box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx);
         }
         
         else if(KeyPressOrRepeat(keyMap::RArrow) && box->caretIndex < box->text.len)
         { 
             handleSelection(1);
             
+            if(box->text.data[box->caretIndex] == (char32_t)'\n')
+            { 
+                box->caretLineIdx    += 1;
+                box->currLineBeginIdx = box->caretIndex+1;
+                box->viewBeginIdx     = 0;
+            }
+            else
+            { 
+                s32 lineIdx = box->caretIndex+1 - box->currLineBeginIdx;
+                if(lineIdx - box->viewBeginIdx > maxIndexDiff) { box->viewBeginIdx += 1; }
+            }
+            
             box->isCaretOn      = TRUE;
             box->dtCaret        = 0;
             box->caretIndex    += 1;
             
-            if(box->text.data[box->caretIndex] == (char32_t)'\n')
-            { 
-                s32 newLineBeginIdx = setIndices(box->caretIndex);
-                if(newLineBeginIdx > box->currLineBeginIdx)
-                {
-                    box->caretLineIdx    += 1;
-                    box->currLineBeginIdx = newLineBeginIdx;
-                }
-            }
-            else
-            { 
-                if(box->viewBeginIdx > 0 && box->caretIndex > box->viewEndIdx)
-                {
-                    box->viewEndIdx   += 1;
-                    box->viewBeginIdx += 1;
-                }
-            }
-            
-            ls_uiDebugLog(c, 20, 800, "LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
-                          box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
+            ls_uiDebugLog(c, 20, 800, "LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}",
+                          box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx);
         }
         
         else if(KeyPress(keyMap::Home))
