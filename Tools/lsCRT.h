@@ -25,7 +25,7 @@ void __internal_AssertMsgF(const char *funcHeader, const char *msgFormat, ...);
 #define AssertMsgF(condition, msg, ...) \
 { if(!(condition)) __internal_AssertMsgF(CAT3("[ASSERT]",__FUNCTION__,":"), msg, __VA_ARGS__); }
 
-#define TODO AssertMsg(FALSE, "[TODO] Not implemented yet\n")
+#define TODO __internal_AssertMsg("[TODO] Not implemented yet\n", "")
 
 #define UNREACHABLE AssertMsg(FALSE, "Unreachable\n")
 
