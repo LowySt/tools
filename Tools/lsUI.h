@@ -168,7 +168,7 @@ struct UITextBox
     //NOTE:TODO: Call this viewMinIdx;
     s32 viewBeginIdx;
     
-    //TODO: @Deprecated this
+    // @DeprecateThis
     s32 viewEndIdx;
     
     s32 selectBeginLine;
@@ -511,6 +511,10 @@ b32        ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32
 
 void       ls_uiRender(UIContext *c);
 
+#if _DEBUG
+void       ls_uiDebugLog(UIContext *c, s32 x, s32 y, const char *fmt, ...);
+#endif
+
 #endif
 
 
@@ -519,6 +523,31 @@ void       ls_uiRender(UIContext *c);
 
 #if _DEBUG
 static u64 __debug_frameNumber = 0;
+
+void ls_uiDebugLog(UIContext *c, s32 x, s32 y, const char *fmt, ...)
+{
+    //TODO: Setup an automated arena system for the UI. For right now
+    //      We are gonna hook into the program. Which is bad!
+    ls_arenaUse(frameArena);
+    
+    va_list argList;
+    va_start(argList, fmt);
+    
+    const s32 buffSize = 512;
+    char *buff = (char *)ls_alloc(buffSize);
+    
+    s32 len = ls_vlog(fmt, buff, buffSize, &argList);
+    
+    va_end(argList);
+    
+    utf8 label = ls_utf8Constant((u8 *)buff, len);
+    
+    ls_uiLabel(c, label, x, y, RGBg(255), 2);
+    ls_uiLabel(c, label, x-1, y, RGBg(0), 2);
+    
+    ls_arenaUse(globalArena);
+}
+
 #endif
 
 LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
@@ -2281,6 +2310,7 @@ void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
     box->viewEndIdx       = 0;
 }
 
+//TODO: Now that viewEndIdx is deprecated these functions are a lot less usefuk
 void ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s)
 {
     ls_utf32FromUTF32_t(&box->text, s);
@@ -2294,7 +2324,6 @@ void ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s)
 }
 
 //TODO: Text Alignment
-//TODO: Apron when moving Left/Right
 b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
 {
     Input *UserInput = &c->UserInput;
@@ -2321,7 +2350,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->viewEndIdx = 0;
             
             //TODONOTE: Very wrong.
-            if(box->text.data[0] == (char32_t)'\n') return 1;
+            if(box->text.data[0] == (char32_t)'\n') { TODO; return 1; }
             return 0;
         }
         
@@ -2507,13 +2536,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->caretIndex += 1;
             box->isCaretOn = TRUE; box->dtCaret = 0;
             
-            ls_log("LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
-                   box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
-            
             setIndices(box->caretIndex-1);
-            
-            ls_log("LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
-                   box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
             
             inputUse = TRUE;
         }
@@ -2580,7 +2603,6 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->dtCaret        = 0;
             box->caretIndex    -= 1;
             
-            AssertMsg(FALSE, "It's fucked on multiline");
             if(box->text.data[box->caretIndex] == (char32_t)'\n')
             { 
                 s32 newLineBeginIdx = setIndices(box->caretIndex-1);
@@ -2599,8 +2621,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                 }
             }
             
-            ls_log("LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
-                   box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
+            ls_uiDebugLog(c, 20, 800, "LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
+                          box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
         }
         
         else if(KeyPressOrRepeat(keyMap::RArrow) && box->caretIndex < box->text.len)
@@ -2611,10 +2633,9 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->dtCaret        = 0;
             box->caretIndex    += 1;
             
-            AssertMsg(FALSE, "It's fucked on multiline");
             if(box->text.data[box->caretIndex] == (char32_t)'\n')
             { 
-                s32 newLineBeginIdx = setIndices(box->caretIndex+1);
+                s32 newLineBeginIdx = setIndices(box->caretIndex);
                 if(newLineBeginIdx > box->currLineBeginIdx)
                 {
                     box->caretLineIdx    += 1;
@@ -2623,15 +2644,15 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             }
             else
             { 
-                if(box->caretIndex > box->viewEndIdx)
+                if(box->viewBeginIdx > 0 && box->caretIndex > box->viewEndIdx)
                 {
                     box->viewEndIdx   += 1;
                     box->viewBeginIdx += 1;
                 }
             }
             
-            ls_log("LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
-                   box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
+            ls_uiDebugLog(c, 20, 800, "LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}, ViewEnd: {s32}",
+                          box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx, box->viewEndIdx);
         }
         
         else if(KeyPress(keyMap::Home))
