@@ -1051,7 +1051,7 @@ void windows_getFileNamesInDir(char *Dir, u32 dirLen, char ***names,
         { more = FindNextFileA(hFile, &findData); continue; }
         
         (*namesLen)[it] = ls_len(findData.cFileName);
-        (*names)[it] = (char *)ls_alloc(sizeof(char)*((*namesLen)[it]));
+        (*names)[it] = (char *)ls_alloc(sizeof(char)*((*namesLen)[it])); //TODO?? use windows_memAlloc?
         
         ls_memcpy(findData.cFileName, (*names)[it], (*namesLen)[it]);
         
