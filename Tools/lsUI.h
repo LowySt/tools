@@ -2349,8 +2349,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
     const s32 viewAddWidth = w - 2*horzOff;
     const s32 maxIndexDiff = ls_uiMonoGlyphMaxIndexDiff(c, c->currFont, viewAddWidth);
     
-    auto setIndices = [c, box, viewAddWidth](s32 index) -> u32 {
-        
+    auto lineBeginIdx = [box](s32 index) -> u32 {
         if(index <= 0) { 
             box->viewBeginIdx = 0;
             
@@ -2363,9 +2362,13 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         
         s32 realOffset = beginOffset+1;
         if(beginOffset == -1) { realOffset = 0; }
+        return realOffset;
+    };
+    
+    auto setIndices = [c, box, viewAddWidth, lineBeginIdx](s32 index) -> u32 {
         
-        s32 lineLength     = index-realOffset;
-        
+        u32 realOffset    = lineBeginIdx(index);
+        s32 lineLength    = index-realOffset;
         utf32 currLine    = { box->text.data + realOffset, lineLength, lineLength };
         u32 maxBeginIndex = ls_uiGlyphStringFit(c, c->currFont, currLine, viewAddWidth);
         
@@ -2376,8 +2379,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
     
     auto handleSelection = [UserInput, box](s32 direction) {
         
-        AssertMsg((direction == -1) || (direction == 1) || (direction == -2) || (direction == 2), 
-                  "Invalid direction passed to handleSelection\n");
+        AssertMsg((direction == -1) || (direction == 1) || (direction == -2) || (direction == 2) ||
+                  (direction == -3) || (direction == 3), "Invalid direction passed to handleSelection\n");
         
         if(KeyHeld(keyMap::Shift))
         {
@@ -2388,7 +2391,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                 switch(direction)
                 {
                     case -1:
-                    case  1:
+                    case  1: //NOTE: Left/Right Arrow
                     {
                         box->selectBeginLine = box->caretLineIdx;
                         box->selectEndLine   = box->caretLineIdx;
@@ -2414,7 +2417,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                     } break;
                     
                     
-                    case -2:
+                    case -2: //NOTE: Home
                     {
                         if(box->caretIndex == 0) { box->isSelecting = FALSE; break; }
                         
@@ -2424,7 +2427,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                         box->selectEndIdx    = box->caretIndex;
                     } break;
                     
-                    case  2:
+                    case  2: //NOTE: End
                     {
                         if(box->caretIndex >= box->text.len) { box->isSelecting = FALSE; break; }
                         
@@ -2432,6 +2435,16 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                         box->selectEndLine   = box->lineCount;
                         box->selectBeginIdx  = box->caretIndex;
                         box->selectEndIdx    = box->text.len;
+                    } break;
+                    
+                    case -3: //NOTE: Up Arrow
+                    { 
+                        
+                    } break;
+                    
+                    case 3: //NOTE: Down Arrow
+                    { 
+                        
                     } break;
                 }
             }
@@ -2496,7 +2509,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                 box->isSelecting     = FALSE;
                 box->selectEndIdx    = 0; box->selectBeginIdx  = 0; 
                 box->selectBeginLine = 0; box->selectEndLine   = 0;
-            } 
+            }
         }
         
     };
@@ -2653,6 +2666,156 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             
             ls_uiDebugLog(c, 20, 800, "LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}",
                           box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx);
+        }
+        
+        else if(KeyPressOrRepeat(keyMap::UArrow) && box->caretLineIdx > 0)
+        {
+            box->isCaretOn = TRUE; box->dtCaret = 0;
+            
+            s32 oldCaretIndex = box->caretIndex;
+            s32 lineRelativeCaretIndex = box->caretIndex - box->currLineBeginIdx;
+            s32 oldLineBeginIdx = box->currLineBeginIdx;
+            
+            box->caretLineIdx    -= 1;
+            box->currLineBeginIdx = lineBeginIdx(oldLineBeginIdx - 2);
+            
+            s32 newLineLen = oldLineBeginIdx-1 - box->currLineBeginIdx;
+            
+            if(lineRelativeCaretIndex > newLineLen)
+            { box->caretIndex = newLineLen + box->currLineBeginIdx; }
+            else
+            { box->caretIndex = lineRelativeCaretIndex + box->currLineBeginIdx; }
+            
+            s32 lineIdx = box->caretIndex - box->currLineBeginIdx;
+            s32 diff = lineIdx - box->viewBeginIdx;
+            if(diff > maxIndexDiff) { box->viewBeginIdx = diff; }
+            else                    { box->viewBeginIdx = 0; }
+            
+            //TODO: Handle Selection is a mess.
+            //TODO: Bug when selecting two rows over and the cursor is behind the end idx.
+            if(KeyHeld(keyMap::Shift))
+            {
+                if(!box->isSelecting)
+                {
+                    box->isSelecting     = TRUE;
+                    box->selectEndLine   = box->caretLineIdx+1;
+                    box->selectBeginIdx  = box->caretIndex;
+                    box->selectEndIdx    = oldCaretIndex;
+                }
+                else
+                {
+                    if(oldCaretIndex == box->selectBeginIdx)
+                    {
+                        box->selectBeginLine -= 1;
+                        box->selectBeginIdx   = box->caretIndex;
+                    }
+                    else if(oldCaretIndex == box->selectEndIdx)
+                    {
+                        if(box->selectEndLine > box->selectBeginLine) { box->selectEndLine   -= 1; }
+                        else                                          { box->selectBeginLine -= 1; }
+                        
+                        if(box->caretIndex > box->selectBeginIdx)
+                        { box->selectEndIdx = box->caretIndex; }
+                        else
+                        {
+                            box->selectEndIdx   = box->selectBeginIdx;
+                            box->selectBeginIdx = box->caretIndex;
+                        }
+                    }
+                    else { AssertMsg(FALSE, "Arrow Up -> Caret is not aligned with select anymore\n"); }
+                }
+            }
+            else
+            {
+                if(box->isSelecting)
+                { 
+                    box->isSelecting     = FALSE;
+                    box->selectEndIdx    = 0; box->selectBeginIdx  = 0; 
+                    box->selectBeginLine = 0; box->selectEndLine   = 0;
+                }
+            }
+        }
+        
+        else if(KeyPressOrRepeat(keyMap::DArrow) && box->caretLineIdx < box->lineCount-1)
+        {
+            //TODO: handleSelection()
+            
+            box->isCaretOn = TRUE; box->dtCaret = 0;
+            
+            s32 oldCaretIndex = box->caretIndex;
+            s32 lineRelativeCaretIndex = box->caretIndex - box->currLineBeginIdx;
+            
+            box->caretLineIdx    += 1;
+            box->currLineBeginIdx = ls_utf32LeftFind(box->text, box->caretIndex, (char32_t)'\n') + 1;
+            
+            AssertMsg(box->currLineBeginIdx != -1, "No \\n Found, but there HAVE to be more lines ??");
+            
+            s32 nextLineIdx = ls_utf32LeftFind(box->text, box->currLineBeginIdx, (char32_t)'\n');
+            s32 nextLineLen = nextLineIdx - box->currLineBeginIdx;
+            
+            if(nextLineIdx != -1)
+            {
+                if(lineRelativeCaretIndex > nextLineLen)
+                { box->caretIndex = box->currLineBeginIdx + nextLineLen; }
+                else
+                { box->caretIndex = lineRelativeCaretIndex + box->currLineBeginIdx; }
+            }
+            else
+            {
+                if(box->currLineBeginIdx + lineRelativeCaretIndex > box->text.len)
+                { box->caretIndex = box->text.len; }
+                else
+                { box->caretIndex = lineRelativeCaretIndex + box->currLineBeginIdx; }
+            }
+            
+            s32 lineIdx = box->caretIndex - box->currLineBeginIdx;
+            s32 diff = lineIdx - box->viewBeginIdx;
+            if(diff > maxIndexDiff) { box->viewBeginIdx = diff; }
+            else                    { box->viewBeginIdx = 0; }
+            
+            //TODO: Handle Selection is a mess.
+            if(KeyHeld(keyMap::Shift))
+            {
+                if(!box->isSelecting)
+                {
+                    box->isSelecting     = TRUE;
+                    box->selectBeginLine = box->caretLineIdx-1;
+                    box->selectEndLine   = box->caretLineIdx;
+                    box->selectBeginIdx  = oldCaretIndex;
+                    box->selectEndIdx    = box->caretIndex;
+                }
+                else
+                {
+                    if(oldCaretIndex == box->selectBeginIdx)
+                    {
+                        if(box->selectBeginLine < box->selectEndLine) { box->selectBeginLine += 1; }
+                        else                                          { box->selectEndLine   += 1; }
+                        
+                        if(box->caretIndex <= box->selectEndIdx)
+                        { box->selectBeginIdx = box->caretIndex; }
+                        else
+                        { 
+                            box->selectBeginIdx = box->selectEndIdx;
+                            box->selectEndIdx   = box->caretIndex;
+                        }
+                    }
+                    else if(oldCaretIndex == box->selectEndIdx)
+                    {
+                        box->selectEndLine += 1;
+                        box->selectEndIdx   = box->caretIndex;
+                    }
+                    else { AssertMsg(FALSE, "Arrow Down -> Caret is not aligned with select anymore\n"); }
+                }
+            }
+            else
+            {
+                if(box->isSelecting)
+                { 
+                    box->isSelecting     = FALSE;
+                    box->selectEndIdx    = 0; box->selectBeginIdx  = 0; 
+                    box->selectBeginLine = 0; box->selectEndLine   = 0;
+                }
+            }
         }
         
         else if(KeyPress(keyMap::Home))
