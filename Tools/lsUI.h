@@ -2334,7 +2334,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
     Input *UserInput = &c->UserInput;
     b32 inputUse = FALSE;
     
-    if(LeftClickIn(xPos, yPos, w, h) && (box->isReadonly == FALSE) && ls_uiHasCapture(c, 0)) {
+    if(LeftClickIn(xPos, yPos, w, h) && ls_uiHasCapture(c, 0)) {
         c->currentFocus = (u64 *)box;
         c->focusWasSetThisFrame = TRUE;
         box->isCaretOn = TRUE; 
@@ -2531,11 +2531,12 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
         { inputUse |= box->preInput(c, box->data); }
         
         //NOTE: Unset Focus on "Enter" press when textBox is single line.
-        if(HasPrintableKey() && (GetPrintableKey() == (char32_t)'\n') && (box->isSingleLine == TRUE))
+        if(HasPrintableKey() && (GetPrintableKey() == (char32_t)'\n') &&
+           ((box->isSingleLine == TRUE) || box->isReadonly == TRUE))
         { ls_uiFocusChange(c, 0); }
         
         //NOTE: Draw characters. (box->maxLen == 0 means there's no max len)
-        else if(HasPrintableKey() && (box->text.len < box->maxLen || box->maxLen == 0))
+        else if(HasPrintableKey() && (box->text.len < box->maxLen || box->maxLen == 0) && (box->isReadonly == FALSE))
         {
             if(box->isSelecting) { removeSelection(); }
             
@@ -2557,7 +2558,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             inputUse = TRUE;
         }
         
-        else if(KeyPressOrRepeat(keyMap::Backspace) && box->text.len > 0 && box->caretIndex >= 0) 
+        else if(KeyPressOrRepeat(keyMap::Backspace) && box->text.len > 0 && box->caretIndex >= 0
+                && (box->isReadonly == FALSE) ) 
         {
             if(box->caretIndex == 0 && !box->isSelecting) { goto goto_skip_to_post_input; }
             
@@ -2587,7 +2589,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             inputUse = TRUE;
         }
         
-        else if(KeyPressOrRepeat(keyMap::Delete) && box->text.len > 0 && box->caretIndex <= box->text.len)
+        else if(KeyPressOrRepeat(keyMap::Delete) && (box->text.len > 0) && (box->caretIndex <= box->text.len)
+                && (box->isReadonly == FALSE) )
         {
             if(box->caretIndex == box->text.len && !box->isSelecting) { goto goto_skip_to_post_input; }
             
@@ -2853,7 +2856,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             SetClipboard(data, selectionLen);
         }
         
-        else if(KeyHeld(keyMap::Control) && KeyPress(keyMap::V))
+        else if(KeyHeld(keyMap::Control) && KeyPress(keyMap::V) && (box->isReadonly == FALSE))
         {
             if(box->isSelecting) { removeSelection(); }
             
