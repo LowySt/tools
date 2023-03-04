@@ -2458,7 +2458,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                         if(box->caretIndex == box->selectBeginIdx)
                         { 
                             box->selectBeginIdx += direction;
-                            if(box->text.data[box->caretIndex] == (char32_t)'\n') { box->selectBeginLine += direction;}
+                            if(box->text.data[box->caretIndex + direction] == (char32_t)'\n')
+                            { box->selectBeginLine += direction;}
                         }
                         else if(box->caretIndex == box->selectEndIdx)
                         { 
@@ -2639,9 +2640,6 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
                 s32 lineIdx = box->caretIndex - box->currLineBeginIdx;
                 if(lineIdx < box->viewBeginIdx) { box->viewBeginIdx -= 1; }
             }
-            
-            ls_uiDebugLog(c, 20, 800, "LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}",
-                          box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx);
         }
         
         else if(KeyPressOrRepeat(keyMap::RArrow) && box->caretIndex < box->text.len)
@@ -2663,9 +2661,6 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             box->isCaretOn      = TRUE;
             box->dtCaret        = 0;
             box->caretIndex    += 1;
-            
-            ls_uiDebugLog(c, 20, 800, "LineC: {s32}, LineBgn: {s32}, CIdx: {s32}, CLineIdx: {s32}, ViewBegin: {s32}",
-                          box->lineCount, box->currLineBeginIdx, box->caretIndex, box->caretLineIdx, box->viewBeginIdx);
         }
         
         else if(KeyPressOrRepeat(keyMap::UArrow) && box->caretLineIdx > 0)
@@ -2692,12 +2687,12 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
             else                    { box->viewBeginIdx = 0; }
             
             //TODO: Handle Selection is a mess.
-            //TODO: Bug when selecting two rows over and the cursor is behind the end idx.
             if(KeyHeld(keyMap::Shift))
             {
                 if(!box->isSelecting)
                 {
                     box->isSelecting     = TRUE;
+                    box->selectBeginLine = box->caretLineIdx;
                     box->selectEndLine   = box->caretLineIdx+1;
                     box->selectBeginIdx  = box->caretIndex;
                     box->selectEndIdx    = oldCaretIndex;
