@@ -3121,7 +3121,7 @@ void _ls_uiLPane(UIContext *c, UILPane *pane, s32 xPos, s32 yPos, s32 w, s32 h)
 //NOTETODO: ListBox manages the data of the entry itself, even when a unistring is already passed.
 //          This feels strange, and probably error-prone.
 
-//TODO I really think ListBox shouldn't manage memory. Fix This.
+//TODO @MemoryLeak @Leak I really think ListBox shouldn't manage memory. Fix This.
 inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, char *s)
 { 
     utf32 text = ls_utf32FromAscii(s);
@@ -3130,9 +3130,11 @@ inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, char *s)
     return ls_arrayAppendIndex(&list->list, item);
 }
 
+//TODO @MemoryLeak @Leak
 inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, utf32 s)
 {
-    UIListBoxItem item = { s, cxt->widgetColor, cxt->textColor };
+    utf32 copy = ls_utf32Copy(s);
+    UIListBoxItem item = { copy, cxt->widgetColor, cxt->textColor };
     return ls_arrayAppendIndex(&list->list, item);
 }
 
