@@ -40,8 +40,8 @@ s32 ls_vlogFormatB32(char *dst, va_list *argList)
 {
     s64 intValue = va_arg(*argList, s64);
     
-    if(intValue == FALSE) { ls_memcpy("false", dst, 5); return 5; }
-    else                  { ls_memcpy("true", dst, 4);  return 4; }
+    if(intValue == FALSE) { ls_memcpy((void *)"false", dst, 5); return 5; }
+    else                  { ls_memcpy((void *)"true", dst, 4);  return 4; }
     
     return 0;
 }
@@ -289,4 +289,4 @@ s32 ls_log(const char *format, ...)
 }
 
 
-#endif LS_LOG_IMPLEMENTATION
+#endif //LS_LOG_IMPLEMENTATION
