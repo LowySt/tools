@@ -1,15 +1,15 @@
 #ifndef LS_RAND_H
 #define LS_RAND_H
 
-extern "C"
-{
-    /*return 0 if rdrand failed */
-    u16 ls_rand16();
-    u32 ls_rand32();
-    u64 ls_rand64();
-    
-    void ls_fillBufferRand(u8 *data, u32 sizeOfBuffer);
-}
+
+/*return 0 if rdrand failed */
+u16 ls_rand16();
+u32 ls_rand32();
+u64 ls_rand64();
+
+u64 ls_randRange(u64 min, u64 max);
+
+void ls_fillBufferRand(u8 *data, u32 sizeOfBuffer);
 
 #endif
 
@@ -40,6 +40,13 @@ u64 ls_rand64()
     if(success == 1) return result;
     else if (success == 0) return 0;
     return 0;
+}
+
+u64 ls_randRange(u64 min, u64 max)
+{
+    u64 range = (max - min) + 1;
+    u64 val = (ls_rand64() % range) + min;
+    return val;
 }
 
 void ls_fillBufferRand(u8 *data, u32 sizeOfBuffer)
