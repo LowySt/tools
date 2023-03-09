@@ -63,6 +63,10 @@ void ls_arrayGrow(Array<T> *a, u32 amount)
 }
 
 template<typename T>
+b32 ls_arrayIsFull(Array<T> a)
+{ return (a.count == a.cap); }
+
+template<typename T>
 T *ls_arrayAppend(Array<T> *a, T val)
 {
     if(a->count == a->cap) { ls_arrayGrow(a, 32); }
@@ -116,6 +120,16 @@ void ls_arrayRemove(Array<T> *a, s32 index)
     size_t dataSize = sizeof(T);
     u32 numElements = a->count - index;
     ls_memcpy(a->data + index + 1, a->data + index, numElements*dataSize);
+    a->count -= 1;
+}
+
+template<typename T>
+void ls_arrayRemoveUnordered(Array<T> *a, s32 index)
+{
+    AssertMsg(index >= 0, "Index is negative Array<>\n");
+    
+    //TODO: Should I zero the last element? Or fill it with sentinel values?
+    a->data[index] = a->data[a->count-1];
     a->count -= 1;
 }
 
