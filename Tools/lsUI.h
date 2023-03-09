@@ -127,16 +127,19 @@ struct UILPane
 
 struct UIContext;
 
-enum UIButtonStyle { UIBUTTON_TEXT, UIBUTTON_TEXT_NOBORDER, UIBUTTON_NO_TEXT, UIBUTTON_BMP };
+enum UIButtonStyle { UIBUTTON_CLASSIC, UIBUTTON_LINK, UIBUTTON_TEXT_NOBORDER, UIBUTTON_NO_TEXT, UIBUTTON_BMP };
 
 typedef b32(*ButtonProc)(UIContext *c, void *userData);
 struct UIButton
 {
+    //TODO: With the current design I have to select the font in 2 different places.
+    //      The best solution is probably to just hold a pointer to the font to be used in the 
+    //      Button itself (And all other text widgets as well...)
     UIButtonStyle style;
     
     utf32 name;
     u8 *bmpData;
-    s32 bmpW, bmpH;
+    s32 w, h;
     
     b32 isHot;
     b32 isHeld;
@@ -462,12 +465,17 @@ Color      ls_uiRGBAtoARGB(Color c);
 void       ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
 void       ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
 
-UIButton   ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *data);
-UIButton   ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick, ButtonProc onHold, void *data);
-UIButton   ls_uiButtonInit(UIButtonStyle s, const char32_t *text, ButtonProc onClick, ButtonProc onHold, void *data);
-void       ls_uiButtonInit(UIButton *b, UIButtonStyle s, utf32 t, ButtonProc onClick, ButtonProc onHold, void *data);
-void       ls_uiButtonInit(UIButton *, UIButtonStyle, const char32_t *t, ButtonProc onClick, ButtonProc onHold, void *data);
-b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
+UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *data);
+UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, 
+                           ButtonProc onClick, ButtonProc onHold, void *data);
+UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text,
+                           ButtonProc onClick, ButtonProc onHold, void *data);
+void       ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 t,
+                           ButtonProc onClick, ButtonProc onHold, void *data);
+void       ls_uiButtonInit(UIContext *c, UIButton *, UIButtonStyle, const char32_t *t,
+                           ButtonProc onClick, ButtonProc onHold, void *data);
+
+b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer);
 
 void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
 void       ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
@@ -694,8 +702,11 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                 
                 case 'A':        KeySetAndRepeat(keyMap::A, rep);         break;
                 case 'C':        KeySetAndRepeat(keyMap::C, rep);         break;
-                case 'V':        KeySetAndRepeat(keyMap::V, rep);         break;
+                case 'D':        KeySetAndRepeat(keyMap::D, rep);         break;
                 case 'G':        KeySetAndRepeat(keyMap::G, rep);         break;
+                case 'S':        KeySetAndRepeat(keyMap::S, rep);         break;
+                case 'V':        KeySetAndRepeat(keyMap::V, rep);         break;
+                case 'W':        KeySetAndRepeat(keyMap::W, rep);         break;
                 case 'Y':        KeySetAndRepeat(keyMap::Y, rep);         break;
                 case 'Z':        KeySetAndRepeat(keyMap::Z, rep);         break;
             }
@@ -736,8 +747,11 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                 
                 case 'A':        KeyUnset(keyMap::A);         break;
                 case 'C':        KeyUnset(keyMap::C);         break;
-                case 'V':        KeyUnset(keyMap::V);         break;
+                case 'D':        KeyUnset(keyMap::D);         break;
                 case 'G':        KeyUnset(keyMap::G);         break;
+                case 'S':        KeyUnset(keyMap::S);         break;
+                case 'V':        KeyUnset(keyMap::V);         break;
+                case 'W':        KeyUnset(keyMap::W);         break;
                 case 'Y':        KeyUnset(keyMap::Y);         break;
                 case 'Z':        KeyUnset(keyMap::Z);         break;
             }
@@ -1871,7 +1885,8 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
                       UIRect threadRect, UIRect scissor, UIScrollableRegion scroll, utf32 text, Color textColor)
 {
     AssertMsg(c, "Context is null\n");
-    AssertMsg(font, "Passed font is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return; }
     
     //TODO: If we are in a scrollable region, can we pre-skip things outside the region???
     s32 currXPos = xPos - scroll.deltaX;
@@ -1894,11 +1909,13 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
     }
 }
 
+//TODO: Rename this GlyphString8!
 void ls_uiGlyphString_8(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
                         UIRect threadRect, UIRect scissor, UIScrollableRegion scroll, utf8 text, Color textColor)
 {
     AssertMsg(c, "Context is null\n");
-    AssertMsg(font, "Passed font is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return; }
     
     //TODO: If we are in a scrollable region, can we pre-skip things outside the region???
     s32 currXPos = xPos - scroll.deltaX;
@@ -1928,7 +1945,8 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UIRect layout,
                               utf32 text, Color textColor)
 {
     AssertMsg(c, "Context is null\n");
-    AssertMsg(font, "Passed font is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return; }
     
     //TODO: If we are in a scrollable region, can we pre-skip things outside the region???
     s32 currXPos = layout.x - scroll.deltaX;
@@ -1968,7 +1986,8 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UIRect layout,
 s32 ls_uiGlyphStringLen(UIContext *c, UIFont *font, utf32 text)
 {
     AssertMsg(c, "Context is null\n");
-    AssertMsg(font, "Passed Font is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return 0; }
     
     s32 totalLen = 0;
     for(u32 i = 0; i < text.len; i++)
@@ -1990,7 +2009,8 @@ s32 ls_uiGlyphStringLen(UIContext *c, UIFont *font, utf32 text)
 s32 ls_uiGlyphStringLen_8(UIContext *c, UIFont *font, utf8 text)
 {
     AssertMsg(c, "Context is null\n");
-    AssertMsg(font, "Passed Font is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return 0; }
     
     s32 totalLen = 0;
     for(u32 i = 0; i < text.len; i++)
@@ -2012,7 +2032,8 @@ s32 ls_uiGlyphStringLen_8(UIContext *c, UIFont *font, utf8 text)
 s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
 {
     AssertMsg(c, "Context is null\n");
-    AssertMsg(font, "Current Font is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return 0; }
     
     s32 totalLen = 0;
     for(s32 i = text.len-1; i > 0; i--)
@@ -2034,6 +2055,10 @@ s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
 
 s32 ls_uiMonoGlyphMaxIndexDiff(UIContext *c, UIFont *font, s32 width)
 {
+    AssertMsg(c, "Context is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return 0; }
+    
     s32 kernAdvance = ls_uiGetKernAdvance(font, 'a', 'w');
     UIGlyph *aGlyph = &font->glyph['a'];
     
@@ -2052,7 +2077,8 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOf
     //      P.S.
     //      The baseline should already be present in the font, so why should I compute it?
     AssertMsg(c, "Context is null\n");
-    AssertMsg(font, "Passed Font is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return {}; }
     
     s32 largestXOff = 0;
     s32 currXOff = 0;
@@ -2085,7 +2111,8 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOf
 
 void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
 {
-    AssertMsg(c->fonts, "No fonts were loaded\n");
+    LogMsg(c->fonts, "No fonts were loaded\n");
+    if(!c->fonts) { return; }
     
     //TODO: Hardcoded
     b32 found = FALSE;
@@ -2098,51 +2125,85 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
 inline
 s32 ls_uiSelectFontByFontSize(UIContext *c, UIFontSize fontSize)
 { 
-    AssertMsg(c->fonts, "No fonts were loaded\n");
+    LogMsg(c->fonts, "No fonts were loaded\n");
+    if(!c->fonts) { return 0; }
+    
     c->currFont = &c->fonts[fontSize]; return c->currFont->pixelHeight;
 }
 
-UIButton ls_uiButtonInit(UIButtonStyle s, ButtonProc onClick, ButtonProc onHold = NULL, void *userData = NULL)
+UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, ButtonProc onClick, ButtonProc onHold = NULL, void *userData = NULL)
 {
+    AssertMsg(c, "UI Context is null\n");
+    
     UIButton Result = {s, {}, 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
     return Result;
 }
 
-UIButton ls_uiButtonInit(UIButtonStyle s, const char32_t *text, ButtonProc onClick,
+UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, ButtonProc onClick,
                          ButtonProc onHold = NULL, void *userData = NULL)
 {
-    UIButton Result = {s, ls_utf32FromUTF32(text), 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
+    AssertMsg(c, "UI Context is null\n");
+    AssertMsg(c->currFont, "Font is not selected\n");
+    
+    utf32 name = ls_utf32FromUTF32(text);
+    
+    s32 height = c->currFont->pixelHeight + 4; //Add Margin above and below text
+    s32 width = ls_uiGlyphStringLen(c, c->currFont, name);
+    
+    UIButton Result = {s, name, 0, width, height, FALSE, FALSE, onClick, onHold, userData};
     return Result;
 }
 
-UIButton ls_uiButtonInit(UIButtonStyle s, utf32 text, ButtonProc onClick,
+UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, ButtonProc onClick,
                          ButtonProc onHold = NULL, void *userData = NULL)
 {
-    UIButton Result = {s, text, 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
+    AssertMsg(c, "UI Context is null\n");
+    AssertMsg(c->currFont, "Font is not selected\n");
+    
+    s32 height = c->currFont->pixelHeight + 4; //Add Margin above and below text
+    s32 width = ls_uiGlyphStringLen(c, c->currFont, text);
+    
+    UIButton Result = {s, text, 0, width, height, FALSE, FALSE, onClick, onHold, userData};
     return Result;
 }
 
-void ls_uiButtonInit(UIButton *b, UIButtonStyle s, utf32 text, ButtonProc onClick,
+void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 text, ButtonProc onClick,
                      ButtonProc onHold = NULL, void *userData = NULL)
 {
+    AssertMsg(c, "UI Context is null\n");
+    AssertMsg(c->currFont, "Font is not selected\n");
+    
     b->style   = s;
     b->name    = text;
     b->onClick = onClick;
     b->onHold  = onHold;
     b->data    = userData;
+    
+    s32 height = c->currFont->pixelHeight + 4; //Add Margin above and below text
+    s32 width = ls_uiGlyphStringLen(c, c->currFont, text);
+    
+    b->w = width;
+    b->h = height;
 }
 
-void ls_uiButtonInit(UIButton *b, UIButtonStyle s, const char32_t *t, ButtonProc onClick,
+void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t *t, ButtonProc onClick,
                      ButtonProc onHold = NULL, void *data = NULL)
 {
+    AssertMsg(c, "UI Context is null\n");
+    AssertMsg(c->currFont, "Font is not selected\n");
+    
     b->style   = s;
     b->name    = ls_utf32FromUTF32(t);
     b->onClick = onClick;
     b->onHold  = onHold;
     b->data    = data;
+    
+    s32 height = c->currFont->pixelHeight + 4; //Add Margin above and below text
+    s32 width = ls_uiGlyphStringLen(c, c->currFont, b->name);
+    
+    b->w = width;
+    b->h = height;
 }
-
-//TODO:Button autosizing width
 
 //TODO:Menus use buttons, but also claim Focus, which means I can't use the global focus trick to avoid input
 //     handling between overlapping elements.
@@ -2151,20 +2212,22 @@ void ls_uiButtonInit(UIButton *b, UIButtonStyle s, const char32_t *t, ButtonProc
 //     and I wanna redo it completely.
 
 //TODO:Ways to force buttons to stay selected. Maybe make a versatile checkbox?
-b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer = 0)
+b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer = 0)
 {
     Input *UserInput = &c->UserInput;
     
     b32 inputUse = FALSE;
     
     Color bkgColor = c->widgetColor;
+    Color textColor = c->textColor;
     
     if(button->style == UIBUTTON_TEXT_NOBORDER) { bkgColor = c->backgroundColor; }
     
-    if(MouseInRect(xPos, yPos, w, h) && ls_uiHasCapture(c, 0))// && ls_uiInFocus(cxt, 0))
+    if(MouseInRect(xPos, yPos, button->w, button->h) && ls_uiHasCapture(c, 0))// && ls_uiInFocus(cxt, 0))
     { 
         button->isHot = TRUE;
         bkgColor = c->highliteColor;
+        if(button->style == UIBUTTON_LINK) { textColor = c->highliteColor; }
         
         //b32 noCapture = ls_uiHasCapture(cxt, 0);
         
@@ -2180,10 +2243,10 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 w, s32 h
         }
     }
     
-    RenderCommand command = { UI_RC_BUTTON, xPos, yPos, w, h };
+    RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->w, button->h };
     command.button        = button;
     command.bkgColor      = bkgColor;
-    command.textColor     = c->textColor;
+    command.textColor     = textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
     
     return inputUse;
@@ -3310,8 +3373,8 @@ UIButton ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 heig
     UIButton result = {};
     result.style    = UIBUTTON_BMP;
     result.bmpData  = bitmapData;
-    result.bmpW     = width;
-    result.bmpH     = height;
+    result.w        = width;
+    result.h        = height;
     result.onClick  = onClick;
     return result;
 }
@@ -3372,8 +3435,8 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     s32 subCount  = menu->subMenus.count;
     s32 itemCount = menu->items.count;
     
-    s32 closeX    = x + w - menu->closeWindow.bmpW - 6;
-    s32 minimizeX = closeX - menu->closeWindow.bmpW - 6;
+    s32 closeX    = x + w - menu->closeWindow.w - 6;
+    s32 minimizeX = closeX - menu->closeWindow.w - 6;
     
     s32 dragX = x + ((subCount+itemCount)*subW);
     
@@ -3470,12 +3533,10 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     
     //NOTE: Only render when the bitmap is set!
     if(menu->closeWindow.bmpData)
-        inputUse |= ls_uiButton(c, &menu->closeWindow, closeX, y + 2, 
-                                menu->closeWindow.bmpW, menu->closeWindow.bmpH, 2);
+        inputUse |= ls_uiButton(c, &menu->closeWindow, closeX, y + 2, 2);
     
     if(menu->minimize.bmpData)
-        inputUse |= ls_uiButton(c, &menu->minimize, minimizeX, y + 2, 
-                                menu->closeWindow.bmpW, menu->closeWindow.bmpH, 2);
+        inputUse |= ls_uiButton(c, &menu->minimize, minimizeX, y + 2, 2);
     
     
     RenderCommand command = { UI_RC_MENU, x, y, w, h };
@@ -3712,10 +3773,23 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 {
                     UIButton *button = curr->button;
                     
-                    if(button->style == UIBUTTON_TEXT)
+                    if(button->style == UIBUTTON_CLASSIC)
                     {
                         ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, scroll, bkgColor);
                         
+                        if(button->name.data)
+                        {
+                            s32 strHeight = font->pixelHeight;
+                            s32 strWidth  = ls_uiGlyphStringLen(c, font, button->name);
+                            s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
+                            s32 yOff      = strHeight*0.25; //TODO: @FontDescent
+                            
+                            ls_uiGlyphString(c, font, xPos+xOff, yPos+yOff, threadRect, scissor, scroll,
+                                             button->name, textColor);
+                        }
+                    }
+                    else if(button->style == UIBUTTON_LINK)
+                    {
                         if(button->name.data)
                         {
                             s32 strHeight = font->pixelHeight;
@@ -3748,7 +3822,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     }
                     else if(button->style == UIBUTTON_BMP)
                     {
-                        ls_uiBitmap(c, xPos, yPos, button->bmpW, button->bmpH, threadRect, (u32 *)button->bmpData);
+                        ls_uiBitmap(c, xPos, yPos, button->w, button->h, threadRect, (u32 *)button->bmpData);
                     }
                     else { AssertMsg(FALSE, "Unhandled button style"); }
                     
