@@ -419,6 +419,7 @@ struct UIContext
     
     HWND Window;
     
+    //TODO: Remove default values like this. Set them in the "DefaultUIContext" procedure.
     s32 windowPosX, windowPosY;
     s32 windowWidth = 1280, windowHeight = 860;
     b32 isDragging = FALSE;
@@ -476,6 +477,8 @@ void       ls_uiButtonInit(UIContext *c, UIButton *, UIButtonStyle, const char32
                            ButtonProc onClick, ButtonProc onHold, void *data);
 
 b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer);
+
+void       ls_uiLabel(UIContext *c, utf32 label, f32 xPos, f32 yPos, Color textColor, s32 zLayer);
 
 void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
 void       ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
@@ -599,6 +602,22 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                 c->UserInput.Mouse.isRightPressed   = FALSE;
                 c->UserInput.Mouse.wasRightPressed  = FALSE;
             }
+        } break;
+        
+        case WM_SIZE:
+        {
+            if(!c) { return DefWindowProcA(h, msg, w, l); }
+            
+            u32 width       = LOWORD(l);
+            u32 height      = HIWORD(l);
+            
+            //NOTE: Draw Buffer Dimensions
+            c->width        = width;
+            c->height       = height;
+            
+            //NOTE: Client window dimensions
+            c->windowWidth  = (s32)width;
+            c->windowHeight = (s32)height;
         } break;
         
         case WM_PAINT:
@@ -856,9 +875,10 @@ void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
     }
 }
 
+//TODO: Make Resize Style customizable when creating window!
 HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowName)
 {
-    u32 style = LS_THIN_BORDER | LS_POPUP;// | LS_VISIBLE; //| LS_OVERLAPPEDWINDOW;
+    u32 style = LS_THIN_BORDER | LS_POPUP | LS_RESIZE;// | LS_VISIBLE; //| LS_OVERLAPPEDWINDOW;
     BOOL Result;
     
     int screenHeight = GetSystemMetrics(SM_CYSCREEN);
@@ -957,7 +977,6 @@ void __ui_default_windows_render_callback(UIContext *c)
 {
     InvalidateRect(c->Window, NULL, TRUE);
 }
-
 
 UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, RenderCallback cb = __ui_default_windows_render_callback)
 {
@@ -1430,26 +1449,56 @@ Color ls_uiRGBAtoARGB(Color c)
     return c;
 }
 
-//NOTE Probably Deprecated??
-void _ls_uiFillGSColorTable(Color c, Color baseColor, u8 darkenFactor, Color *table, u32 tableSize)
+void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color col)
 {
-    table[0] = baseColor;
+    s32 diffWidth = (w % 4);
+    s32 simdWidth = w - diffWidth;
     
-    u8 alphaCurr = (u32)ls_ceil((( 1.0f / (f32) tableSize ) * 255.0f));
-    Color currColor = ls_uiAlphaBlend(c, baseColor, alphaCurr);
-    table[1] = currColor;
+    s32 diffHeight = (h % 4);
+    s32 simdHeight = h - diffHeight;
     
-    for(u32 i = 2; i < tableSize-1; i++)
+    
+    //NOTE: Do the first Sub-Rectangle divisible by 4.
+    __m128i color = _mm_set1_epi32((int)col);
+    
+    for(s32 y = startY; y < startY+simdHeight; y++)
     {
-        table[i] = currColor;
-        
-        alphaCurr = (u32)ls_ceil((((f32)i / (f32) tableSize) * 255.0f));
-        currColor = ls_uiAlphaBlend(c, baseColor, alphaCurr);
+        for(s32 x = startX; x < startX+simdWidth; x += 4)
+        {
+            u32 idx = ((y*c->width) + x)*sizeof(s32);
+            __m128i *At = (__m128i *)(c->drawBuffer + idx);
+            
+            _mm_storeu_si128(At, color);
+        }
     }
     
-    table[tableSize-1] = c;
+    //NOTE: Complete the 2 remaining Sub-Rectangles at the right and top. (if there are).
+    //      We decide to have the right rectangle be full height
+    //      And the top one be less-than-full width, to avoid over-drawing the small subrect
+    //        in the top right corner.
+    u32 *At = (u32 *)c->drawBuffer;
     
-    return;
+    if(diffWidth) 
+    {
+        for(s32 y = startY; y < startY+h; y++)
+        {
+            for(s32 x = startX+simdWidth; x < startX+w; x++)
+            {
+                At[y*c->width + x] = col;
+            }
+        }
+    }
+    
+    if(diffHeight)
+    {
+        for(s32 y = startY+simdHeight; y < startY+h; y++)
+        {
+            for(s32 x = startX; x < startX+simdWidth; x++)
+            {
+                At[y*c->width + x] = col;
+            }
+        }
+    }
 }
 
 void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
@@ -2250,6 +2299,14 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
     ls_uiPushRenderCommand(c, command, zLayer);
     
     return inputUse;
+}
+
+void ls_uiLabel(UIContext *c, utf32 label, f32 relX, f32 relY, Color textColor, s32 zLayer = 0)
+{
+    s32 xPos = c->width * relX;
+    s32 yPos = c->height * relY;
+    
+    ls_uiLabel(c, label, xPos, yPos, textColor, zLayer);
 }
 
 void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer = 0)
@@ -3581,71 +3638,36 @@ void ls_uiRender(UIContext *c)
 
 void ls_uiRender__(UIContext *c, u32 threadID)
 {
-    //NOTE: First clear the background?
+    //NOTE: First clear the background
     switch(THREAD_COUNT)
     {
         case 0:
         case 1:
-        {
-            AssertMsg((c->height % 4) == 0, "Window Height not divisible by 4 (SIMD)\n");
-            AssertMsg((c->width % 4) == 0, "Window Width not divisible by 4 (SIMD)\n");
-            
-            __m128i color = _mm_set1_epi32 ((int)c->backgroundColor);
-            
-            u32 numIterations = (c->width*c->height) / 4;
-            for(u32 i = 0; i < numIterations; i++)
-            {
-                u32 idx = i*sizeof(s32)*4;
-                
-                __m128i *At = (__m128i *)(c->drawBuffer + idx);
-                _mm_storeu_si128(At, color);
-            }
-        } break;
+        { ls_uiClearRect(c, 0, 0, c->width, c->height, c->backgroundColor); } break;
         
         case 2:
         {
-            
-            AssertMsg((c->height % 4) == 0, "Window Height not divisible by 4 (SIMD)\n");
-            AssertMsg((c->width % 4) == 0, "Window Width not divisible by 4 (SIMD)\n");
-            
             s32 halfWidth = c->width/2;
-            s32 xStart = (halfWidth*threadID);
-            __m128i color = _mm_set1_epi32 ((int)c->backgroundColor);
             
-            for(s32 y = 0; y < c->height; y++)
-            {
-                for(s32 x = xStart; x < xStart+halfWidth; x += 4)
-                {
-                    u32 idx = ((y*c->width) + x)*sizeof(s32);
-                    __m128i *At = (__m128i *)(c->drawBuffer + idx);
-                    _mm_storeu_si128(At, color);
-                }
-            }
+            s32 tY = 0;
+            s32 tX = halfWidth*threadID;
+            s32 tH = c->height;
+            s32 tW = halfWidth;
             
+            ls_uiClearRect(c, tX, tY, tW, tH, c->backgroundColor);
         } break;
         
         case 4:
         {
-            AssertMsg((c->height % 4) == 0, "Window Height not divisible by 4 (SIMD)\n");
-            AssertMsg((c->width % 4) == 0, "Window Width not divisible by 4 (SIMD)\n");
-            
             s32 halfWidth  = c->width/2;
             s32 halfHeight = c->height/2;
-            s32 xStart = (halfWidth*(threadID%2));
-            s32 yStart = (halfHeight*(threadID/2));
             
-            __m128i color = _mm_set1_epi32 ((int)c->backgroundColor);
+            s32 tY = halfHeight*(threadID/2);
+            s32 tX = halfWidth*(threadID%2);
+            s32 tH = halfHeight;
+            s32 tW = halfWidth;
             
-            for(s32 y = yStart; y < yStart+halfHeight; y++)
-            {
-                for(s32 x = xStart; x < xStart+halfWidth; x += 4)
-                {
-                    u32 idx = ((y*c->width) + x)*sizeof(s32);
-                    __m128i *At = (__m128i *)(c->drawBuffer + idx);
-                    _mm_storeu_si128(At, color);
-                }
-            }
-            
+            ls_uiClearRect(c, tX, tY, tW, tH, c->backgroundColor);
         } break;
     }
     
