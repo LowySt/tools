@@ -410,24 +410,22 @@ struct UIContext
     //IMPORTANT NOTE:
     // As of right now lsUI DEPENDS on Input.
     // I don't know if this is the right choice. I guess I'll discover it.
-    Input UserInput = {};
+    Input UserInput;
     
-    
-    RenderCallback renderFunc = NULL;
+    RenderCallback renderFunc;
     u32 dt;
-    RegionTimer frameTime = {};
+    RegionTimer frameTime;
     
     HWND Window;
     
-    //TODO: Remove default values like this. Set them in the "DefaultUIContext" procedure.
     s32 windowPosX, windowPosY;
-    s32 windowWidth = 1280, windowHeight = 860;
-    b32 isDragging = FALSE;
-    s32 prevMousePosX = 0, prevMousePosY = 0;
+    s32 windowWidth, windowHeight;
+    b32 isDragging;
+    s32 prevMousePosX, prevMousePosY;
     
-    b32 hasReceivedInput = FALSE;
+    b32 hasReceivedInput;
     
-    onDestroyFunc onDestroy = NULL;
+    onDestroyFunc onDestroy;
 };
 
 struct ___threadCtx
@@ -999,6 +997,7 @@ UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, Render
     uiContext->invTextColor    = RGBg(0x33);
     uiContext->scroll          = {};
     uiContext->scissor         = UIRect { 0, 0, s32(width), s32(height) };
+    uiContext->frameTime       = {};
     
     if(THREAD_COUNT != 0)
     {
