@@ -366,9 +366,15 @@ typedef void (*RenderCallback)(UIContext *);
 typedef void (*onDestroyFunc)(UIContext *);
 struct UIContext
 {
+    //TODO: windowWidth is redundant with width
+    //      backbufferW is necessary to know how much memory we can actually write to
+    //      so that if we resize the window, we can enlarge the buffer as necessary.
     u8 *drawBuffer;
     u32 width;
     u32 height;
+    
+    s32 backbufferW;
+    s32 backbufferH;
     
     UIFont *fonts;
     u32 numFonts;
@@ -403,6 +409,7 @@ struct UIContext
     
     HDC  WindowDC;
     HDC  BackBufferDC;
+    HBITMAP DibSection;
     
     CONDITION_VARIABLE startRender;
     CRITICAL_SECTION crit;
@@ -602,7 +609,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             }
         } break;
         
-        case WM_SIZE:
+        case WM_SIZE: //TODO: Handling WM_SIZING would probably produce better results.
         {
             if(!c) { return DefWindowProcA(h, msg, w, l); }
             
@@ -616,6 +623,47 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             //NOTE: Client window dimensions
             c->windowWidth  = (s32)width;
             c->windowHeight = (s32)height;
+            
+            //NOTE: Client window position.
+            RECT windowRect = {};
+            if(GetWindowRect(h, &windowRect) != 0)
+            {
+                c->windowPosX = windowRect.left;
+                c->windowPosY = windowRect.top;
+            }
+            else { LogMsg(FALSE, "GetWindowRect failed after resize."); }
+            
+            //NOTE: Mouse position
+            POINT currMouse = {};
+            if(GetCursorPos(&currMouse) != 0)
+            {
+                c->prevMousePosX = currMouse.x;
+                c->prevMousePosY = currMouse.y;
+            }
+            else { LogMsg(FALSE, "GetCursorPos failed after resize."); }
+            
+            //NOTE: Need to resize the backbuffer if the window grows.
+            if(width*height > c->backbufferW*c->backbufferH)
+            {
+                BITMAPINFO BackBufferInfo = {};
+                BackBufferInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+                BackBufferInfo.bmiHeader.biWidth = c->windowWidth;
+                BackBufferInfo.bmiHeader.biHeight = c->windowHeight;
+                BackBufferInfo.bmiHeader.biPlanes = 1;
+                BackBufferInfo.bmiHeader.biBitCount = 32;
+                BackBufferInfo.bmiHeader.biCompression = BI_RGB;
+                
+                //NOTE: Delete the old DibSection AND the old BackBufferDC
+                //      Otherwise it would VERY quickly leak GBs of memory
+                DeleteObject(c->DibSection);
+                DeleteDC(c->BackBufferDC);
+                
+                c->BackBufferDC       = CreateCompatibleDC(c->WindowDC);
+                c->DibSection         = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
+                                                         DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
+                SelectObject(c->BackBufferDC, c->DibSection);
+            }
+            
         } break;
         
         case WM_PAINT:
@@ -913,12 +961,12 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     
     c->WindowDC           = GetDC(WindowHandle);
     c->BackBufferDC       = CreateCompatibleDC(c->WindowDC);
-    HBITMAP DibSection = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
-                                          DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
-    SelectObject(c->BackBufferDC, DibSection);
+    c->DibSection = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
+                                     DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
+    SelectObject(c->BackBufferDC, c->DibSection);
     
     c->windowPosX = (s16)spaceX;
-    c->windowPosY = (s16)spaceY; //NOTE:TODO: Hardcoded!!
+    c->windowPosY = (s16)spaceY;
     
     return WindowHandle;
 }
@@ -984,6 +1032,8 @@ UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, Render
     //NOTETODO Redundant? Maybe not?
     uiContext->width           = width;
     uiContext->height          = height;
+    uiContext->backbufferW     = width;
+    uiContext->backbufferH     = height;
     uiContext->windowWidth     = width;
     uiContext->windowHeight    = height;
     uiContext->renderFunc      = cb;

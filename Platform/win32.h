@@ -4718,6 +4718,7 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         WINUSERAPI   HWND         WINAPI        GetDlgItem(HWND hDlg, int nIDDlgItem);
         WINUSERAPI   int          WINAPI        GetDlgCtrlID(HWND hDlg);
         WINUSERAPI   HBITMAP      WINAPI        CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCount, const VOID *lpBits);
+        WINUSERAPI   BOOL         WINAPI        DeleteDC(HDC hdc);
         WINGDIAPI    HDC          WINAPI        CreateCompatibleDC(HDC hdc);
         WINGDIAPI    HBITMAP      WINAPI        CreateCompatibleBitmap(HDC hdc, int cx, int cy);
         WINGDIAPI    HBITMAP      WINAPI        CreateDIBSection(HDC hdc, CONST BITMAPINFO *pbmi, UINT usage, VOID **ppvBits, HANDLE hSection, DWORD offset);
