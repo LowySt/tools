@@ -366,15 +366,22 @@ typedef void (*RenderCallback)(UIContext *);
 typedef void (*onDestroyFunc)(UIContext *);
 struct UIContext
 {
-    //TODO: windowWidth is redundant with width
-    //      backbufferW is necessary to know how much memory we can actually write to
-    //      so that if we resize the window, we can enlarge the buffer as necessary.
+    //NOTE: This is the actual allocated memory
+    //      It is slightly larger than the drawn window because it contains a border
+    //      Used for resizing
     u8 *drawBuffer;
-    u32 width;
-    u32 height;
-    
     s32 backbufferW;
     s32 backbufferH;
+    
+    //NOTE: This is the area that all systems reference to draw. It's the area you should draw into
+    s32 width; 
+    s32 height;
+    
+#if 0
+    //NOTE: This is sligtly smaller than the draw area, because it doesn't include the menu bar
+    s32 clientWidth;
+    s32 clientHeight;
+#endif
     
     UIFont *fonts;
     u32 numFonts;
@@ -411,6 +418,12 @@ struct UIContext
     HDC  BackBufferDC;
     HBITMAP DibSection;
     
+    HCURSOR DefaultArrow;
+    HCURSOR ResizeArrowWE;
+    HCURSOR ResizeArrowNS;
+    HCURSOR ResizeArrowNW;
+    HCURSOR ResizeArrowNE;
+    
     CONDITION_VARIABLE startRender;
     CRITICAL_SECTION crit;
     
@@ -426,7 +439,6 @@ struct UIContext
     HWND Window;
     
     s32 windowPosX, windowPosY;
-    s32 windowWidth, windowHeight;
     b32 isDragging;
     s32 prevMousePosX, prevMousePosY;
     
@@ -609,20 +621,49 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             }
         } break;
         
-        case WM_SIZE: //TODO: Handling WM_SIZING would probably produce better results.
+        //TODO: Handling WM_SIZING would probably produce better results.
+        //TODO: This will only be used for fixed size steps
+        case WM_SIZE:
         {
-            if(!c) { return DefWindowProcA(h, msg, w, l); }
+            if(!c || !c->drawBuffer) { return DefWindowProcA(h, msg, w, l); }
             
             u32 width       = LOWORD(l);
             u32 height      = HIWORD(l);
             
+            //NOTE: Need to resize the backbuffer if the window grows.
+            if(width*height > c->backbufferW*c->backbufferH)
+            {
+                //NOTE: Delete the old DibSection AND the old BackBufferDC
+                //      Otherwise it would VERY quickly leak GBs of memory
+                DeleteObject(c->DibSection);
+                DeleteDC(c->BackBufferDC);
+                
+                //NOTE: Create a new DC
+                BITMAPINFO BackBufferInfo              = {};
+                BackBufferInfo.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+                BackBufferInfo.bmiHeader.biWidth       = width;
+                BackBufferInfo.bmiHeader.biHeight      = height;
+                BackBufferInfo.bmiHeader.biPlanes      = 1;
+                BackBufferInfo.bmiHeader.biBitCount    = 32;
+                BackBufferInfo.bmiHeader.biCompression = BI_RGB;
+                
+                c->BackBufferDC       = CreateCompatibleDC(c->WindowDC);
+                c->DibSection         = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
+                                                         DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
+                SelectObject(c->BackBufferDC, c->DibSection);
+                
+                c->backbufferW = width;
+                c->backbufferH = height;
+            }
+            
             //NOTE: Draw Buffer Dimensions
             c->width        = width;
             c->height       = height;
-            
+#if 0
             //NOTE: Client window dimensions
             c->windowWidth  = (s32)width;
             c->windowHeight = (s32)height;
+#endif
             
             //NOTE: Client window position.
             RECT windowRect = {};
@@ -642,28 +683,6 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             }
             else { LogMsg(FALSE, "GetCursorPos failed after resize."); }
             
-            //NOTE: Need to resize the backbuffer if the window grows.
-            if(width*height > c->backbufferW*c->backbufferH)
-            {
-                BITMAPINFO BackBufferInfo = {};
-                BackBufferInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-                BackBufferInfo.bmiHeader.biWidth = c->windowWidth;
-                BackBufferInfo.bmiHeader.biHeight = c->windowHeight;
-                BackBufferInfo.bmiHeader.biPlanes = 1;
-                BackBufferInfo.bmiHeader.biBitCount = 32;
-                BackBufferInfo.bmiHeader.biCompression = BI_RGB;
-                
-                //NOTE: Delete the old DibSection AND the old BackBufferDC
-                //      Otherwise it would VERY quickly leak GBs of memory
-                DeleteObject(c->DibSection);
-                DeleteDC(c->BackBufferDC);
-                
-                c->BackBufferDC       = CreateCompatibleDC(c->WindowDC);
-                c->DibSection         = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
-                                                         DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
-                SelectObject(c->BackBufferDC, c->DibSection);
-            }
-            
         } break;
         
         case WM_PAINT:
@@ -680,17 +699,17 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             
             BITMAPINFO BitmapInfo = {};
             BitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-            BitmapInfo.bmiHeader.biWidth = c->windowWidth;
-            BitmapInfo.bmiHeader.biHeight = c->windowHeight;
+            BitmapInfo.bmiHeader.biWidth = c->backbufferW;
+            BitmapInfo.bmiHeader.biHeight = c->backbufferH;
             BitmapInfo.bmiHeader.biPlanes = 1;
             BitmapInfo.bmiHeader.biBitCount = 32;
             BitmapInfo.bmiHeader.biCompression = BI_RGB;
             
-            StretchDIBits(c->BackBufferDC, 0, 0, c->windowWidth, c->windowHeight,
-                          0, 0, c->windowWidth, c->windowHeight,
+            StretchDIBits(c->BackBufferDC, 0, 0, c->backbufferW, c->backbufferH,
+                          0, 0, c->backbufferW, c->backbufferH,
                           c->drawBuffer, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
             
-            Result = BitBlt(c->WindowDC, r.left, r.top, r.right, r.bottom,
+            Result = BitBlt(c->WindowDC, 0, 0, c->backbufferW, c->backbufferH,
                             c->BackBufferDC, 0, 0, SRCCOPY);
             
             if(Result == 0) {
@@ -873,9 +892,43 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             
             POINTS currMouseClient = *((POINTS *)&l);
             Mouse->currPosX = currMouseClient.x;
-            Mouse->currPosY = c->windowHeight - currMouseClient.y;
+            Mouse->currPosY = c->backbufferH - currMouseClient.y;
             
             c->hasReceivedInput = TRUE;
+            
+            
+            //NOTETODO: Is setting the cursor every single MOUSEMOVE bad?
+            //      The spec says:
+            //          The cursor is set only if the new cursor is different from 
+            //          the previous cursor; otherwise, the function returns immediately.
+            //
+            //      So I believe this is fine.
+            
+            //NOTE: Handle Sizing
+            if(((Mouse->currPosX < 4) || (Mouse->currPosX > c->width  - 4)) &&
+               ((Mouse->currPosY > 4) && (Mouse->currPosY < c->height - 4)))
+            {
+                SetCursor(c->ResizeArrowWE);
+            }
+            else if(((Mouse->currPosX > 4) && (Mouse->currPosX < c->width  - 4)) &&
+                    ((Mouse->currPosY < 4) || (Mouse->currPosY > c->height - 4)))
+            {
+                SetCursor(c->ResizeArrowNS);
+            }
+            else if(((Mouse->currPosX < 4) && (Mouse->currPosY > c->height  - 4)) ||
+                    ((Mouse->currPosY < 4) && (Mouse->currPosX > c->width - 4)))
+            {
+                SetCursor(c->ResizeArrowNW);
+            }
+            else if(((Mouse->currPosX < 4) && (Mouse->currPosY < 4)) ||
+                    ((Mouse->currPosX > c->width - 4) && (Mouse->currPosY > c->height - 4)))
+            {
+                SetCursor(c->ResizeArrowNE);
+            }
+            else
+            {
+                SetCursor(c->DefaultArrow);
+            }
             
             //NOTE: MSDN says to return 0
             return 0;
@@ -905,14 +958,15 @@ void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
     
     u32 prop = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
     
-    HCURSOR cursor = LoadCursorA(NULL, IDC_ARROW);
-    
     WNDCLASSA WindowClass = { 0 };
     WindowClass.style = prop;
     WindowClass.lpfnWndProc = ls_uiWindowProc;
     WindowClass.hInstance = MainInstance;
     WindowClass.lpszClassName = name;
-    WindowClass.hCursor = cursor;
+    
+    //NOTE: We load the cursor after creating the window, 
+    //      otherwise windows will reset it to this default after every MOUSEMOVE event if we ever change it.
+    WindowClass.hCursor = NULL;
     
     if (!RegisterClassA(&WindowClass))
     {
@@ -921,10 +975,9 @@ void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
     }
 }
 
-//TODO: Make Resize Style customizable when creating window!
 HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowName)
 {
-    u32 style = LS_THIN_BORDER | LS_POPUP | LS_RESIZE;// | LS_VISIBLE; //| LS_OVERLAPPEDWINDOW;
+    u32 style = LS_THIN_BORDER | LS_POPUP;// | LS_VISIBLE; //| LS_OVERLAPPEDWINDOW;
     BOOL Result;
     
     int screenHeight = GetSystemMetrics(SM_CYSCREEN);
@@ -932,8 +985,8 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     
     const int taskbarHeight = 20;
     
-    int spaceX = (screenWidth - c->windowWidth) / 2;
-    int spaceY = ((screenHeight - c->windowHeight) / 2);// - taskbarHeight;
+    int spaceX = (screenWidth - c->backbufferW) / 2;
+    int spaceY = ((screenHeight - c->backbufferH) / 2);// - taskbarHeight;
     if(spaceX < 0) { spaceX = 0; }
     if(spaceY < 0) { spaceY = 0; }
     
@@ -943,26 +996,33 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     if ((WindowHandle = CreateWindowExA(0, windowName,
                                         windowName, style,
                                         spaceX, spaceY, //CW_USEDEFAULT, CW_USEDEFAULT,
-                                        c->windowWidth, c->windowHeight,
+                                        c->backbufferW, c->backbufferH,
                                         0, 0, MainInstance, c)) == nullptr)
     {
         DWORD Error = GetLastError();
         ls_printf("When Retrieving a WindowHandle in Win32_SetupScreen got error: %d", Error);
     }
     
+    c->DefaultArrow   = LoadCursorA(NULL, IDC_ARROW);
+    c->ResizeArrowWE  = LoadCursorA(NULL, IDC_SIZEWE);
+    c->ResizeArrowNS  = LoadCursorA(NULL, IDC_SIZENS);
+    c->ResizeArrowNW  = LoadCursorA(NULL, IDC_SIZENWSE);
+    c->ResizeArrowNE  = LoadCursorA(NULL, IDC_SIZENESW);
+    
+    SetCursor(c->DefaultArrow);
     
     BITMAPINFO BackBufferInfo = {};
     BackBufferInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    BackBufferInfo.bmiHeader.biWidth = c->windowWidth;
-    BackBufferInfo.bmiHeader.biHeight = c->windowHeight;
+    BackBufferInfo.bmiHeader.biWidth = c->backbufferW;
+    BackBufferInfo.bmiHeader.biHeight = c->backbufferH;
     BackBufferInfo.bmiHeader.biPlanes = 1;
     BackBufferInfo.bmiHeader.biBitCount = 32;
     BackBufferInfo.bmiHeader.biCompression = BI_RGB;
     
     c->WindowDC           = GetDC(WindowHandle);
     c->BackBufferDC       = CreateCompatibleDC(c->WindowDC);
-    c->DibSection = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
-                                     DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
+    c->DibSection         = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
+                                             DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
     SelectObject(c->BackBufferDC, c->DibSection);
     
     c->windowPosX = (s16)spaceX;
@@ -1024,18 +1084,23 @@ void __ui_default_windows_render_callback(UIContext *c)
     InvalidateRect(c->Window, NULL, TRUE);
 }
 
-UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, RenderCallback cb = __ui_default_windows_render_callback)
+UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height, RenderCallback cb = __ui_default_windows_render_callback)
 {
     UIContext *uiContext       = (UIContext *)ls_alloc(sizeof(UIContext));
-    uiContext->drawBuffer      = drawBuffer;
+    uiContext->drawBuffer      = backBuffer;
     
-    //NOTETODO Redundant? Maybe not?
-    uiContext->width           = width;
-    uiContext->height          = height;
     uiContext->backbufferW     = width;
     uiContext->backbufferH     = height;
-    uiContext->windowWidth     = width;
-    uiContext->windowHeight    = height;
+    
+    uiContext->width           = width;
+    uiContext->height          = height;
+    
+#if 0
+    //NOTE: These are initially set to 0, but are set when a ls_uiMenu call is given
+    uiContext->clientWidth     = 0;
+    uiContext->clientHeight    = 0;
+#endif
+    
     uiContext->renderFunc      = cb;
     uiContext->backgroundColor = RGBg(0x38);
     uiContext->highliteColor   = RGBg(0x65);
@@ -1306,8 +1371,8 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
         {
             command.threadRect.minX = 0;
             command.threadRect.minY = 0;
-            command.threadRect.maxX = c->windowWidth;
-            command.threadRect.maxY = c->windowHeight-1;
+            command.threadRect.maxX = c->width;
+            command.threadRect.maxY = c->height-1;
             
             stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
             AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
@@ -1505,7 +1570,6 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
     
     s32 diffHeight = (h % 4);
     s32 simdHeight = h - diffHeight;
-    
     
     //NOTE: Do the first Sub-Rectangle divisible by 4.
     __m128i color = _mm_set1_epi32((int)col);
