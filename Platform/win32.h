@@ -4733,6 +4733,8 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         WINGDIAPI    HRGN         WINAPI        CreateRectRgn(int x1, int y1, int x2, int y2);
         WINGDIAPI    BOOL         WINAPI        FillRgn(HDC hdc, HRGN hrgn, HBRUSH hbr);
         WINGDIAPI    BOOL         WINAPI        BitBlt(HDC hdc, int x, int y, int cx, int cy, HDC hdcSrc, int x1, int y1, DWORD rop);
+        WINGDIAPI    BOOL         WINAPI        SetViewportOrgEx(HDC hdc, int x, int y, LPPOINT lppt);
+        WINGDIAPI    BOOL         WINAPI        SetViewportExtEx(HDC hdc, int x, int y, LPSIZE lpsz);
         WINGDIAPI	BOOL 		WINAPI		SwapBuffers(HDC);
         
         //
