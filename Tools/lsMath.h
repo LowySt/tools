@@ -12,50 +12,49 @@
 // GENERAL //
 /////////////
 
-extern "C"
-{
-    s32 ls_min(s32 a, s32 b);
-    s32 ls_max(s32 a, s32 b);
-    
-    s32 ls_floor(f64 v);
-    s32 ls_ceil(f64 v);
-    
-    s32 ls_abs(s32 x);
-    f64 ls_fabs(f64 x);
-    
-    f64 ls_mathClamp(f64 currValue, f64 maxValue, f64 minValue);
-    
-    s64 ls_e10(s32 x);
-    u64 ls_powui(u64 v, u32 exp);
-    s64 ls_powi(s64 v, u32 exp);
-    f64 ls_powf(f64 v, s32 exp);
-    
-    f64 ls_fmod(f64 v, f64 w);
-    s64 ls_truncate(f64 x);
-    f64 ls_truncEpsilon(f64 x);
-    
-    f32 ls_rad(f32 x);
-    f64 ls_sqrt(f64 x);
-    f64 ls_cbrt(f64 x);
-    
-    u32 ls_gcd(u32 a, u32 b);
-    b32 ls_isPrime(u32 a);
-    
-    b32 ls_isF64Normal(f64 v);
-    
-    //NOTE: This only has 12 digits of precision!
-    f32 ls_reciprocal(f32 x);
-    
-    f64  ls_sin(f64 rad);
-    f64  ls_asin(f64 x);
-    f64  ls_cos(f64 rad);
-    f64  ls_acos(f64 x);
-    void ls_sincos(f64 rad, f64 *sin, f64 *cos);
-    f64  ls_tan(f64 rad);
-    f64  ls_atan(f64 x);
-    f64  ls_atan2(f64 a, f64 b);
-};
+s32 ls_min(s32 a, s32 b);
+s32 ls_max(s32 a, s32 b);
 
+f32 ls_min(f32 a, f32 b);
+f32 ls_max(f32 a, f32 b);
+
+s32 ls_floor(f64 v);
+s32 ls_ceil(f64 v);
+
+s32 ls_abs(s32 x);
+f64 ls_fabs(f64 x);
+
+f64 ls_mathClamp(f64 currValue, f64 maxValue, f64 minValue);
+
+s64 ls_e10(s32 x);
+u64 ls_powui(u64 v, u32 exp);
+s64 ls_powi(s64 v, u32 exp);
+f64 ls_powf(f64 v, s32 exp);
+
+f64 ls_fmod(f64 v, f64 w);
+s64 ls_truncate(f64 x);
+f64 ls_truncEpsilon(f64 x);
+
+f32 ls_rad(f32 x);
+f64 ls_sqrt(f64 x);
+f64 ls_cbrt(f64 x);
+
+u32 ls_gcd(u32 a, u32 b);
+b32 ls_isPrime(u32 a);
+
+b32 ls_isF64Normal(f64 v);
+
+//NOTE: This only has 12 digits of precision!
+f32 ls_reciprocal(f32 x);
+
+f64  ls_sin(f64 rad);
+f64  ls_asin(f64 x);
+f64  ls_cos(f64 rad);
+f64  ls_acos(f64 x);
+void ls_sincos(f64 rad, f64 *sin, f64 *cos);
+f64  ls_tan(f64 rad);
+f64  ls_atan(f64 x);
+f64  ls_atan2(f64 a, f64 b);
 
 /////////////
 // VECTORS //
@@ -215,6 +214,18 @@ s32 ls_min(s32 a, s32 b)
 }
 
 s32 ls_max(s32 a, s32 b)
+{
+    if(a >= b) return a;
+    return b;
+}
+
+f32 ls_min(f32 a, f32 b)
+{
+    if(a <= b) return a;
+    return b;
+}
+
+f32 ls_max(f32 a, f32 b)
 {
     if(a >= b) return a;
     return b;
