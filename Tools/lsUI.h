@@ -418,12 +418,6 @@ struct UIContext
     HDC  BackBufferDC;
     HBITMAP DibSection;
     
-    HCURSOR DefaultArrow;
-    HCURSOR ResizeArrowWE;
-    HCURSOR ResizeArrowNS;
-    HCURSOR ResizeArrowNW;
-    HCURSOR ResizeArrowNE;
-    
     CONDITION_VARIABLE startRender;
     CRITICAL_SECTION crit;
     
@@ -481,6 +475,7 @@ Color      ls_uiAlphaBlend(Color source, Color dest);
 Color      ls_uiRGBAtoARGB(Color c);
 
 void       ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
+
 void       ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
 
 UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *data);
@@ -699,17 +694,17 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             
             BITMAPINFO BitmapInfo = {};
             BitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-            BitmapInfo.bmiHeader.biWidth = c->backbufferW;
-            BitmapInfo.bmiHeader.biHeight = c->backbufferH;
+            BitmapInfo.bmiHeader.biWidth = c->width;
+            BitmapInfo.bmiHeader.biHeight = c->height;
             BitmapInfo.bmiHeader.biPlanes = 1;
             BitmapInfo.bmiHeader.biBitCount = 32;
             BitmapInfo.bmiHeader.biCompression = BI_RGB;
             
-            StretchDIBits(c->BackBufferDC, 0, 0, c->backbufferW, c->backbufferH,
-                          0, 0, c->backbufferW, c->backbufferH,
+            StretchDIBits(c->BackBufferDC, 0, 0, c->width, c->height,
+                          0, 0, c->width, c->height,
                           c->drawBuffer, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
             
-            Result = BitBlt(c->WindowDC, 0, 0, c->backbufferW, c->backbufferH,
+            Result = BitBlt(c->WindowDC, 0, 0, c->width, c->height,
                             c->BackBufferDC, 0, 0, SRCCOPY);
             
             if(Result == 0) {
@@ -892,7 +887,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             
             POINTS currMouseClient = *((POINTS *)&l);
             Mouse->currPosX = currMouseClient.x;
-            Mouse->currPosY = c->backbufferH - currMouseClient.y;
+            Mouse->currPosY = c->height - currMouseClient.y;
             
             c->hasReceivedInput = TRUE;
             
@@ -903,32 +898,6 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             //          the previous cursor; otherwise, the function returns immediately.
             //
             //      So I believe this is fine.
-            
-            //NOTE: Handle Sizing
-            if(((Mouse->currPosX < 4) || (Mouse->currPosX > c->width  - 4)) &&
-               ((Mouse->currPosY > 4) && (Mouse->currPosY < c->height - 4)))
-            {
-                SetCursor(c->ResizeArrowWE);
-            }
-            else if(((Mouse->currPosX > 4) && (Mouse->currPosX < c->width  - 4)) &&
-                    ((Mouse->currPosY < 4) || (Mouse->currPosY > c->height - 4)))
-            {
-                SetCursor(c->ResizeArrowNS);
-            }
-            else if(((Mouse->currPosX < 4) && (Mouse->currPosY > c->height  - 4)) ||
-                    ((Mouse->currPosY < 4) && (Mouse->currPosX > c->width - 4)))
-            {
-                SetCursor(c->ResizeArrowNW);
-            }
-            else if(((Mouse->currPosX < 4) && (Mouse->currPosY < 4)) ||
-                    ((Mouse->currPosX > c->width - 4) && (Mouse->currPosY > c->height - 4)))
-            {
-                SetCursor(c->ResizeArrowNE);
-            }
-            else
-            {
-                SetCursor(c->DefaultArrow);
-            }
             
             //NOTE: MSDN says to return 0
             return 0;
@@ -1003,13 +972,8 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
         ls_printf("When Retrieving a WindowHandle in Win32_SetupScreen got error: %d", Error);
     }
     
-    c->DefaultArrow   = LoadCursorA(NULL, IDC_ARROW);
-    c->ResizeArrowWE  = LoadCursorA(NULL, IDC_SIZEWE);
-    c->ResizeArrowNS  = LoadCursorA(NULL, IDC_SIZENS);
-    c->ResizeArrowNW  = LoadCursorA(NULL, IDC_SIZENWSE);
-    c->ResizeArrowNE  = LoadCursorA(NULL, IDC_SIZENESW);
-    
-    SetCursor(c->DefaultArrow);
+    HCURSOR DefaultArrow = LoadCursorA(NULL, IDC_ARROW);
+    SetCursor(DefaultArrow);
     
     BITMAPINFO BackBufferInfo = {};
     BackBufferInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -1111,7 +1075,9 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height, Render
     uiContext->invWidgetColor  = RGBg(0xBA);
     uiContext->invTextColor    = RGBg(0x33);
     uiContext->scroll          = {};
-    uiContext->scissor         = UIRect { 0, 0, s32(width), s32(height) };
+    
+    //NOTETODO: The scissor is currently not used or relevant. The code remains around because fuck it.
+    uiContext->scissor         = UIRect { 0, 0, 999999, 999999 };
     uiContext->frameTime       = {};
     
     if(THREAD_COUNT != 0)
