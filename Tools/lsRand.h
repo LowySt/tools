@@ -7,6 +7,8 @@ u16 ls_rand16();
 u32 ls_rand32();
 u64 ls_rand64();
 
+f32 ls_randFloat();
+
 u64 ls_randRange(u64 min, u64 max);
 
 void ls_fillBufferRand(u8 *data, u32 sizeOfBuffer);
@@ -40,6 +42,14 @@ u64 ls_rand64()
     if(success == 1) return result;
     else if (success == 0) return 0;
     return 0;
+}
+
+f32 ls_randFloat()
+{
+    u64 base = ls_rand64();
+    u64 max  = u64(-1);
+    f32 result = (f32)base / (f32)max;
+    return result;
 }
 
 u64 ls_randRange(u64 min, u64 max)
