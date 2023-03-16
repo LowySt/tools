@@ -94,6 +94,9 @@ extern "C"
     
     b32 ls_areV2iEqual(v2i v, v2i w);
     
+    v2 v2_sum(v2 a, v2 b);
+    v2 v2_dot(v2 a, f32 r);
+    
 #if 0
     b32 operator==(v2 v, v2 w); b32 operator==(v3 v, v3 w); b32 operator==(v4 v, v4 w);
     b32 operator!=(v2 v, v2 w); b32 operator!=(v3 v, v3 w); b32 operator!=(v4 v, v4 w);
@@ -767,6 +770,18 @@ b32 ls_areV2iEqual(v2i v, v2i w)
 {
     if((w.x == v.x) && (w.y == v.y)) { return TRUE; }
     return FALSE;
+}
+
+v2 v2_sum(v2 a, v2 b)
+{
+    v2 result = { a.x + b.x, a.y + b.y };
+    return result;
+}
+
+v2 v2_dot(v2 a, f32 r)
+{
+    v2 result = { a.x * r, a.y * r };
+    return result;
 }
 
 #if 0
