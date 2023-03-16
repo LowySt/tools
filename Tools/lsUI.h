@@ -1108,6 +1108,15 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height, Render
         uiContext->renderGroups[0].RenderCommands[2] = ls_stackInit(sizeof(RenderCommand), 256);
     }
     
+    //------------------------------------------------------
+    //NOTE: This shit is necessary to request millisecond-precision sleeps.
+    //      An equivalent call to timeEndPeriod should happen at the end. It technically
+    //      Doesn't in this program, because we use it every frame, so we don't re-call it.
+    //      But I'm pointing it out for possible microsoft weirdness...
+    TIMECAPS tc = {};
+    MMRESULT res = timeGetDevCaps(&tc, sizeof(TIMECAPS));
+    res = timeBeginPeriod(tc.wPeriodMin);
+    //------------------------------------------------------
     
     //NOTETODO: Should this be here? Should we have another function 
     //          that specifically takes care of initialization of these global things??
