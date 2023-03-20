@@ -71,53 +71,33 @@ struct v2i { s64 x, y; };
 struct v3i { s64 x, y, z; };
 struct v4i { s64 x, y, z, w; };
 
-extern "C"
-{
-	b32 isZero(f32 v);
-	b32 isVal(f32 x, f32 val);
-    
-	v2  vec2(f32 x, f32 y);
-	v3  vec3(f32 x, f32 y, f32 z);
-	v4  vec4(f32 x, f32 y, f32 z, f32 w);
-	v2i vec2i(s32 x, s32 y);
-	v3i vec3i(s32 x, s32 y, s32 z);
-	v4i vec4i(s32 x, s32 y, s32 z, s32 w);
-    
-	v2 V2(v3 v); v3 V3(v4 v); v4 V4(v3 v);
-    
-	f32 LengthV2(v2 v); f32 LengthV3(v3 v); f32 LengthV4(v4 v);
-    f32 LengthV2i(v2i v); f32 LengthV3i(v3i v); f32 LengthV4i(v4i v);
-    
-	v2 NormalizeV2(v2 v); v3 NormalizeV3(v3 v); v4 NormalizeV4(v4 v);
-    v2 NormalizeV2i(v2i v); v3 NormalizeV3i(v3i v); v4 NormalizeV4i(v4i v);
-    
-    v4i ls_v4iSubs64(v4i v, s64 s);
-    
-    v2i operator*(v2i a, f32 v);
-    
-    b32 ls_areV2iEqual(v2i v, v2i w);
-    
-    v2 v2_sum(v2 a, v2 b);
-    v2 v2_dot(v2 a, f32 r);
-    
-#if 0
-    b32 operator==(v2 v, v2 w); b32 operator==(v3 v, v3 w); b32 operator==(v4 v, v4 w);
-    b32 operator!=(v2 v, v2 w); b32 operator!=(v3 v, v3 w); b32 operator!=(v4 v, v4 w);
-    
-    v2 operator+(v2 v, v2 w); v3 operator+(v3 v, v3 w); v4 operator+(v4 v, v4 w);
-    v2i operator+(v2i v, v2i w); v3i operator+(v3i v, v3i w); v4i operator+(v4i v, v4i w);
-    
-    v2 operator-(v2 v, v2 w); v3 operator-(v3 v, v3 w); v4 operator-(v4 v, v4 w);
-    v2 operator-(v2 v); v3 operator-(v3 v); v4 operator-(v4 v);
-    v2i operator-(v2i v, v2i w); v3i operator-(v3i v, v3i w); v4i operator-(v4i v, v4i w);
-    v2i operator-(v2i v); v3i operator-(v3i v); v4i operator-(v4i v);
-    
-    v2 operator*(v2 w, f32 value); v3 operator*(v3 w, f32 value); v4 operator*(v4 w, f32 value);
-    f32 operator*(v2 v, v2 w); f32 operator*(v3 v, v3 w); f32 operator*(v4 v, v4 w);
-    
-    v3 operator^(v3 v, v3 w);
-#endif
-};
+b32 isZero(f32 v);
+b32 isVal(f32 x, f32 val);
+
+v2  vec2(f32 x, f32 y);
+v3  vec3(f32 x, f32 y, f32 z);
+v4  vec4(f32 x, f32 y, f32 z, f32 w);
+v2i vec2i(s32 x, s32 y);
+v3i vec3i(s32 x, s32 y, s32 z);
+v4i vec4i(s32 x, s32 y, s32 z, s32 w);
+
+v2 V2(v3 v); v3 V3(v4 v); v4 V4(v3 v);
+
+f32 LengthV2(v2 v); f32 LengthV3(v3 v); f32 LengthV4(v4 v);
+f32 LengthV2i(v2i v); f32 LengthV3i(v3i v); f32 LengthV4i(v4i v);
+
+v2 NormalizeV2(v2 v); v3 NormalizeV3(v3 v); v4 NormalizeV4(v4 v);
+v2 NormalizeV2i(v2i v); v3 NormalizeV3i(v3i v); v4 NormalizeV4i(v4i v);
+
+v4i ls_v4iSubs64(v4i v, s64 s);
+
+b32 ls_areV2iEqual(v2i v, v2i w);
+
+v2 v2_sum(v2i a, v2 b);
+v2 v2_sum(v2 a, v2i b);
+v2 v2_sum(v2 a, v2 b);
+v2 v2_dot(v2 a, v2 b);
+v2 v2_dot(v2 a, f32 r);
 
 ////////////
 // MATRIX //
@@ -775,9 +755,28 @@ b32 ls_areV2iEqual(v2i v, v2i w)
     return FALSE;
 }
 
+
+v2 v2_sum(v2i a, v2 b)
+{
+    v2 result = { a.x + b.x, a.y + b.y };
+    return result;
+}
+
+v2 v2_sum(v2 a, v2i b)
+{
+    v2 result = { a.x + b.x, a.y + b.y };
+    return result;
+}
+
 v2 v2_sum(v2 a, v2 b)
 {
     v2 result = { a.x + b.x, a.y + b.y };
+    return result;
+}
+
+v2 v2_dot(v2 a, v2 b)
+{
+    v2 result = { a.x * b.x, a.y * b.y };
     return result;
 }
 
