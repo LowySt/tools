@@ -93,11 +93,20 @@ v4i ls_v4iSubs64(v4i v, s64 s);
 
 b32 ls_areV2iEqual(v2i v, v2i w);
 
-v2 v2_sum(v2i a, v2 b);
-v2 v2_sum(v2 a, v2i b);
-v2 v2_sum(v2 a, v2 b);
-v2 v2_dot(v2 a, v2 b);
-v2 v2_dot(v2 a, f32 r);
+v2  v2_sum(v2i a, v2 b);
+v2  v2_sum(v2 a, v2i b);
+v2  v2_sum(v2 a, v2 b);
+
+v2  v2_sub(v2i a, v2 b);
+v2  v2_sub(v2 a, v2i b);
+v2  v2_sub(v2 a, v2 b);
+
+f32 v2_dot(v2 a, v2 b);
+v2  v2_hadamard(v2 a, v2 b);
+v2  v2_hadamard(v2 a, f32 r);
+
+v2  v2_reflection(v2 v, v2 normal);
+v2  v2_tangential(v2 v, v2 normal);
 
 ////////////
 // MATRIX //
@@ -774,197 +783,56 @@ v2 v2_sum(v2 a, v2 b)
     return result;
 }
 
-v2 v2_dot(v2 a, v2 b)
+v2 v2_sub(v2i a, v2 b)
+{
+    v2 result = { a.x - b.x, a.y - b.y };
+    return result;
+}
+
+v2 v2_sub(v2 a, v2i b)
+{
+    v2 result = { a.x - b.x, a.y - b.y };
+    return result;
+}
+
+v2 v2_sub(v2 a, v2 b)
+{
+    v2 result = { a.x - b.x, a.y - b.y };
+    return result;
+}
+
+f32 v2_dot(v2 a, v2 b)
+{
+    f32 result = (a.x * b.x) + (a.y * b.y);
+    return result;
+}
+
+v2 v2_hadamard(v2 a, v2 b)
 {
     v2 result = { a.x * b.x, a.y * b.y };
     return result;
 }
 
-v2 v2_dot(v2 a, f32 r)
+v2 v2_hadamard(v2 a, f32 r)
 {
     v2 result = { a.x * r, a.y * r };
     return result;
 }
 
-#if 0
-b32 operator==(v2 v, v2 w)
+v2 v2_reflection(v2 v, v2 normal)
 {
-    if((w.x == v.x) && (w.y == v.y)) { return TRUE; }
-    return FALSE;
+    // v - [2 * (v.normal * normal)]
+    v2 result = v2_sub(v, v2_hadamard(v2_hadamard(normal, v2_dot(v, normal)), 2.0f));
+    return result;
 }
 
-b32 operator!=(v2 v, v2 w) { return !(w == v); }
-
-b32 operator==(v3 v, v3 w)
+v2 v2_tangential(v2 v, v2 normal)
 {
-    if((w.x == v.x) && (w.y == v.y) && (w.z == w.z))
-    { return TRUE; }
-    return FALSE;
+    // v - [1 * (v.normal * normal)]
+    v2 result = v2_sub(v, v2_hadamard(normal, v2_dot(v, normal)));
+    return result;
 }
 
-b32 operator!=(v3 v, v3 w) { return !(w == v); }
-
-b32 operator==(v4 v, v4 w)
-{
-    if((w.x == v.x) && (w.y == v.y) && (w.z == v.z) && (w.w == v.w))
-    { return TRUE; }
-    return FALSE;
-}
-
-b32 operator!=(v4 v, v4 w) { return !(w == v); }
-
-
-v2 operator+(v2 v, v2 w)
-{
-	v2 Result = { w.x + v.x, w.y + v.y };
-	return Result;
-}
-
-v3 operator+(v3 v, v3 w)
-{
-	v3 Result = { w.x + v.x, w.y + v.y, w.z + v.z };
-	return Result;
-}
-
-v4 operator+(v4 v, v4 w)
-{
-	v4 Result = { w.x + v.x, w.y + v.y, w.z + v.z, w.w + v.w };
-	return Result;
-}
-
-v2i operator+(v2i v, v2i w)
-{
-	v2i Result = { w.x + v.x, w.y + v.y };
-	return Result;
-}
-
-v3i operator+(v3i v, v3i w)
-{
-	v3i Result = { w.x + v.x, w.y + v.y, w.z + v.z };
-	return Result;
-}
-
-v4i operator+(v4i v, v4i w)
-{
-	v4i Result = { w.x + v.x, w.y + v.y, w.z + v.z, w.w + v.w };
-	return Result;
-}
-
-v2 operator-(v2 v, v2 w)
-{
-	v2 Result = { w.x - v.x, w.y - v.y };
-	return Result;
-}
-
-v2 operator-(v2 v)
-{
-    v2 Result = { -v.x, -v.y };
-    return Result;
-}
-
-v3 operator-(v3 v, v3 w)
-{
-	v3 Result = { w.x - v.x, w.y - v.y, w.z - v.z };
-	return Result;
-}
-
-v3 operator-(v3 v)
-{
-    v2 Result = { -v.x, -v.y, -v.z };
-    return Result;
-}
-
-v4 operator-(v4 v, v4 w)
-{
-	v4 Result = { w.x - v.x, w.y - v.y, w.z - v.z, w.w - v.w };
-	return Result;
-}
-
-v4 operator-(v4 v)
-{
-	v4 Result = { -v.x, -v.y, -v.z, -v.w };
-	return Result;
-}
-
-v2i operator-(v2i v, v2i w)
-{
-	v2i Result = { w.x - v.x, w.y - v.y };
-	return Result;
-}
-
-v2i operator-(v2i v)
-{
-	v2i Result = { -v.x, -v.y };
-	return Result;
-}
-
-v3i operator-(v3i v, v3i w)
-{
-	v3i Result = { w.x - v.x, w.y - v.y, w.z - v.z };
-	return Result;
-}
-
-v3i operator-(v3i v)
-{
-	v3i Result = { -v.x, -v.y, -v.z };
-	return Result;
-}
-
-v4i operator-(v4i v, v4i w)
-{
-	v4i Result = { w.x - v.x, w.y - v.y, w.z - v.z, w.w - v.w };
-	return Result;
-}
-
-v4i operator-(v4i v)
-{
-	v4i Result = { -v.x, -v.y, -v.z, -v.w };
-	return Result;
-}
-
-v2 operator*(v2 w, f32 value)
-{
-	v2 Result = { w.x * value, w.y * value };
-	return Result;
-}
-
-v3 operator*(f32 value)
-{
-	v3 Result = { w.x * value, w.y * value, w.z * value };
-	return Result;
-}
-
-v4 operator*(f32 value)
-{
-	v4 Result = { w.x * value, w.y * value, w.z * value, w.w * value };
-	return Result;
-}
-
-f32 operator*(v2 v, v2 w)
-{
-	return (w.x * v.x) + (w.y * v.y);
-}
-
-f32 operator*(v3 v, v3 w)
-{
-	return (w.x * v.x) + (w.y * v.y) + (w.z * v.z);
-}
-
-f32 operator*(v4 v)
-{
-	return (w.x * v.x) + (w.y * v.y) + (w.z * v.z) + (w.w * v.w);
-}
-
-v3 operator^(v3 v, v3 w)
-{
-	v3 Result = {};
-	Result.x = (w.y * v.z) - (w.z * v.y);
-	Result.y = (w.z * v.x) - (w.x * v.z);
-	Result.z = (w.x * v.y) - (w.y * v.x);
-    
-	return Result;
-}
-#endif
 ///////////////////////////////////////////
 // MATRIX OPERATIONS
 ///////////////////////////////////////////
