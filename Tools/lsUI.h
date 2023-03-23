@@ -2330,6 +2330,8 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t 
     AssertMsg(c->currFont, "Font is not selected\n");
     
     b->style   = s;
+    
+    //TODO: Should this be a ls_utf32Constant() ??? I've been passed a constant literal...
     b->name    = ls_utf32FromUTF32(t);
     b->onClick = onClick;
     b->onHold  = onHold;
