@@ -7,7 +7,8 @@ u16 ls_rand16();
 u32 ls_rand32();
 u64 ls_rand64();
 
-f32 ls_randFloat();
+f32 ls_randFloatZeroOne();
+f32 ls_randFloatNegativeOneToOne();
 
 u64 ls_randRange(u64 min, u64 max);
 
@@ -44,12 +45,25 @@ u64 ls_rand64()
     return 0;
 }
 
-f32 ls_randFloat()
+f32 ls_randFloatZeroOne()
 {
     u64 base = ls_rand64();
     u64 max  = u64(-1);
     f32 result = (f32)base / (f32)max;
     return result;
+}
+
+f32 ls_randFloatNegativeOneToOne()
+{
+    u64 max = 100000;
+    u64 val  = ls_randRange(0, max);
+    f32 convVal = (f32)val;
+    f32 convMax = (f32)max;
+    f64 fval = convVal / max;
+    fval = fval * 2.0f;
+    fval = fval - 1.0f;
+    
+    return fval;
 }
 
 u64 ls_randRange(u64 min, u64 max)
