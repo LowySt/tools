@@ -514,11 +514,23 @@ u32 ls_utoax_t(u64 value, char *buff, u32 buffMax)
 
 u32 ls_ftoa_t(f64 x, char *buff, u32 buffMax)
 {
+    b32 isNegative = x < 0.0f ? TRUE : FALSE;
+    
     char *ResultBuffer = buff;
     u32 BuffIdx = 0;
     
     char IntegerPart[32] = {};
-    u32 intLen = ls_itoa_t((int)x, IntegerPart, 32);
+    u32 intLen = 0;
+    if(isNegative && x < 1.0f)
+    {
+        IntegerPart[0] = '-';
+        intLen = ls_itoa_t((int)x, IntegerPart+1, 31);
+        intLen += 1;
+    }
+    else
+    {
+        intLen = ls_itoa_t((int)x, IntegerPart, 32);
+    }
     
     char FractPart[32] = {};
     u32 fractLen = 0;
@@ -531,14 +543,26 @@ u32 ls_ftoa_t(f64 x, char *buff, u32 buffMax)
     f32 absX = (x < 0.0f) ? x*(-1.0f) : x;
     if (absX < 1.0f)
     {
-        s32 fractValue = s32((absX) * 1000000000);
-        fractLen = ls_itoa_t(fractValue, FractPart, 32);
+        for(u32 i = 0; i < 9; i++)
+        {
+            absX *= 10.0f;
+            s32 nextDigit = s32(absX);
+            absX -= nextDigit;
+            FractPart[fractLen] = nextDigit + '0';
+            fractLen += 1;
+        }
     }
     else
     {
         f32 fixedX = (absX - (int)absX);
-        s32 fractValue = s32(fixedX * 1000000000);
-        fractLen = ls_itoa_t(fractValue, FractPart, 32);
+        for(u32 i = 0; i < 9; i++)
+        {
+            fixedX *= 10.0f;
+            s32 nextDigit = s32(fixedX);
+            fixedX -= nextDigit;
+            FractPart[fractLen] = nextDigit + '0';
+            fractLen += 1;
+        }
     }
     
     if(fractLen + intLen + 1 >= buffMax) { return 0; }
