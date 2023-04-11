@@ -163,6 +163,7 @@ utf8  ls_utf8FromInt(s64 x);
 void  ls_utf8FromInt_t(utf8 *s, s64 x);
 utf8  ls_utf8FromF64(f64 x);
 void  ls_utf8FromF64_t(utf8 *s, f64 x);
+utf8  ls_utf8Constant(const char *p);
 utf8  ls_utf8Constant(const u8 *p);
 utf8  ls_utf8Constant(const u8 *p, s32 byteLen);
 
@@ -1898,6 +1899,11 @@ void ls_utf8FromF64_t(utf8 *s, f64 x)
     }
 }
 
+utf8 ls_utf8Constant(const char *p)
+{
+    return ls_utf8Constant((const u8 *)p);
+}
+
 utf8 ls_utf8Constant(const u8 *p)
 {
     AssertMsg(p, "Null literal source string\n");
@@ -2208,12 +2214,40 @@ void ls_utf8Append(utf8 *s1, utf8 s2)
 
 void ls_utf8AppendChar(utf8 *s1, u32 c)
 {
-    AssertMsg(FALSE, "Not implemented yet");
+    AssertMsg(s1, "utf8 pointer is null");
+    
+    if(c < 128)
+    {
+        if(s1->byteLen + 1 > s1->size)
+        {
+            AssertMsg(FALSE, "Grow utf8 string not implemented yet\n");
+        }
+        
+        s1->data[s1->byteLen] = (u8)c;
+        s1->byteLen += 1;
+        s1->len += 1;
+    }
+    else
+    {
+        AssertMsg(FALSE, "Not implemented yet for Non-Ascii characters\n");
+    }
 }
 
 void ls_utf8AppendCStr(utf8 *s1, char *c)
 {
-    AssertMsg(FALSE, "Not implemented yet");
+    AssertMsg(s1, "utf8 pointer is null\n");
+    AssertMsg(c,  "c string pointer is null\n");
+    
+    s32 cLen = ls_len(c);
+    
+    if(s1->byteLen + cLen > s1->size)
+    {
+        AssertMsg(FALSE, "Grow utf8 string not implemented yet\n");
+    }
+    
+    ls_memcpy(c, s1->data, cLen);
+    s1->byteLen += cLen;
+    s1->len     += cLen;
 }
 
 void ls_utf8AppendNCStr(utf8 *s1, char *c, u32 len)
