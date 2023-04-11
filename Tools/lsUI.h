@@ -125,6 +125,13 @@ struct UILPane
     b32 isOpen;
 };
 
+struct UIBitmap
+{
+    void *data;
+    s32   w;
+    s32   h;
+};
+
 struct UIContext;
 
 enum UIButtonStyle { UIBUTTON_CLASSIC, UIBUTTON_LINK, UIBUTTON_TEXT_NOBORDER, UIBUTTON_NO_TEXT, UIBUTTON_BMP };
@@ -285,8 +292,11 @@ const char* RenderCommandTypeAsString[] = {
     "UI_RC_LISTBOX_ARR",
     "UI_RC_SLIDER",
     "UI_RC_RECT",
+    "UI_RC_SEPARATOR",
     "UI_RC_MENU",
+    "UI_RC_BACKGROUND",
     "UI_RC_SCROLLBAR",
+    "UI_RC_TEXTURED_RECT",
 };
 
 enum RenderCommandType
@@ -308,6 +318,7 @@ enum RenderCommandType
     UI_RC_MENU,
     UI_RC_BACKGROUND,
     UI_RC_SCROLLBAR,
+    UI_RC_TEXTURED_RECT,
 };
 
 //TODO: RenderCommand is getting big.
@@ -333,6 +344,9 @@ struct RenderCommand
         UIListBox *listBox;
         UISlider  *slider;
         UIMenu    *menu;
+        
+        //TODO: I hate that I have to copy it.
+        UIBitmap  bitmap;
     };
     
     Color bkgColor;
@@ -348,7 +362,7 @@ struct RenderCommand
     //      Width/Height default to -1, when there is NO scrollable region.
     UIScrollableRegion scroll;
     
-    //NOTE: Scissor for the current command.
+    //NOTETODO: Scissor for the current command.
     UIRect scissor;
 };
 
@@ -448,6 +462,7 @@ struct ___threadCtx
 };
 
 
+//NOTE: Functions
 
 HWND       ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c);
 HWND       ls_uiCreateWindow(UIContext *c);
@@ -468,15 +483,18 @@ b32        ls_uiHasCapture(UIContext *c, void *p);
 void       ls_uiSelectFontByPixelHeight(UIContext *cxt, u32 pixelHeight);
 s32        ls_uiSelectFontByFontSize(UIContext *cxt, UIFontSize fontSize);
 
-Color      ls_uiDarkenRGB(Color c, u32 factor);
-Color      ls_uiLightenRGB(Color c, u32 factor);
+Color      ls_uiDarkenRGB(Color c, f32 factor);
+Color      ls_uiLightenRGB(Color c, f32 factor);
 Color      ls_uiAlphaBlend(Color source, Color dest, u8 alpha);
 Color      ls_uiAlphaBlend(Color source, Color dest);
 Color      ls_uiRGBAtoARGB(Color c);
+Color      ls_uiARGBtoRGBA(Color c);
 
 void       ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
 
+
 void       ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
+void       ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer);
 
 UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *data);
 UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, 
@@ -489,6 +507,11 @@ void       ls_uiButtonInit(UIContext *c, UIButton *, UIButtonStyle, const char32
                            ButtonProc onClick, ButtonProc onHold, void *data);
 
 b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer);
+
+void       ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
+                            Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
+void       ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 minWidth, s32 minHeight,
+                            Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
 
 void       ls_uiLabel(UIContext *c, utf32 label, f32 xPos, f32 yPos, Color textColor, s32 zLayer);
 
@@ -528,6 +551,8 @@ void       ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, Bu
 void       ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, ButtonProc onClick, void *userData);
 void       ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, ButtonProc onClick, void *data);
 b32        ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer);
+
+void       ls_uiTexturedRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, void *data, s32 dataW, s32 dataH, s32 zLayer);
 
 void       ls_uiRender(UIContext *c);
 
@@ -1060,7 +1085,7 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height, Render
     uiContext->height          = height;
     
 #if 0
-    //NOTE: These are initially set to 0, but are set when a ls_uiMenu call is given
+    //TODO: These are initially set to 0, but are set when a ls_uiMenu call is given
     uiContext->clientWidth     = 0;
     uiContext->clientHeight    = 0;
 #endif
@@ -1470,22 +1495,47 @@ void ls_uiEndScrollableRegion(UIContext *c)
     c->scissor = UIRect { 0, 0, s32(c->width), s32(c->height) };
 }
 
-Color ls_uiDarkenRGB(Color c, u32 factor)
+Color ls_uiDarkenRGB(Color c, f32 factor)
 {
     u8 *c8 = (u8 *)&c;
-    c8[0] -= factor;
-    c8[1] -= factor;
-    c8[2] -= factor;
+    
+    u8 highest = 0;
+    if(c8[0] > highest) { highest = c8[0]; }
+    if(c8[1] > highest) { highest = c8[1]; }
+    if(c8[2] > highest) { highest = c8[2]; }
+    
+    if(highest == 0)  { return c; }
+    
+    u8 reduction = (255.0f*factor);
+    if(highest < reduction) { reduction = highest; }
+    
+    f32 realFactor = (f32)(highest - reduction) / highest;
+    
+    c8[0] -= c8[0] * realFactor;
+    c8[1] -= c8[1] * realFactor;
+    c8[2] -= c8[2] * realFactor;
     
     return c;
 }
 
-Color ls_uiLightenRGB(Color c, u32 factor)
+Color ls_uiLightenRGB(Color c, f32 factor)
 {
     u8 *c8 = (u8 *)&c;
-    c8[0] += factor;
-    c8[1] += factor;
-    c8[2] += factor;
+    
+    u8 lowest = 255;
+    if(c8[0] < lowest) { lowest = c8[0]; }
+    if(c8[1] < lowest) { lowest = c8[1]; }
+    if(c8[2] < lowest) { lowest = c8[2]; }
+    
+    if(lowest == 255)  { return c; }
+    
+    u8 diffFactor  = 255 - lowest;
+    u8  sum        = diffFactor * factor;
+    f32 realFactor = (f32)sum / (f32)diffFactor;
+    
+    c8[0] += (255 - c8[0]) * realFactor;
+    c8[1] += (255 - c8[1]) * realFactor;
+    c8[2] += (255 - c8[2]) * realFactor;
     
     return c;
 }
@@ -1527,13 +1577,25 @@ Color ls_uiAlphaBlend(Color source, Color dest)
 Color ls_uiRGBAtoARGB(Color c)
 {
     u8 *c8 = (u8 *)&c;
+    u8 A   = c8[0];
     
-    u8 A = c8[0];
+    c8[0]  = c8[1];
+    c8[1]  = c8[2];
+    c8[2]  = c8[3];
+    c8[3]  = A;
     
-    c8[0] = c8[1];
-    c8[1] = c8[2];
-    c8[2] = c8[3];
-    c8[3] = A;
+    return c;
+}
+
+Color ls_uiARGBtoRGBA(Color c)
+{
+    u8 *c8 = (u8 *)&c;
+    u8 A   = c8[3];
+    
+    c8[3]  = c8[2];
+    c8[2]  = c8[1];
+    c8[1]  = c8[0];
+    c8[0]  = A;
     
     return c;
 }
@@ -1784,8 +1846,24 @@ void ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
 void ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer = 0)
 {
     RenderCommand command = { UI_RC_SEPARATOR, x, y, width, lineWidth };
-    command.borderColor = lineColor;
+    command.borderColor   = lineColor;
+    ls_uiPushRenderCommand(c, command, zLayer);
     
+    //TODO: Do I like this???
+    command.rect.y       += 1;
+    command.borderColor   = ls_uiDarkenRGB(command.borderColor, 0.10f);
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
+void ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer = 0)
+{
+    RenderCommand command = { UI_RC_SEPARATOR, x, y, lineWidth, height };
+    command.borderColor = lineColor;
+    ls_uiPushRenderCommand(c, command, zLayer);
+    
+    //TODO: Do I like this???
+    command.rect.x += 1;
+    command.borderColor = ls_uiDarkenRGB(command.borderColor, 0.10f);
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
@@ -1803,6 +1881,86 @@ void ls_uiBackground(UIContext *c)
         
         __m128i *At = (__m128i *)(c->drawBuffer + idx);
         _mm_storeu_si128(At, color);
+    }
+}
+
+void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *bmp)
+{
+    s32 minX = threadRect.minX;
+    s32 minY = threadRect.minY;
+    s32 maxX = threadRect.maxX;
+    s32 maxY = threadRect.maxY;
+    
+    //NOTE: We multiply the scale factors by 0.99.. to avoid sampling a pixel from 1 off outside
+    //      the source bitmap because of rounding inaccuracies with floating point values.
+    //TODO: We could probably keep the original scale factors, and correctly round up/down when necessary
+    //      to avoid this accuracy problem.
+    f32 scaleW   = ((f32)dst.w / (f32)bmp->w) * 0.999999f;
+    f32 scaleH   = ((f32)dst.h / (f32)bmp->h) * 0.999999f;
+    f32 factorW  = 1.0f / scaleW;
+    f32 factorH  = 1.0f / scaleH;
+    
+    s32 startY = dst.y;
+    if(startY < minY) { dst.h -= (minY-startY); startY = minY; }
+    
+    s32 startX = dst.x;
+    if(startX < minX) { dst.w -= (minX-startX); startX = minX; }
+    
+    if(startX+dst.w > maxX) { dst.w = maxX-startX+1; }
+    if(startY+dst.h > maxY) { dst.h = maxY-startY+1; }
+    
+    u32 *At = (u32 *)c->drawBuffer;
+    Color *SrcBmp = (Color *)bmp->data;
+    
+    if(scaleW > 1.0f && scaleH > 1.0f)
+    {
+        //NOTE: Enlarging the bitmap (Scaling up)
+        TODO;
+    }
+    else if(scaleW < 1.0f && scaleH < 1.0f)
+    {
+        //NOTE: Shrinking the bitmap (Scaling down)
+        //      factorW tells me how many pixels horiz. of the bmp I need to blend
+        //      to obtain a single pixel of the destination
+        for(s32 y = startY, eY = 0; y < dst.y+dst.h; y++)
+        {
+            AssertMsg(y <= maxY, "Should never happen. Height was precomputed\n");
+            
+            for(s32 x = startX, eX = 0; x < dst.x+dst.w; x++)
+            {
+                AssertMsg(x <= maxX, "Should never happen. Width was precomputed\n");
+                
+                if(x < 0 || x >= c->width)  continue;
+                if(y < 0 || y >= c->height) continue;
+                
+                u32 *DstPixel    = &At[(y * c->width) + x];
+                Color finalColor = (Color)(*DstPixel);
+                
+                for(u32 heightIdx = 0; heightIdx < factorH; heightIdx++)
+                {
+                    for(u32 widthIdx = 0; widthIdx < factorW; widthIdx++)
+                    {
+                        s32 bmpY = eY+heightIdx;
+                        s32 bmpX = eX+widthIdx;
+                        
+                        Color SrcPixel = SrcBmp[eY*bmp->w + eX];
+                        finalColor = ls_uiAlphaBlend(SrcPixel, finalColor);
+                    }
+                }
+                
+                *DstPixel = finalColor;
+                
+                //TODO: Check off by one?
+                eX += (s32)factorW;
+            }
+            
+            //TODO: Check off by one?
+            eY += factorH;
+        }
+    }
+    else
+    {
+        TODO;
     }
 }
 
@@ -2337,7 +2495,7 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t 
     b->onHold  = onHold;
     b->data    = data;
     
-    s32 height = c->currFont->pixelHeight + 4; //Add Margin above and below text
+    s32 height = c->currFont->pixelHeight + 4; //TODO: This margin doesn't work for multiple pixel height
     s32 width = ls_uiGlyphStringLen(c, c->currFont, b->name);
     
     b->w = width;
@@ -2389,6 +2547,35 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
     ls_uiPushRenderCommand(c, command, zLayer);
     
     return inputUse;
+}
+
+void ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
+                      Color bkgColor, Color borderColor, Color textColor, s32 zLayer = 0)
+{
+    const s32 marginX = 4;
+    const s32 marginY = 4;
+    s32 strWidth   = ls_uiGlyphStringLen_8(c, c->currFont, label);
+    s32 rectWidth  = strWidth + 2*marginX;
+    s32 rectHeight = c->currFont->pixelHeight + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
+    
+    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY, textColor, zLayer);
+    ls_uiRect(c, xPos, yPos, rectWidth, rectHeight, bkgColor, borderColor, zLayer);
+}
+
+void ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 minWidth, s32 minHeight,
+                      Color bkgColor, Color borderColor, Color textColor, s32 zLayer = 0)
+{
+    s32 marginX = 4;
+    s32 marginY = 4;
+    s32 strWidth   = ls_uiGlyphStringLen_8(c, c->currFont, label);
+    s32 rectWidth  = strWidth + 2*marginX;
+    s32 rectHeight = c->currFont->pixelHeight + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
+    
+    if(rectWidth  < minWidth)  { marginX += (minWidth - rectWidth) / 2; rectWidth = minWidth; }
+    if(rectHeight < minHeight) { marginY += (minHeight - rectHeight) / 2; rectHeight = minHeight; }
+    
+    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY, textColor, zLayer);
+    ls_uiRect(c, xPos, yPos, rectWidth, rectHeight, bkgColor, borderColor, zLayer);
 }
 
 void ls_uiLabel(UIContext *c, utf32 label, f32 relX, f32 relY, Color textColor, s32 zLayer = 0)
@@ -3695,6 +3882,13 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     return inputUse;
 }
 
+void ls_uiTexturedRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, void *data, s32 dataW, s32 dataH, s32 zLayer = 0)
+{
+    RenderCommand command = { UI_RC_TEXTURED_RECT, x, y, w, h };
+    command.bitmap = { data, dataW, dataH };
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
 void ls_uiRender(UIContext *c)
 {
     if(THREAD_COUNT == 0)
@@ -4126,6 +4320,11 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     
                     ls_uiFillRect(c, scrollRectX+2, scrollBarY, 12, scrollBarH,
                                   threadRect, scissor, {}, c->borderColor);
+                } break;
+                
+                case UI_RC_TEXTURED_RECT:
+                {
+                    ls_uiStretchBitmap(c, threadRect, curr->rect, &curr->bitmap);
                 } break;
                 
                 default: { 
