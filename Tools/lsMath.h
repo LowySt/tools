@@ -63,7 +63,13 @@ f64  ls_atan2(f64 a, f64 b);
 // VECTORS //
 /////////////
 
-struct v2 { f32 x, y; };
+struct v2
+{
+    f32 x, y;
+    
+    bool operator==(const v2& b) { return (this->x == b.x && this->y == b.y); }
+    bool operator!=(const v2& b) { return (this->x != b.x || this->y != b.y); }
+};
 struct v3 { f32 x, y, z; };
 struct v4 { f32 x, y, z, w; };
 
