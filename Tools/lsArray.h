@@ -69,7 +69,7 @@ template<typename T>
 void ls_arrayGrow(Array<T> *a, s32 amount)
 {
     AssertMsg(a, "Null Array<> pointer\n");
-    AssertMsgF(amount > 0, "Grow Amount is Non-Positive: %d\n", n);
+    AssertMsgF(amount > 0, "Grow Amount is Non-Positive: %d\n", amount);
     
     a->data = (T *)ls_realloc(a->data, a->cap*sizeof(T), (a->cap + amount)*sizeof(T));
     a->cap += amount;
