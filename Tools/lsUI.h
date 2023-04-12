@@ -1922,11 +1922,13 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
         //NOTE: Shrinking the bitmap (Scaling down)
         //      factorW tells me how many pixels horiz. of the bmp I need to blend
         //      to obtain a single pixel of the destination
-        for(s32 y = startY, eY = 0; y < dst.y+dst.h; y++)
+        f32 eY = 0.0f;
+        for(s32 y = startY; y < dst.y+dst.h; y++)
         {
             AssertMsg(y <= maxY, "Should never happen. Height was precomputed\n");
             
-            for(s32 x = startX, eX = 0; x < dst.x+dst.w; x++)
+            f32 eX = 0.0f;
+            for(s32 x = startX; x < dst.x+dst.w; x++)
             {
                 AssertMsg(x <= maxX, "Should never happen. Width was precomputed\n");
                 
@@ -1940,21 +1942,22 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
                 {
                     for(u32 widthIdx = 0; widthIdx < factorW; widthIdx++)
                     {
-                        s32 bmpY = eY+heightIdx;
-                        s32 bmpX = eX+widthIdx;
+                        s32 bmpY = eY + heightIdx;
+                        s32 bmpX = eX + widthIdx;
                         
-                        Color SrcPixel = SrcBmp[eY*bmp->w + eX];
+                        if(bmpY >= bmp->h) break;
+                        if(bmpX >= bmp->w) break;
+                        
+                        Color SrcPixel = SrcBmp[bmpY*bmp->w + bmpX];
                         finalColor = ls_uiAlphaBlend(SrcPixel, finalColor);
                     }
                 }
                 
                 *DstPixel = finalColor;
                 
-                //TODO: Check off by one?
-                eX += (s32)factorW;
+                eX += factorW;
             }
             
-            //TODO: Check off by one?
             eY += factorH;
         }
     }
