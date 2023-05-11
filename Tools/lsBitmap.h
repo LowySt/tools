@@ -45,8 +45,7 @@ Bitmap ls_bitmapLoad(string Path)
     
     s32 Width = *((s32 *)((char *)bitmapFile + 18));
     s32 Height = *((s32 *)((char *)bitmapFile + 22));
-    if(Height < 0) { isWindowyfied = TRUE; }
-    Height = ls_abs(Height);
+    if(Height < 0) { isWindowyfied = TRUE; Height = -Height; }
     
     u32 Compression = *((u32 *)((char *)bitmapFile + 30));
     
