@@ -2001,21 +2001,25 @@ void ls_uiBitmap(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRe
     s32 maxY = threadRect.maxY;
     
     s32 startY = yPos;
-    if(startY < minY) { h -= (minY-startY); startY = minY; }
+    s32 startEY = 0;
+    s32 rH = h;
+    if(startY < minY) { rH -= (minY-startY); startEY += (minY-startY); startY = minY;  }
     
     s32 startX = xPos;
-    if(startX < minX) { w -= (minX-startX); startX = minX; }
+    s32 startEX = 0;
+    s32 rW = w;
+    if(startX < minX) { rW -= (minX-startX); startEX += (minX-startX); startX = minX; }
     
-    if(startX+w > maxX) { w = maxX-startX+1; }
-    if(startY+h > maxY) { h = maxY-startY+1; }
+    if(startX+rW > maxX) { rW = maxX-startX+1; }
+    if(startY+rH > maxY) { rH = maxY-startY+1; }
     
     u32 *At = (u32 *)c->drawBuffer;
     
-    for(s32 y = startY, eY = 0; y < yPos+h; y++, eY++)
+    for(s32 y = startY, eY = startEY; y < startY+rH; y++, eY++)
     {
         AssertMsg(y <= maxY, "Should never happen. Height was precomputed\n");
         
-        for(s32 x = startX, eX = 0; x < xPos+w; x++, eX++)
+        for(s32 x = startX, eX = startEX; x < startX+rW; x++, eX++)
         {
             AssertMsg(x <= maxX, "Should never happen. Width was precomputed\n");
             
@@ -4208,7 +4212,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     if(check->style == UICHECK_BMP)
                     {
                         u32 *bmpData = check->isActive ? (u32 *)check->bmpActive : (u32 *)check->bmpInactive;
-                        ls_uiBitmap(c, xPos, yPos, check->w, check->h, threadRect, bmpData);
+                        ls_uiBitmap(c, xPos, yPos, w, h, threadRect, bmpData);
                     }
                     else { AssertMsg(FALSE, "Unhandled check style\n"); }
                     
