@@ -157,6 +157,22 @@ struct UIButton
     void *data; //TODO: Separate onClick / onHold user data
 };
 
+enum UICheckStyle { UICHECK_BMP };
+
+typedef b32(*CheckProc)(UIContext *c, void *userData);
+struct UICheck
+{
+    UICheckStyle style;
+    
+    b32 isActive;
+    
+    u8 *bmpActive;
+    u8 *bmpInactive;
+    s32 w, h;
+    
+    CheckProc onChange;
+    void *data;
+};
 
 typedef b32(*TextBoxProc)(UIContext *, void *userData);
 struct UITextBox
@@ -288,6 +304,7 @@ const char* RenderCommandTypeAsString[] = {
     "UI_RC_LABEL32",
     "UI_RC_LABEL_LAYOUT",
     "UI_RC_BUTTON",
+    "UI_RC_CHECK",
     "UI_RC_LISTBOX",
     "UI_RC_LISTBOX_ARR",
     "UI_RC_SLIDER",
@@ -310,6 +327,7 @@ enum RenderCommandType
     UI_RC_LABEL32,
     UI_RC_LABEL_LAYOUT,
     UI_RC_BUTTON,
+    UI_RC_CHECK,
     UI_RC_LISTBOX,
     UI_RC_LISTBOX_ARR,
     UI_RC_SLIDER,
@@ -341,6 +359,7 @@ struct RenderCommand
         utf32      label32;
         utf8       label8;
         UIButton  *button;
+        UICheck   *check;
         UIListBox *listBox;
         UISlider  *slider;
         UIMenu    *menu;
@@ -507,6 +526,10 @@ void       ls_uiButtonInit(UIContext *c, UIButton *, UIButtonStyle, const char32
                            ButtonProc onClick, ButtonProc onHold, void *data);
 
 b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer);
+
+
+UICheck    ls_uiCheckInit(UIContext *c, UICheckStyle s,
+                          u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, CheckProc onChange, void *data);
 
 void       ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
                             Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
@@ -1147,6 +1170,9 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height, Render
     //          that specifically takes care of initialization of these global things??
     windows_initRegionTimer();
     
+    //NOTE: Just reminding myself of this function's existance
+    //      It should be called at the end of the usage. but we use it always.
+    //res = timeEndPeriod(tc.wPeriodMin);
     return uiContext;
 }
 
@@ -2445,8 +2471,8 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, Bu
     
     utf32 name = ls_utf32FromUTF32(text);
     
-    s32 height = c->currFont->pixelHeight + 4; //Add Margin above and below text
-    s32 width = ls_uiGlyphStringLen(c, c->currFont, name);
+    s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
+    s32 width = ls_uiGlyphStringLen(c, c->currFont, name) + 16; //Add margin on each side
     
     UIButton Result = {s, name, 0, width, height, FALSE, FALSE, onClick, onHold, userData};
     return Result;
@@ -2458,8 +2484,8 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, ButtonProc o
     AssertMsg(c, "UI Context is null\n");
     AssertMsg(c->currFont, "Font is not selected\n");
     
-    s32 height = c->currFont->pixelHeight + 4; //Add Margin above and below text
-    s32 width = ls_uiGlyphStringLen(c, c->currFont, text);
+    s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
+    s32 width = ls_uiGlyphStringLen(c, c->currFont, text) + 16; //Add margin on each side 
     
     UIButton Result = {s, text, 0, width, height, FALSE, FALSE, onClick, onHold, userData};
     return Result;
@@ -2477,8 +2503,8 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 text, But
     b->onHold  = onHold;
     b->data    = userData;
     
-    s32 height = c->currFont->pixelHeight + 4; //Add Margin above and below text
-    s32 width = ls_uiGlyphStringLen(c, c->currFont, text);
+    s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
+    s32 width = ls_uiGlyphStringLen(c, c->currFont, text) + 16; //Add margin on each side
     
     b->w = width;
     b->h = height;
@@ -2498,8 +2524,8 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t 
     b->onHold  = onHold;
     b->data    = data;
     
-    s32 height = c->currFont->pixelHeight + 4; //TODO: This margin doesn't work for multiple pixel height
-    s32 width = ls_uiGlyphStringLen(c, c->currFont, b->name);
+    s32 height = c->currFont->pixelHeight + 2; //TODO: This margin doesn't work for multiple pixel height
+    s32 width = ls_uiGlyphStringLen(c, c->currFont, b->name) + 16; //Add margin on each side
     
     b->w = width;
     b->h = height;
@@ -2547,6 +2573,44 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
     command.button        = button;
     command.bkgColor      = bkgColor;
     command.textColor     = textColor;
+    ls_uiPushRenderCommand(c, command, zLayer);
+    
+    return inputUse;
+}
+
+UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s,
+                       u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, CheckProc onChange, void *data)
+{
+    UICheck result = {};
+    
+    result.style       = s;
+    result.isActive    = FALSE;
+    result.bmpActive   = bmpActive;
+    result.bmpInactive = bmpInactive;
+    result.w           = w;
+    result.h           = h;
+    result.onChange    = onChange;
+    result.data        = data;
+    
+    return result;
+}
+
+b32 ls_uiCheck(UIContext *c, UICheck *check, s32 x, s32 y, s32 zLayer = 0)
+{
+    Input *UserInput = &c->UserInput;
+    b32 inputUse = FALSE;
+    
+    if(MouseInRect(x, y, check->w, check->h) && ls_uiHasCapture(c, 0))
+    {
+        if(LeftClick)
+        {
+            check->isActive = !check->isActive;
+            if(check->onChange) { inputUse |= check->onChange(c, check->data); }
+        }
+    }
+    
+    RenderCommand command = { UI_RC_CHECK, x, y, check->w, check->h };
+    command.check         = check;
     ls_uiPushRenderCommand(c, command, zLayer);
     
     return inputUse;
@@ -4133,7 +4197,20 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     {
                         ls_uiBitmap(c, xPos, yPos, button->w, button->h, threadRect, (u32 *)button->bmpData);
                     }
-                    else { AssertMsg(FALSE, "Unhandled button style"); }
+                    else { AssertMsg(FALSE, "Unhandled button style\n"); }
+                    
+                } break;
+                
+                case UI_RC_CHECK:
+                {
+                    UICheck *check = curr->check;
+                    
+                    if(check->style == UICHECK_BMP)
+                    {
+                        u32 *bmpData = check->isActive ? (u32 *)check->bmpActive : (u32 *)check->bmpInactive;
+                        ls_uiBitmap(c, xPos, yPos, check->w, check->h, threadRect, bmpData);
+                    }
+                    else { AssertMsg(FALSE, "Unhandled check style\n"); }
                     
                 } break;
                 
