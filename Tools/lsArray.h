@@ -40,7 +40,7 @@ template<typename T>
 void ls_arrayFromPointer(Array<T> *arr, void *src, s32 count)
 {
     AssertMsg(arr, "Null Array<> pointer\n");
-    AssertMsgF(count > 0, "Number of Elements is Non-Positive: %d\n", n);
+    AssertMsgF(count > 0, "Number of Elements is Non-Positive: %d\n", count);
     
     arr->count = count;
     arr->cap   = count;
