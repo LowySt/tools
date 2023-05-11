@@ -172,8 +172,8 @@ char   *ls_ftoa(f64 x);
 
 //NOTE: On stack
 u32    ls_itoa_t(s64 x, char *buff, u32 buffMax);
-u32    ls_utoax_t(u64 value, char *buff, u32 buffMax);
 u32    ls_utoa_t(u64 value, char *buff, u32 buffMax);
+u32    ls_utoax_t(u64 value, char *buff, u32 buffMax);
 u32    ls_ftoa_t(f64 x, char *buff, u32 buffMax);
 
 char   *ls_strstr(char *a, char *b);
@@ -483,9 +483,9 @@ u32 ls_utoax_t(u64 value, char *buff, u32 buffMax)
 {
     char *Result = buff;
     
-    if(buffMax < 2) { return 0; }
+    if(buffMax < 4) { return 0; }
     
-    if (value == 0) { Result[0] = '0'; Result[1] = '\0'; return 1; }
+    if (value == 0) { Result[0] = '0'; Result[1] = 'x'; Result[2] = '0'; Result[3] = '\0'; return 3; }
     
     s32 i = 0;
     while (value != 0)
@@ -498,6 +498,12 @@ u32 ls_utoax_t(u64 value, char *buff, u32 buffMax)
         value = value >> 4;
     }
     
+    if(i == buffMax) { return i; }
+    Result[i] = 'x';
+    i += 1;
+    if(i == buffMax) { return i; }
+    Result[i] = '0';
+    i += 1;
     if(i == buffMax) { return i; }
     Result[i] = '\0';
     
