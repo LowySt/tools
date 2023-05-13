@@ -279,11 +279,17 @@ utf32 *ls_utf32Split(utf32 s, u32 *outNum, const char *c);
 utf32 *ls_utf32SeparateByNumber(utf32 s, u32 *outNum);
 
 utf32 *ls_utf32BreakBySpaceUntilDelimiter(utf32 s, u32 delimiter, u32 *numOfStrings);
-s32    ls_utf32LeftFind(utf32 s, u32 c);
-s32    ls_utf32LeftFind(utf32 s, s32 offset, u32 c);
+
+//TODO: Make offsets just default values and half the number of overloads??
+s32    ls_utf32LeftFind(utf32 s, s32 offset, utf32 needle);
 s32    ls_utf32LeftFind(utf32 s, utf32 needle);
+s32    ls_utf32LeftFind(utf32 s, s32 offset, u32 c);
+s32    ls_utf32LeftFind(utf32 s, u32 c);
+s32    ls_utf32LeftFindNumber(utf32 s, s32 offset);
+s32    ls_utf32LeftFindNotNumber(utf32 s, s32 offset);
 s32    ls_utf32RightFind(utf32 s, u32 c);
 s32    ls_utf32RightFind(utf32 s, s32 offset, u32 c);
+s32    ls_utf32RightFindNumber(utf32 s, s32 offset);
 s32    ls_utf32CountOccurrences(utf32 s, u32 c);
 
 b32    ls_UTF32IsWhitespace(u32 c);
@@ -3100,41 +3106,20 @@ utf32 *ls_utf32BreakBySpaceUntilDelimiter(utf32 s, u32 delimiter, u32 *numOfStri
 #endif
 }
 
-s32 ls_utf32LeftFind(utf32 s, s32 off, u32 c)
+
+s32 ls_utf32LeftFind(utf32 s, s32 off, utf32 needle)
 {
     AssertMsg(s.data, "Source data is null.\n");
-    AssertMsg(off >= 0, "Offset is negative.\n");
-    
-    if(s.data == NULL) { return -1; }
-    if(s.len  == 0)    { return -1; }
-    if(off >= s.len)   { return -1; }
-    
-    u32 *At = s.data + off;
-    s32 offset = off;
-    
-    while (At != (s.data + s.len))
-    { 
-        if(*At == c) { return offset; }
-        At++; offset++;
-    }
-    
-    return -1;
-}
-
-
-s32 ls_utf32LeftFind(utf32 s, u32 c)
-{ return ls_utf32LeftFind(s, 0, c); }
-
-s32 ls_utf32LeftFind(utf32 s, utf32 needle)
-{
-    AssertMsg(s.data, "Source data is null.\n");
+    AssertMsg(off >= 0, "Negative offset.\n"); 
     AssertMsg(needle.data, "Needle data is null.\n");
     
     if(s.data == NULL) { return -1; }
     if(s.len  == 0)    { return -1; }
+    if(off >= s.len)   { return -1; }
+    if(off < 0)        { return -1; }
     
-    u32 *At    = s.data;
-    s32 offset = 0;
+    u32 *At    = s.data + off;
+    s32 offset = off;
     u32 c      = needle.data[0];
     while (At != (s.data + s.len))
     { 
@@ -3142,6 +3127,7 @@ s32 ls_utf32LeftFind(utf32 s, utf32 needle)
         if(At + needle.len > (s.data + s.len)) { return -1; }
         
         if(*At == c) {
+            if(needle.len == 1) { return offset; }
             if(ls_memcmp(At, needle.data, needle.len*sizeof(u32))) { return offset; }
         }
         At++; offset++;
@@ -3149,6 +3135,66 @@ s32 ls_utf32LeftFind(utf32 s, utf32 needle)
     
     return -1;
 }
+
+s32 ls_utf32LeftFind(utf32 s, utf32 needle)
+{ return ls_utf32LeftFind(s, 0, needle); }
+
+s32 ls_utf32LeftFind(utf32 s, s32 off, u32 c)
+{ return ls_utf32LeftFind(s, off, utf32({&c, 1, 1})); }
+
+s32 ls_utf32LeftFind(utf32 s, u32 c)
+{ return ls_utf32LeftFind(s, 0, c); }
+
+s32 ls_utf32LeftFindNumber(utf32 s, s32 off)
+{
+    AssertMsg(s.data, "Source data is null.\n");
+    AssertMsg(off >= 0, "Negative offset.\n"); 
+    
+    if(s.data == NULL) { return -1; }
+    if(s.len  == 0)    { return -1; }
+    if(off >= s.len)   { return -1; }
+    if(off < 0)        { return -1; }
+    
+    u32 *At    = s.data + off;
+    s32 offset = off;
+    while (At != (s.data + s.len))
+    { 
+        //TODO: Maybe integrate this better in the while condition?
+        if(At + 1 > (s.data + s.len)) { return -1; }
+        
+        if(ls_utf32IsNumber(*At)) { return offset; }
+        At++; offset++;
+    }
+    
+    return -1;
+}
+
+s32 ls_utf32LeftFindNotNumber(utf32 s, s32 off)
+{
+    AssertMsg(s.data, "Source data is null.\n");
+    AssertMsg(off >= 0, "Negative offset.\n"); 
+    
+    if(s.data == NULL) { return -1; }
+    if(s.len  == 0)    { return -1; }
+    if(off >= s.len)   { return -1; }
+    if(off < 0)        { return -1; }
+    
+    u32 *At    = s.data + off;
+    s32 offset = off;
+    while (At != (s.data + s.len))
+    { 
+        //TODO: Maybe integrate this better in the while condition?
+        if(At + 1 > (s.data + s.len)) { return -1; }
+        
+        if(!ls_utf32IsNumber(*At)) { return offset; }
+        At++; offset++;
+    }
+    
+    return -1;
+}
+
+s32 ls_utf32LeftFindNumber(utf32 s)
+{ return ls_utf32LeftFindNumber(s, 0); }
 
 //NOTE: ??? Offset is suuuper strange here?? Shouldn't it go from the end towards the beginning??
 s32 ls_utf32RightFind(utf32 s, s32 off, u32 c)
@@ -3159,6 +3205,7 @@ s32 ls_utf32RightFind(utf32 s, s32 off, u32 c)
     if(s.data == NULL) { return -1; }
     if(s.len  == 0)    { return -1; }
     if(off >= s.len)   { return -1; }
+    if(off < 0)        { return -1; }
     
     u32 *At = s.data + off;
     s32 offset = off;
@@ -3175,6 +3222,26 @@ s32 ls_utf32RightFind(utf32 s, s32 off, u32 c)
 s32 ls_utf32RightFind(utf32 s, u32 c)
 { return ls_utf32RightFind(s, 0, c); }
 
+s32 ls_utf32RightFindNumber(utf32 s, s32 off)
+{
+    AssertMsg(s.data, "Source data is null.\n");
+    AssertMsg(off >= 0, "Negative offset.\n"); 
+    
+    if(s.data == NULL) { return -1; }
+    if(s.len  == 0)    { return -1; }
+    if(off >= s.len)   { return -1; }
+    if(off < 0)        { return -1; }
+    
+    u32 *At    = s.data + off;
+    s32 offset = off;
+    while (At != s.data)
+    { 
+        if(ls_utf32IsNumber(*At)) { return offset; }
+        At--; offset--;
+    }
+    
+    return -1;
+}
 
 s32 ls_utf32CountOccurrences(utf32 s, u32 c)
 {
@@ -3523,7 +3590,7 @@ s32 ls_utf32ToAscii_t(utf32 *s, char *buff, s32 buffMaxLen)
     
     u32 *At = s->data;
     u32 idx = 0;
-    while(*At && idx < buffMaxLen)
+    while(*At && idx < s->len && idx < buffMaxLen)
     {
         buff[idx] = (char)(*At);
         
@@ -3536,12 +3603,15 @@ s32 ls_utf32ToAscii_t(utf32 *s, char *buff, s32 buffMaxLen)
 
 s64 ls_utf32ToInt(utf32 s)
 {
+    AssertMsg(s.data, "Source string data is null\n");
+    //AssertMsg(s.len >= 0, "Negative len in source string\n");
+    
     if(s.len == 0) { return 0; }
     
     char numBuff[64] = {};
     AssertMsgF(s.len < 64, "Source passed represents a number that contains too many digits (%d)\n", s.len);
     
-    u32 i = 0;
+    s32 i = 0;
     for(i = 0; i < s.len; i++)
     {
         numBuff[i] = (char)(s.data[i]);
