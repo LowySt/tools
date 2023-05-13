@@ -599,6 +599,9 @@ s64 ls_atoi(char *s, u32 len)
 {
     if(!s) { Assert(FALSE); }
     
+    //TODO: Should we assert?
+    if(len == 0) { return 0; LogMsg(FALSE, "Encountered a zero len string"); }
+    
     s64 Result = 0;
     s32 numLen = 0;
     
