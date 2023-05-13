@@ -170,6 +170,9 @@ struct UICheck
     u8 *bmpInactive;
     s32 w, h;
     
+    u8 *bmpAdditive;
+    s32 addW, addH;
+    
     CheckProc onChange;
     void *data;
 };
@@ -530,6 +533,8 @@ b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 z
 
 UICheck    ls_uiCheckInit(UIContext *c, UICheckStyle s,
                           u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, CheckProc onChange, void *data);
+UICheck    ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32 h,
+                          u8 *bmpAdditive, s32 addW, s32 addH, CheckProc onChange, void *data);
 
 void       ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
                             Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
@@ -2599,6 +2604,25 @@ UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s,
     return result;
 }
 
+UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32 h,
+                       u8 *bmpAdditive, s32 addW, s32 addH, CheckProc onChange, void *data)
+{
+    UICheck result = {};
+    
+    result.style       = s;
+    result.isActive    = FALSE;
+    result.bmpInactive = bmpInactive;
+    result.w           = w;
+    result.h           = h;
+    result.bmpAdditive = bmpAdditive;
+    result.addW        = addW;
+    result.addH        = addH;
+    result.onChange    = onChange;
+    result.data        = data;
+    
+    return result;
+}
+
 b32 ls_uiCheck(UIContext *c, UICheck *check, s32 x, s32 y, s32 zLayer = 0)
 {
     Input *UserInput = &c->UserInput;
@@ -4211,8 +4235,26 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     
                     if(check->style == UICHECK_BMP)
                     {
-                        u32 *bmpData = check->isActive ? (u32 *)check->bmpActive : (u32 *)check->bmpInactive;
-                        ls_uiBitmap(c, xPos, yPos, w, h, threadRect, bmpData);
+                        if(check->bmpActive && check->bmpInactive)
+                        {
+                            u32 *bmpData = check->isActive ? (u32 *)check->bmpActive : (u32 *)check->bmpInactive;
+                            ls_uiBitmap(c, xPos, yPos, w, h, threadRect, bmpData);
+                        }
+                        else if(check->bmpInactive && check->bmpAdditive)
+                        {
+                            ls_uiBitmap(c, xPos, yPos, check->w, check->h, threadRect, (u32 *)check->bmpInactive);
+                            if(check->isActive)
+                            {
+                                s32 addX = xPos;
+                                s32 addY = yPos;
+                                
+                                if(check->addW > check->w) { addX -= (check->addW - check->w) / 2; }
+                                if(check->addH > check->h) { addY -= (check->addH - check->h) / 2; }
+                                ls_uiBitmap(c, addX, addY, check->addW, check->addH,
+                                            threadRect, (u32 *)check->bmpAdditive);
+                            }
+                        }
+                        else { AssertMsg(FALSE, "Unhandled check bmp collection\n"); }
                     }
                     else { AssertMsg(FALSE, "Unhandled check style\n"); }
                     
