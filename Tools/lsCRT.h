@@ -1524,6 +1524,7 @@ void ls_memcpy(void *src, void *dest, size_t size)
 {
     AssertMsg(src, "Source ptr was null\n");
     AssertMsg(dest, "Destination ptr was null\n");
+    AssertMsgF(size < 4000000000, "Size is surely fucked up: %d\n", size);
     
     if(size == 0) { return; }
     
