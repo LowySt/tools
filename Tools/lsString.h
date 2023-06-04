@@ -285,6 +285,9 @@ s32    ls_utf32LeftFind(utf32 s, s32 offset, utf32 needle);
 s32    ls_utf32LeftFind(utf32 s, utf32 needle);
 s32    ls_utf32LeftFind(utf32 s, s32 offset, u32 c);
 s32    ls_utf32LeftFind(utf32 s, u32 c);
+
+typedef b32(*UTF32FindProc)(u32 c);
+s32    ls_utf32LeftFind(utf32 s, UTF32FindProc);
 s32    ls_utf32LeftFindNumber(utf32 s, s32 offset);
 s32    ls_utf32LeftFindNotNumber(utf32 s, s32 offset);
 s32    ls_utf32RightFind(utf32 s, u32 c);
@@ -3145,8 +3148,35 @@ s32 ls_utf32LeftFind(utf32 s, s32 off, u32 c)
 s32 ls_utf32LeftFind(utf32 s, u32 c)
 { return ls_utf32LeftFind(s, 0, c); }
 
+//TODO: This doesn't seem worth it
+s32 ls_utf32LeftFind(utf32 s, s32 off, UTF32FindProc proc)
+{
+    AssertMsg(s.data, "Source data is null.\n");
+    AssertMsg(off >= 0, "Negative offset.\n"); 
+    
+    if(s.data == NULL) { return -1; }
+    if(s.len  == 0)    { return -1; }
+    if(off >= s.len)   { return -1; }
+    if(off < 0)        { return -1; }
+    
+    u32 *At    = s.data + off;
+    s32 offset = off;
+    while (At != (s.data + s.len))
+    { 
+        //TODO: Maybe integrate this better in the while condition?
+        if(At + 1 > (s.data + s.len)) { return -1; }
+        
+        if(proc(*At)) { return offset; }
+        At++; offset++;
+    }
+    
+    return -1;
+}
+
 s32 ls_utf32LeftFindNumber(utf32 s, s32 off)
 {
+    return ls_utf32LeftFind(s, off, ls_utf32IsNumber);
+#if 0
     AssertMsg(s.data, "Source data is null.\n");
     AssertMsg(off >= 0, "Negative offset.\n"); 
     
@@ -3167,6 +3197,7 @@ s32 ls_utf32LeftFindNumber(utf32 s, s32 off)
     }
     
     return -1;
+#endif
 }
 
 s32 ls_utf32LeftFindNotNumber(utf32 s, s32 off)
@@ -3408,6 +3439,7 @@ void ls_utf32Append(utf32 *s1, utf32 s2)
     AssertMsg(s1->data, "Base utf32 data is null\n");
     AssertMsgF(s1->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s1->size);
     AssertMsg(s2.data, "Input utf32 data is null\n");
+    AssertMsgF(s2.len >= 0, "Trying to append negative len string: %d\n", s2.len);
     
     if(s1->len + s2.len > s1->size)
     {
@@ -3618,6 +3650,28 @@ s64 ls_utf32ToInt(utf32 s)
     }
     
     return ls_atoi(numBuff, i);
+}
+
+s64 ls_utf32ToIntIgnoreWhitespace(utf32 s)
+{
+    AssertMsg(s.data, "Source string data is null\n");
+    //AssertMsg(s.len >= 0, "Negative len in source string\n");
+    
+    if(s.len == 0) { return 0; }
+    
+    char numBuff[64] = {};
+    s32  buffIdx = 0;
+    AssertMsgF(s.len < 64, "Source passed represents a number that contains too many digits (%d)\n", s.len);
+    
+    s32 i = 0;
+    for(i = 0; i < s.len; i++)
+    {
+        if(ls_UTF32IsWhitespace(s.data[i])) { continue; }
+        numBuff[buffIdx] = (char)(s.data[i]);
+        buffIdx += 1;
+    }
+    
+    return ls_atoi(numBuff, buffIdx);
 }
 
 
