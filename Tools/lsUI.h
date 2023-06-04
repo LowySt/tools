@@ -2546,7 +2546,6 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t 
 //     and it also shouldn't use 'normal' buttons for its drop down sub-menus, so... basically @MenuIsShit
 //     and I wanna redo it completely.
 
-//TODO:Ways to force buttons to stay selected. Maybe make a versatile checkbox?
 b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer = 0)
 {
     Input *UserInput = &c->UserInput;
@@ -3427,7 +3426,7 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h,
         s32 yEnd = yStart - arrowHeight;
         
         if(yStart >= maxY) { yStart = maxY; }
-        if(xBase  < minX) { xEnd -= (minX - xBase); xBase = minX; }
+        if(xBase  < minX)  { xEnd -= (minX - xBase); xBase = minX; }
         
         for(s32 y = yStart; y >= yEnd; y--)
         {
@@ -3463,7 +3462,7 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h,
         
         if(yStart1 >= maxY) { yStart1 = maxY; }
         if(yStart2 >= maxY) { yStart2 = maxY; }
-        if(xBase  < minX) { xEnd -= (minX - xBase); xBase = minX; }
+        if(xBase  < minX)   { xEnd -= (minX - xBase); xBase = minX; }
         
         for(s32 y = yStart1; y >= yEnd1; y--)
         {
@@ -3516,7 +3515,7 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h,
         
         if(yStart1 >= maxY) { yStart1 = maxY; }
         if(yStart2 >= maxY) { yStart2 = maxY; }
-        if(xBase  < minX) { xEnd -= (minX - xBase); xBase = minX; }
+        if(xBase  < minX)   { xEnd -= (minX - xBase); xBase = minX; }
         
         for(s32 y = yStart1; y >= yEnd1; y--)
         {
