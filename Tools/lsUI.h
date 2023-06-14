@@ -389,7 +389,7 @@ struct RenderCommand
 };
 
 
-const u32 UI_Z_LAYERS = 3;
+const u32 UI_Z_LAYERS = 4;
 
 struct RenderGroup
 {
@@ -1133,13 +1133,17 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height, Render
     uiContext->scissor         = UIRect { 0, 0, 999999, 999999 };
     uiContext->frameTime       = {};
     
+    //TODO: Make number of zLayers and zLayer Storage more customizable!
     if(THREAD_COUNT != 0)
     {
         for(u32 i = 0; i < THREAD_COUNT; i++)
         {
             uiContext->renderGroups[i].RenderCommands[0] = ls_stackInit(sizeof(RenderCommand), 512);
-            uiContext->renderGroups[i].RenderCommands[1] = ls_stackInit(sizeof(RenderCommand), 256);
-            uiContext->renderGroups[i].RenderCommands[2] = ls_stackInit(sizeof(RenderCommand), 256);
+            
+            for(s32 zLayer = 1; zLayer < UI_Z_LAYERS; zLayer++)
+            {
+                uiContext->renderGroups[i].RenderCommands[zLayer] = ls_stackInit(sizeof(RenderCommand), 256);
+            }
         }
         
         InitializeConditionVariable(&uiContext->startRender);
@@ -1157,8 +1161,11 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height, Render
     else
     {
         uiContext->renderGroups[0].RenderCommands[0] = ls_stackInit(sizeof(RenderCommand), 512);
-        uiContext->renderGroups[0].RenderCommands[1] = ls_stackInit(sizeof(RenderCommand), 256);
-        uiContext->renderGroups[0].RenderCommands[2] = ls_stackInit(sizeof(RenderCommand), 256);
+        
+        for(s32 zLayer = 1; zLayer < UI_Z_LAYERS; zLayer++)
+        {
+            uiContext->renderGroups[0].RenderCommands[zLayer] = ls_stackInit(sizeof(RenderCommand), 256);
+        }
     }
     
     //------------------------------------------------------
@@ -1386,7 +1393,7 @@ __ls_RenderRect ls_uiQuadrantFromPoint(UIContext *c, s32 x, s32 y, u32 *idx)
 void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
 {
     AssertMsg(command.type != UI_RC_INVALID,  "Uninitialized Render Command?\n");
-    AssertMsg(zLayer < 3, "zLayer is invalid. A function call did an oopsie\n");
+    AssertMsg(zLayer < UI_Z_LAYERS, "zLayer is invalid. A function call did an oopsie\n");
     
     
     __ls_RenderRect commandRect = { command.rect.x, command.rect.y, command.rect.w, command.rect.h };
@@ -2337,6 +2344,40 @@ s32 ls_uiGlyphStringLen(UIContext *c, UIFont *font, utf32 text)
     }
     
     return totalLen;
+}
+
+UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, utf32 text)
+{
+    AssertMsg(c, "Context is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return {}; }
+    
+    s32 maxWidth = 0;
+    
+    s32 totalWidth  = 0;
+    s32 totalHeight = font->pixelHeight;
+    for(u32 i = 0; i < text.len; i++)
+    {
+        u32 indexInGlyphArray = text.data[i];
+        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
+        
+        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
+        
+        s32 kernAdvance = 0;
+        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
+        
+        if(indexInGlyphArray == (u32)'\n')
+        {
+            totalHeight += font->pixelHeight;
+            totalWidth   = 0;
+            continue;
+        }
+        
+        totalWidth += (currGlyph->xAdv + kernAdvance);
+        if(totalWidth > maxWidth) { maxWidth = totalWidth; }
+    }
+    
+    return {0, 0, maxWidth, totalHeight};
 }
 
 s32 ls_uiGlyphStringLen_8(UIContext *c, UIFont *font, utf8 text)
