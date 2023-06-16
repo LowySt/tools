@@ -1176,6 +1176,8 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height, Render
     TIMECAPS tc = {};
     MMRESULT res = timeGetDevCaps(&tc, sizeof(TIMECAPS));
     res = timeBeginPeriod(tc.wPeriodMin);
+    
+    AssertMsg(res == TIMERR_NOERROR, "High Resolution Timer Init Failed");
     //------------------------------------------------------
     
     //NOTETODO: Should this be here? Should we have another function 
@@ -1220,8 +1222,8 @@ void ls_uiFrameBegin(UIContext *c)
     
     // Process Input
     MSG Msg;
-    //while (PeekMessageA(&Msg, NULL, 0, 0, PM_REMOVE))
-    while (PeekMessageA(&Msg, c->Window, 0, 0, PM_REMOVE))
+    while (PeekMessageA(&Msg, NULL, 0, 0, PM_REMOVE))
+        //while (PeekMessageA(&Msg, c->Window, 0, 0, PM_REMOVE))
     {
         TranslateMessage(&Msg);
         DispatchMessageA(&Msg);
@@ -1262,12 +1264,12 @@ void ls_uiFrameBeginChild(UIContext *c)
     
     c->hasReceivedInput = FALSE;
     
-    MSG Msg;
-    while (PeekMessageA(&Msg, c->Window, 0, 0, PM_REMOVE))
-    {
-        TranslateMessage(&Msg);
-        DispatchMessageA(&Msg);
-    }
+    //NOTE: The child frame doesn't need a message pump, because windows
+    //      Pumps messages to all windows that were created by this thread.
+    //      BUT This means that we must begin the child frame before the main frame
+    //      to properly clear input.
+    //      TODO: Maybe we want to move the message pump to a separate function
+    //      to make the order of function calls more obvious and less error prone!
     
     if(isStartup) { isStartup = FALSE; c->hasReceivedInput = TRUE; }
 }
@@ -1504,7 +1506,10 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
     }
     
     s32 deltaY = 0;
-    if(!scroll->isHeld && WheelRotatedIn(scroll->x, scroll->y, scroll->w, scroll->h)) { deltaY += WheelDeltaInPixels; }
+    if(!scroll->isHeld && WheelRotatedIn(scroll->x, scroll->y, scroll->w, scroll->h))
+    { 
+        deltaY += WheelDeltaInPixels;
+    }
     else if(scroll->isHeld)
     {
         s32 mouseDeltaY = (c->UserInput.Mouse.prevPosY - c->UserInput.Mouse.currPosY);
@@ -1514,11 +1519,13 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
     }
     
     scroll->deltaY += deltaY;
+    
+    //TODO: What the fuck is this???? What was supposed to be here!?
     scroll->maxX    = scroll->maxX;
     scroll->minY    = scroll->minY;
     
-    if(scroll->deltaY < -totalHeight) scroll->deltaY = -totalHeight;
-    if(scroll->deltaY > 0)            scroll->deltaY = 0;
+    if(scroll->deltaY < -totalHeight) { scroll->deltaY = -totalHeight; }
+    else if(scroll->deltaY > 0)       { scroll->deltaY = 0; }
     
     c->scroll    = *scroll;
     c->scissor   = UIRect { scroll->x, scroll->y, scroll->w, scroll->h-2 };
