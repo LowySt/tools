@@ -2384,7 +2384,9 @@ UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, utf32 text)
         if(totalWidth > maxWidth) { maxWidth = totalWidth; }
     }
     
-    return {0, 0, maxWidth, totalHeight};
+    UIRect result = {0, 0, maxWidth, totalHeight};
+    
+    return result;
 }
 
 s32 ls_uiGlyphStringLen_8(UIContext *c, UIFont *font, utf8 text)

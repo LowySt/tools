@@ -209,7 +209,7 @@ u32  ls_getFileNamesInDir(char *Dir, char ***names, u32 **namesLen);
 u32  ls_getFileNamesInDirByExt(char *Dir, char *ext, char ***names, u32 **namesLen);
 u32  ls_getFileNamesInDirRecursive(char *Dir, char ***names, u32 **namesLen);
 u32  ls_getFilePathsInDirRecursive(char *Dir, char ***names, u32 **namesLen);
-u32  ls_getFullPathName(char *name, char *buff, u32 buffMaxSize);
+u32  ls_getFullPathName(const char *name, char *buff, u32 buffMaxSize);
 
 ////////////////////////////////////////////////////
 //	GENERAL PURPOSE SYSTEM FUNCTIONS
@@ -1238,7 +1238,7 @@ u32 ls_getFilePathsInDirRecursive(char *Dir, char ***names, u32 **namesLen)
 #endif
 }
 
-u32 ls_getFullPathName(char *name, char *buff, u32 buffMaxSize)
+u32 ls_getFullPathName(const char *name, char *buff, u32 buffMaxSize)
 {
 #ifdef LS_PLAT_WINDOWS
     return windows_getFullPathName(name, buffMaxSize, buff);
