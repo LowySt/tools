@@ -3620,6 +3620,7 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         WINUSERAPI    BOOL  WINAPI  GetClassInfoExW(HINSTANCE hInstance, LPCWSTR lpszClass, LPWNDCLASSEXW lpwcx);
         WINUSERAPI	BOOL  WINAPI  ShowWindow(HWND hWnd, int nCmdShow);
         WINUSERAPI    HWND  WINAPI  SetFocus(HWND hWnd);
+        WINUSERAPI    HWND  WINAPI  SetParent(HWND hWndChild, HWND hWndNewParent);
         
         WINUSERAPI    BOOL  WINAPI  CloseWindow(HWND hWnd);
         WINUSERAPI    BOOL  WINAPI  MoveWindow(HWND hWnd, int X, int Y, int nWidth, int nHeight, BOOL bRepaint);
