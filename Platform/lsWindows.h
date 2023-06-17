@@ -1260,7 +1260,7 @@ void windows_getFilePathsInDirRecursive(char *Dir, u32 dirLen, char ***names,
     FindClose(hFile);
 }
 
-u32 windows_getFullPathName(char *fileName, u32 outBufferSize, char *outBuffer)
+u32 windows_getFullPathName(const char *fileName, u32 outBufferSize, char *outBuffer)
 { return GetFullPathNameA(fileName, outBufferSize, outBuffer, 0); }
 
 u64 windows_GetWindowsTimeInMicrosec()
