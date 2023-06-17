@@ -27,7 +27,7 @@ s32 ls_ceil(f64 v);
 s32 ls_abs(s32 x);
 f64 ls_fabs(f64 x);
 
-f64 ls_mathClamp(f64 currValue, f64 maxValue, f64 minValue);
+f64 ls_clamp(f64 currValue, f64 maxValue, f64 minValue);
 
 s64 ls_e10(s32 x);
 u64 ls_powui(u64 v, u32 exp);
@@ -248,7 +248,7 @@ f64 ls_fabs(f64 x)
     return (x < 0.0f) ? x*(-1.0f) : x;
 }
 
-f64 ls_mathClamp(f64 currValue, f64 maxValue, f64 minValue)
+f64 ls_clamp(f64 currValue, f64 maxValue, f64 minValue)
 {
     if(currValue <= minValue) { return minValue; }
     if(currValue >= maxValue) { return maxValue; }
