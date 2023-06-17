@@ -67,6 +67,24 @@ if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
 #define WheelRotatedIn(x, y, w, h) (WheelRotated && MouseInRect(x, y, w, h))
 
 
+const     u32 THREAD_COUNT       = 1;
+constexpr u32 RENDER_GROUP_COUNT = THREAD_COUNT == 0 ? 1 : THREAD_COUNT;
+
+#if 1
+
+union Color
+{
+    struct { u32 value; };
+    struct { u8 b, g, r, a; };
+};
+
+Color RGBA(u8 r, u8 g, u8 b, u8 a) { Color res = { .b = b, .g = g, .r = r, .a = a };    return res; }
+Color RGB(u8 r, u8 g, u8 b)        { Color res = { .b = b, .g = g, .r = r, .a = 0xFF }; return res; }
+Color RGBg(u8 v)                   { Color res = { .b = v, .g = v, .r = v, .a = 0xFF }; return res; }
+Color SetAlpha(Color v, u8 a)      { v.a = a; return v; }
+u8    GetAlpha(Color v)            { return v.a; }
+
+#else
 
 #define RGBA(r,g,b,a)  (u32)((a<<24)|(r<<16)|(g<<8)|b)
 #define RGB(r,g,b)     (u32)((0xFF<<24)|(r<<16)|(g<<8)|b)
@@ -74,10 +92,9 @@ if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
 #define SetAlpha(v, a) (u32)((v & 0x00FFFFFF) | (((u32)a)<<24))
 #define GetAlpha(v)    ( u8)(((v) & 0xFF000000) >> 24)
 
-const     u32 THREAD_COUNT       = 2;
-constexpr u32 RENDER_GROUP_COUNT = THREAD_COUNT == 0 ? 1 : THREAD_COUNT;
-
 typedef u32 Color;
+
+#endif
 
 union UIRect
 {
@@ -317,6 +334,7 @@ const char* RenderCommandTypeAsString[] = {
     "UI_RC_BACKGROUND",
     "UI_RC_SCROLLBAR",
     "UI_RC_TEXTURED_RECT",
+    "UI_RC_CIRCLE",
 };
 
 enum RenderCommandType
@@ -340,6 +358,7 @@ enum RenderCommandType
     UI_RC_BACKGROUND,
     UI_RC_SCROLLBAR,
     UI_RC_TEXTURED_RECT,
+    UI_RC_CIRCLE,
 };
 
 //TODO: RenderCommand is getting big.
@@ -1599,24 +1618,21 @@ Color ls_uiAlphaBlend(Color source, Color dest, u8 alpha)
     u8 rD = c8[2];
     u8 aD = c8[3];
     
-    f32 factor = (f32)(255 - aS) / 255.0f;
-    f32 aMulti = (f32)aS / 255.0f;
+    f32 factor = (f32)(255 - alpha) / 255.0f;
+    f32 aMulti = (f32)alpha / 255.0f;
     
-    Color Result = 0;
-    c8 = (u8 *)&Result;
-    
-    c8[0] = bS*aMulti + bD*factor;
-    c8[1] = gS*aMulti + gD*factor;
-    c8[2] = rS*aMulti + rD*factor;
-    c8[3] = aS + aD*factor;
+    Color Result = {};
+    Result.b = source.b*aMulti + dest.b*factor;
+    Result.g = source.g*aMulti + dest.g*factor;
+    Result.r = source.r*aMulti + dest.r*factor;
+    Result.a = alpha + dest.a*factor;
     
     return Result;
 }
 
 Color ls_uiAlphaBlend(Color source, Color dest)
 {
-    u8 Alpha = (u8)((source >> 24) & 0x000000FF);
-    return ls_uiAlphaBlend(source, dest, Alpha);
+    return ls_uiAlphaBlend(source, dest, source.a);
 }
 
 Color ls_uiRGBAtoARGB(Color c)
@@ -1645,6 +1661,61 @@ Color ls_uiARGBtoRGBA(Color c)
     return c;
 }
 
+//TODO: Should *REALLY* converto to floating point colors, rather than u8 colors.
+//      Better for converting into different color spaces.
+Color ls_uiHSVtoRGB(u32 h, f32 s, f32 v)
+{
+    f32 cFactor = s * v;
+    
+    f32 fmodded = ls_fmod(((f32)h / 60.0f), 2.0f);
+    
+    f32 xFactor = cFactor * (1.0f - ls_fabs(fmodded - 1.0f));
+    f32 mFactor = v - cFactor;
+    
+    f32 rPrime = 0.0f;
+    f32 gPrime = 0.0f;
+    f32 bPrime = 0.0f;
+    
+    //NOTE: Answer changes depending on which Hectant we are in
+    if(h < 60)
+    {
+        rPrime = cFactor;
+        gPrime = xFactor;
+    }
+    else if(h < 120)
+    {
+        rPrime = xFactor;
+        gPrime = cFactor;
+    }
+    else if(h < 180)
+    {
+        gPrime = cFactor;
+        bPrime = xFactor;
+    }
+    else if(h < 240)
+    {
+        gPrime = xFactor;
+        bPrime = cFactor;
+    }
+    else if(h < 300)
+    {
+        rPrime = xFactor;
+        bPrime = cFactor;
+    }
+    else if(h < 360)
+    {
+        rPrime = cFactor;
+        bPrime = xFactor;
+    }
+    
+    u8 finalR = (rPrime+mFactor)*255;
+    u8 finalG = (gPrime+mFactor)*255;
+    u8 finalB = (bPrime+mFactor)*255;
+    
+    Color final = RGB(finalR, finalG, finalB);
+    return final;
+}
+
 void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color col)
 {
     s32 diffWidth = (w % 4);
@@ -1654,7 +1725,7 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
     s32 simdHeight = h - diffHeight;
     
     //NOTE: Do the first Sub-Rectangle divisible by 4.
-    __m128i color = _mm_set1_epi32((int)col);
+    __m128i color = _mm_set1_epi32((int)col.value);
     
     for(s32 y = startY; y < startY+simdHeight; y++)
     {
@@ -1679,7 +1750,7 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
         {
             for(s32 x = startX+simdWidth; x < startX+w; x++)
             {
-                At[y*c->width + x] = col;
+                At[y*c->width + x] = col.value;
             }
         }
     }
@@ -1690,7 +1761,7 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
         {
             for(s32 x = startX; x < startX+simdWidth; x++)
             {
-                At[y*c->width + x] = col;
+                At[y*c->width + x] = col.value;
             }
         }
     }
@@ -1746,12 +1817,12 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
             u32 a3 = _mm_cvtsi128_si32(_mm_shuffle_epi32(val, 0b10101010));
             u32 a4 = _mm_cvtsi128_si32(_mm_shuffle_epi32(val, 0b11111111));
             
-            Color c1 = ls_uiAlphaBlend(col, a1);
-            Color c2 = ls_uiAlphaBlend(col, a2);
-            Color c3 = ls_uiAlphaBlend(col, a3);
-            Color c4 = ls_uiAlphaBlend(col, a4);
+            Color c1 = ls_uiAlphaBlend(col, {.value = a1});
+            Color c2 = ls_uiAlphaBlend(col, {.value = a2});
+            Color c3 = ls_uiAlphaBlend(col, {.value = a3});
+            Color c4 = ls_uiAlphaBlend(col, {.value = a4});
             
-            __m128i color = _mm_setr_epi32(c1, c2, c3, c4);
+            __m128i color = _mm_setr_epi32(c1.value, c2.value, c3.value, c4.value);
             
             _mm_storeu_si128(At, color);
         }
@@ -1779,9 +1850,9 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
                 if(x < 0 || x >= c->width)  continue;
                 if(y < 0 || y >= c->height) continue;
                 
-                Color base = At[y*c->width + x];
+                Color base = {.value = At[y*c->width + x] };
                 Color blendedColor = ls_uiAlphaBlend(col, base);
-                At[y*c->width + x] = blendedColor;
+                At[y*c->width + x] = blendedColor.value;
             }
         }
     }
@@ -1799,9 +1870,49 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
                 if(x < 0 || x >= c->width)  continue;
                 if(y < 0 || y >= c->height) continue;
                 
-                Color base = At[y*c->width + x];
+                Color base = { .value = At[y*c->width + x] };
                 Color blendedColor = ls_uiAlphaBlend(col, base);
-                At[y*c->width + x] = blendedColor;
+                At[y*c->width + x] = blendedColor.value;
+            }
+        }
+    }
+}
+
+void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
+                     UIRect threadRect, UIRect scissor, Color col)
+{
+    s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
+    s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
+    s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
+    s32 maxY = threadRect.maxY < scissor.y+scissor.h ? threadRect.maxY : scissor.y+scissor.h;
+    
+    s32 startX = centerX - radius;
+    s32 startY = centerY - radius;
+    
+    if(startX < minX) { startX = minX; }
+    if(startY < minY) { startY = minY; }
+    
+    s32 endX   = centerX + radius + 1;
+    s32 endY   = centerY + radius + 1;
+    
+    if(endX > maxX) { endX = maxX+1; }
+    if(endY > maxY) { endY = maxY+1; }
+    
+    u32 *At = (u32 *)c->drawBuffer;
+    for(s32 y = startY; y < endY; y++)
+    {
+        for(s32 x = startX; x < endX; x++)
+        {
+            s32 cX = x - centerX;
+            s32 cY = y - centerY;
+            
+            b32 cond = (cY*cY + cX*cX) <= (radius*radius);
+            
+            if(cond)
+            {
+                Color base         = { .value = At[y*c->width + x] };
+                Color blendedColor = ls_uiAlphaBlend(col, base);
+                At[y*c->width + x] = blendedColor.value;
             }
         }
     }
@@ -1917,7 +2028,7 @@ void ls_uiBackground(UIContext *c)
     AssertMsg((c->height % 4) == 0, "Window Height not divisible by 4 (SIMD)\n");
     AssertMsg((c->width % 4) == 0, "Window Width not divisible by 4 (SIMD)\n");
     
-    __m128i color = _mm_set1_epi32 ((int)c->backgroundColor);
+    __m128i color = _mm_set1_epi32 ((int)c->backgroundColor.value);
     
     u32 numIterations = (c->width*c->height) / 4;
     for(u32 i = 0; i < numIterations; i++)
@@ -1981,7 +2092,7 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
                 if(y < 0 || y >= c->height) continue;
                 
                 u32 *DstPixel    = &At[(y * c->width) + x];
-                Color finalColor = (Color)(*DstPixel);
+                Color finalColor = {.value = *DstPixel};
                 
                 for(u32 heightIdx = 0; heightIdx < factorH; heightIdx++)
                 {
@@ -1998,7 +2109,7 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
                     }
                 }
                 
-                *DstPixel = finalColor;
+                *DstPixel = finalColor.value;
                 
                 eX += factorW;
             }
@@ -2047,13 +2158,13 @@ void ls_uiBitmap(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRe
             
             //At[y*c->width + x] = data[eY*w + eX];
             
-            Color src = data[eY*w + eX];
-            Color base = At[y*c->width + x];
+            Color src  = { .value = data[eY*w + eX] };
+            Color base = { .value = At[y*c->width + x] };
             
             u8 sourceA = GetAlpha(src);
             
             Color blendedColor = ls_uiAlphaBlend(src, base, sourceA);
-            At[y*c->width + x] = blendedColor;
+            At[y*c->width + x] = blendedColor.value;
         }
     }
 }
@@ -2087,7 +2198,7 @@ void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, UIRect threadRect, UIRect scis
             if(x > maxX) break;
             if(x < scissor.x || x >= scissor.x + scissor.w) break;
             
-            Color base = At[y*c->width + x];
+            Color base = { .value = At[y*c->width + x] };
             
             u8 sourceA = GetAlpha(textColor);
             u8 dstA = glyph->data[eY*glyph->width + eX];
@@ -2098,7 +2209,7 @@ void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, UIRect threadRect, UIRect scis
             u8 Alpha = (sA * dA) * 255;
             
             Color blendedColor = ls_uiAlphaBlend(textColor, base, Alpha);
-            At[y*c->width + x] = blendedColor;
+            At[y*c->width + x] = blendedColor.value;
         }
     }
 }
@@ -3448,7 +3559,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
     return inputUse;
 }
 
-void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h,
+void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
                     UIRect threadRect, UIRect scissor, UIScrollableRegion scroll, Color bkgColor, UIArrowSide s)
 {
     //TODO: Scissor???
@@ -3457,11 +3568,11 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h,
     s32 maxX = threadRect.maxX;
     s32 maxY = threadRect.maxY;
     
-    u32 *At = (u32 *)cxt->drawBuffer;
+    u32 *At = (u32 *)c->drawBuffer;
     
     s32 xPos = x-1;
     
-    ls_uiBorderedRect(cxt, xPos, yPos, w, h, threadRect, scissor, scroll, bkgColor);
+    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, scroll, bkgColor);
     
     if(s == UIA_DOWN)
     {
@@ -3486,10 +3597,10 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h,
             {
                 if(x >= maxX) { break; }
                 
-                if(x < 0 || x >= cxt->width)  continue;
-                if(y < 0 || y >= cxt->height) continue;
+                if(x < 0 || x >= c->width)  continue;
+                if(y < 0 || y >= c->height) continue;
                 
-                At[y*cxt->width + x] = cxt->borderColor;
+                At[y*c->width + x] = c->borderColor.value;
             }
             
             xBase += 1;
@@ -3522,10 +3633,10 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h,
             {
                 if(x >= maxX) { break; }
                 
-                if(x < 0 || x >= cxt->width)  continue;
-                if(y < 0 || y >= cxt->height) continue;
+                if(x < 0 || x >= c->width)  continue;
+                if(y < 0 || y >= c->height) continue;
                 
-                At[y*cxt->width + x] = RGBg(0x00);
+                At[y*c->width + x] = RGBg(0x00).value;
             }
             
             xEnd  += 1;
@@ -3540,10 +3651,10 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h,
             {
                 if(x >= maxX) { break; }
                 
-                if(x < 0 || x >= cxt->width)  continue;
-                if(y < 0 || y >= cxt->height) continue;
+                if(x < 0 || x >= c->width)  continue;
+                if(y < 0 || y >= c->height) continue;
                 
-                At[y*cxt->width + x] = RGBg(0x00);
+                At[y*c->width + x] = RGBg(0x00).value;
             }
             
             xEnd  -= 1;
@@ -3575,10 +3686,10 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h,
             {
                 if(x >= maxX) { break; }
                 
-                if(x < 0 || x >= cxt->width)  continue;
-                if(y < 0 || y >= cxt->height) continue;
+                if(x < 0 || x >= c->width)  continue;
+                if(y < 0 || y >= c->height) continue;
                 
-                At[y*cxt->width + x] = RGBg(0x00);
+                At[y*c->width + x] = RGBg(0x00).value;
             }
             
             xBase -= 1;
@@ -3593,10 +3704,10 @@ void ls_uiDrawArrow(UIContext *cxt, s32 x, s32 yPos, s32 w, s32 h,
             {
                 if(x >= maxX) { break; }
                 
-                if(x < 0 || x >= cxt->width)  continue;
-                if(y < 0 || y >= cxt->height) continue;
+                if(x < 0 || x >= c->width)  continue;
+                if(y < 0 || y >= c->height) continue;
                 
-                At[y*cxt->width + x] = RGBg(0x00);
+                At[y*c->width + x] = RGBg(0x00).value;
             }
             
             xBase += 1;
@@ -3832,7 +3943,7 @@ b32 ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h
         
         slider->currPos -= fractionMove;
         
-        slider->currPos = ls_mathClamp(slider->currPos, 1.0, 0.0);
+        slider->currPos = ls_clamp(slider->currPos, 1.0, 0.0);
         
         hasAnsweredToInput = TRUE;
     }
@@ -4030,6 +4141,75 @@ void ls_uiTexturedRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, void *data, s32
 {
     RenderCommand command = { UI_RC_TEXTURED_RECT, x, y, w, h };
     command.bitmap = { data, dataW, dataH };
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
+void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32 value,
+                         UIRect threadRect, UIRect scissor)
+{
+    s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
+    s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
+    s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
+    s32 maxY = threadRect.maxY < scissor.y+scissor.h ? threadRect.maxY : scissor.y+scissor.h;
+    
+    s32 startX = centerX - radius;
+    s32 startY = centerY - radius;
+    
+    if(startX < minX) { startX = minX; }
+    if(startY < minY) { startY = minY; }
+    
+    s32 endX   = centerX + radius;
+    s32 endY   = centerY + radius;
+    
+    if(endX > maxX) { endX = maxX+1; }
+    if(endY > maxY) { endY = maxY+1; }
+    
+    //u8  colB = 255;
+    
+    static u32 stupidIdx = 0;
+    
+    u32 *At = (u32 *)c->drawBuffer;
+    for(s32 y = startY; y < endY; y++)
+    {
+        for(s32 x = startX; x < endX; x++)
+        {
+            s32 cX = x - centerX;
+            s32 cY = y - centerY;
+            
+            b32 cond = (cY*cY + cX*cX) <= (radius*radius);
+            
+            if(cond)
+            {
+                f32 saturation = ls_sqrt(cX*cX + cY*cY) / (f32)radius;
+                saturation     = ls_clamp(saturation*4.00f, 1.0f, 0.0f);
+                
+                f32 angle = ls_atan2((f32)cY, (f32)cX) / PI;
+                s32 hue   = (angle*180) + 179;
+                
+                Color converted = ls_uiHSVtoRGB(hue, saturation, value);
+                
+                Color base         = { .value = At[y*c->width + x] };
+                Color blendedColor = ls_uiAlphaBlend(converted, base);
+                At[y*c->width + x] = blendedColor.value;
+            }
+        }
+    }
+}
+
+static s32 pickedX = -1;
+static s32 pickedY = -1;
+
+void ls_uiColorWheel(UIContext *c, s32 x, s32 y, s32 r, s32 zLayer = 0)
+{
+    Input *UserInput = &c->UserInput;
+    
+    if(LeftClickIn(x - r, y - r, r*2, r*2))
+    {
+        pickedX = UserInput->Mouse.currPosX;
+        pickedY = UserInput->Mouse.currPosY;
+    }
+    
+    RenderCommand command = { UI_RC_CIRCLE, x, y, r };
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
@@ -4500,6 +4680,32 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 case UI_RC_TEXTURED_RECT:
                 {
                     ls_uiStretchBitmap(c, threadRect, curr->rect, &curr->bitmap);
+                } break;
+                
+                case UI_RC_CIRCLE:
+                {
+                    //ls_uiFillCircle(c, xPos, yPos, w, threadRect, scissor, RGBA(0xBB, 0x11, 0x32, 0xCC));
+                    f32 hsvValue = 1.0f;
+                    ls_uiFillColorWheel(c, xPos, yPos, w, hsvValue, threadRect, scissor);
+                    
+                    if(pickedX != -1 && pickedY != -1)
+                    {
+                        s32 cX = pickedX - xPos;
+                        s32 cY = pickedY - yPos;
+                        
+                        f32 saturation = ls_sqrt(cX*cX + cY*cY) / (f32)w;
+                        saturation     = ls_clamp(saturation*4.00f, 1.0f, 0.0f);
+                        
+                        f32 angle = ls_atan2((f32)cY, (f32)cX) / PI;
+                        s32 hue   = (angle*180) + 179;
+                        
+                        f32 value = 1.0f;
+                        
+                        Color pickedColor = ls_uiHSVtoRGB(hue, saturation, value);
+                        
+                        c->backgroundColor = pickedColor;
+                    }
+                    
                 } break;
                 
                 default: { 
