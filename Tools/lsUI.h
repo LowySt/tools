@@ -272,6 +272,20 @@ struct UISlider
     Color rColor;
 };
 
+struct UIColorPicker
+{
+    s32 valueRectX;
+    s32 valueRectY;
+    s32 valueRectW;
+    s32 valueRectH;
+    f32 value;
+    
+    b32   hasPicked;
+    s32   pickedX;
+    s32   pickedY;
+    Color pickedColor;
+};
+
 struct UIMenuItem
 {
     utf32 name;
@@ -334,7 +348,7 @@ const char* RenderCommandTypeAsString[] = {
     "UI_RC_BACKGROUND",
     "UI_RC_SCROLLBAR",
     "UI_RC_TEXTURED_RECT",
-    "UI_RC_CIRCLE",
+    "UI_RC_COLOR_PICKER",
 };
 
 enum RenderCommandType
@@ -358,7 +372,7 @@ enum RenderCommandType
     UI_RC_BACKGROUND,
     UI_RC_SCROLLBAR,
     UI_RC_TEXTURED_RECT,
-    UI_RC_CIRCLE,
+    UI_RC_COLOR_PICKER,
 };
 
 //TODO: RenderCommand is getting big.
@@ -377,14 +391,15 @@ struct RenderCommand
     //TODO: Should I pass the strings as pointers as well?
     union
     {
-        UITextBox *textBox;
-        utf32      label32;
-        utf8       label8;
-        UIButton  *button;
-        UICheck   *check;
-        UIListBox *listBox;
-        UISlider  *slider;
-        UIMenu    *menu;
+        UITextBox     *textBox;
+        utf32          label32;
+        utf8           label8;
+        UIButton      *button;
+        UICheck       *check;
+        UIListBox     *listBox;
+        UISlider      *slider;
+        UIMenu        *menu;
+        UIColorPicker *colorPicker;
         
         //TODO: I hate that I have to copy it.
         UIBitmap  bitmap;
@@ -4144,6 +4159,132 @@ void ls_uiTexturedRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, void *data, s32
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
+void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor, UIScrollableRegion scroll)
+{
+    s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
+    s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
+    s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
+    s32 maxY = threadRect.maxY < scissor.y+scissor.h ? threadRect.maxY : scissor.y+scissor.h;
+    
+    s32 startY = yPos - scroll.deltaY;
+    if(startY < minY) { h -= (minY-startY); startY = minY; }
+    
+    s32 startX = xPos - scroll.deltaX;
+    if(startX < minX) { w -= (minX-startX); startX = minX; }
+    
+    if(startX+w > maxX) { w = maxX-startX+1; }
+    if(startY+h > maxY) { h = maxY-startY+1; }
+    
+    s32 diffWidth = (w % 4);
+    s32 simdWidth = w - diffWidth;
+    
+    s32 diffHeight = (h % 4);
+    s32 simdHeight = h - diffHeight;
+    
+    f32 currGray = 0.0f;
+    f32 step     = (f32)h / 255.0f;
+    //TODO: Make AlphaBlending happen with SSE!!!
+    
+    //NOTE: Do the first Sub-Rectangle divisible by 4.
+    //__m128i color = _mm_set1_epi32((int)c);
+    
+    for(s32 y = startY; y < startY+simdHeight; y++)
+    {
+        AssertMsg(y <= maxY, "Should never happen. Height was precomputed\n");
+        //if(y > maxY) { break; }
+        
+        Color col = RGBg((u32)currGray);
+        
+        for(s32 x = startX; x < startX+simdWidth; x+=4)
+        {
+            AssertMsg(x <= maxX, "Should never happen. Width was precomputed\n");
+            
+            if(x < 0 || x >= c->width)  continue;
+            if(y < 0 || y >= c->height) continue;
+            
+            u32 idx = ((y*c->width) + x)*sizeof(s32);
+            __m128i *At = (__m128i *)(c->drawBuffer + idx);
+            
+            __m128i val = _mm_loadu_si128(At);
+            
+            u32 a1 = _mm_cvtsi128_si32(_mm_shuffle_epi32(val, 0b00000000));
+            u32 a2 = _mm_cvtsi128_si32(_mm_shuffle_epi32(val, 0b01010101));
+            u32 a3 = _mm_cvtsi128_si32(_mm_shuffle_epi32(val, 0b10101010));
+            u32 a4 = _mm_cvtsi128_si32(_mm_shuffle_epi32(val, 0b11111111));
+            
+            Color c1 = ls_uiAlphaBlend(col, {.value = a1});
+            Color c2 = ls_uiAlphaBlend(col, {.value = a2});
+            Color c3 = ls_uiAlphaBlend(col, {.value = a3});
+            Color c4 = ls_uiAlphaBlend(col, {.value = a4});
+            
+            __m128i color = _mm_setr_epi32(c1.value, c2.value, c3.value, c4.value);
+            
+            _mm_storeu_si128(At, color);
+        }
+        
+        currGray += step;
+    }
+    
+    //NOTE: Complete the 2 remaining Sub-Rectangles at the right and top. (if there are).
+    //      We decide to have the right rectangle be full height
+    //      And the top one be less-than-full width, to avoid over-drawing the small subrect
+    //        in the top right corner.
+    u32 *At = (u32 *)c->drawBuffer;
+    
+    if(diffWidth)
+    {
+        f32 diffGray = 0.0f;
+        
+        for(s32 y = startY; y < startY+h; y++)
+        {
+            if(y > maxY) { break; }
+            
+            Color col = RGBg((u32)diffGray);
+            
+            for(s32 x = startX+simdWidth; x < startX+w; x++)
+            {
+                if(x > maxX) { 
+                    ls_printf("diffSIMDWidth: %d, diffWidth: %d\n", x-maxX, diffWidth);
+                    break; 
+                }
+                
+                if(x < 0 || x >= c->width)  continue;
+                if(y < 0 || y >= c->height) continue;
+                
+                Color base = {.value = At[y*c->width + x] };
+                Color blendedColor = ls_uiAlphaBlend(col, base);
+                At[y*c->width + x] = blendedColor.value;
+            }
+            
+            diffGray += step;
+        }
+    }
+    
+    if(diffHeight)
+    {
+        for(s32 y = startY+simdHeight; y < startY+h; y++)
+        {
+            if(y > maxY) { break; }
+            
+            Color col = RGBg((u32)currGray);
+            
+            for(s32 x = startX; x < startX+simdWidth; x++)
+            {
+                if(x > maxX) { break; }
+                
+                if(x < 0 || x >= c->width)  continue;
+                if(y < 0 || y >= c->height) continue;
+                
+                Color base = { .value = At[y*c->width + x] };
+                Color blendedColor = ls_uiAlphaBlend(col, base);
+                At[y*c->width + x] = blendedColor.value;
+            }
+            
+            currGray += step;
+        }
+    }
+}
+
 void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32 value,
                          UIRect threadRect, UIRect scissor)
 {
@@ -4163,8 +4304,6 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
     
     if(endX > maxX) { endX = maxX+1; }
     if(endY > maxY) { endY = maxY+1; }
-    
-    //u8  colB = 255;
     
     static u32 stupidIdx = 0;
     
@@ -4196,20 +4335,31 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
     }
 }
 
-static s32 pickedX = -1;
-static s32 pickedY = -1;
-
-void ls_uiColorWheel(UIContext *c, s32 x, s32 y, s32 r, s32 zLayer = 0)
+void ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 r, s32 zLayer = 0)
 {
     Input *UserInput = &c->UserInput;
     
     if(LeftClickIn(x - r, y - r, r*2, r*2))
     {
-        pickedX = UserInput->Mouse.currPosX;
-        pickedY = UserInput->Mouse.currPosY;
+        picker->pickedX   = UserInput->Mouse.currPosX;
+        picker->pickedY   = UserInput->Mouse.currPosY;
+        picker->hasPicked = TRUE;
     }
     
-    RenderCommand command = { UI_RC_CIRCLE, x, y, r };
+    picker->valueRectX = x - r - r*0.4f;
+    picker->valueRectY = y - r;
+    picker->valueRectW = r * 0.2f;
+    picker->valueRectH = 2.0f * r;
+    
+    if(LeftClickIn(picker->valueRectX, picker->valueRectY, picker->valueRectW, picker->valueRectH))
+    {
+        s32 clickedY  = UserInput->Mouse.currPosY;
+        f32 value     = (f32)(clickedY - picker->valueRectY) / (f32)picker->valueRectH;
+        picker->value = value;
+    }
+    
+    RenderCommand command = { UI_RC_COLOR_PICKER, x, y, r };
+    command.colorPicker   = picker;
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
@@ -4682,16 +4832,19 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     ls_uiStretchBitmap(c, threadRect, curr->rect, &curr->bitmap);
                 } break;
                 
-                case UI_RC_CIRCLE:
+                case UI_RC_COLOR_PICKER:
                 {
-                    //ls_uiFillCircle(c, xPos, yPos, w, threadRect, scissor, RGBA(0xBB, 0x11, 0x32, 0xCC));
-                    f32 hsvValue = 1.0f;
-                    ls_uiFillColorWheel(c, xPos, yPos, w, hsvValue, threadRect, scissor);
+                    UIColorPicker *picker = curr->colorPicker;
                     
-                    if(pickedX != -1 && pickedY != -1)
+                    ls_uiFillColorWheel(c, xPos, yPos, w, picker->value, threadRect, scissor);
+                    
+                    ls_uiColorValueRect(c, picker->valueRectX, picker->valueRectY, 
+                                        picker->valueRectW, picker->valueRectH, threadRect, scissor, scroll);
+                    
+                    if(picker->hasPicked == TRUE)
                     {
-                        s32 cX = pickedX - xPos;
-                        s32 cY = pickedY - yPos;
+                        s32 cX = picker->pickedX - xPos;
+                        s32 cY = picker->pickedY - yPos;
                         
                         f32 saturation = ls_sqrt(cX*cX + cY*cY) / (f32)w;
                         saturation     = ls_clamp(saturation*4.00f, 1.0f, 0.0f);
@@ -4699,13 +4852,10 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         f32 angle = ls_atan2((f32)cY, (f32)cX) / PI;
                         s32 hue   = (angle*180) + 179;
                         
-                        f32 value = 1.0f;
+                        picker->pickedColor = ls_uiHSVtoRGB(hue, saturation, picker->value);
                         
-                        Color pickedColor = ls_uiHSVtoRGB(hue, saturation, value);
-                        
-                        c->backgroundColor = pickedColor;
+                        c->backgroundColor  = picker->pickedColor;
                     }
-                    
                 } break;
                 
                 default: { 
