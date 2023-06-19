@@ -284,6 +284,8 @@ struct UIColorPicker
     s32   pickedX;
     s32   pickedY;
     Color pickedColor;
+    
+    UIButton apply;
 };
 
 struct UIMenuItem
@@ -1924,6 +1926,48 @@ void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
             b32 cond = (cY*cY + cX*cX) <= (radius*radius);
             
             if(cond)
+            {
+                Color base         = { .value = At[y*c->width + x] };
+                Color blendedColor = ls_uiAlphaBlend(col, base);
+                At[y*c->width + x] = blendedColor.value;
+            }
+        }
+    }
+}
+
+//TODO: Change with better rasterizer
+void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness,
+                 UIRect threadRect, UIRect scissor, Color col)
+{
+    s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
+    s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
+    s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
+    s32 maxY = threadRect.maxY < scissor.y+scissor.h ? threadRect.maxY : scissor.y+scissor.h;
+    
+    s32 startX = centerX - radius;
+    s32 startY = centerY - radius;
+    
+    if(startX < minX) { startX = minX; }
+    if(startY < minY) { startY = minY; }
+    
+    s32 endX   = centerX + radius + 1;
+    s32 endY   = centerY + radius + 1;
+    
+    if(endX > maxX) { endX = maxX+1; }
+    if(endY > maxY) { endY = maxY+1; }
+    
+    u32 *At = (u32 *)c->drawBuffer;
+    for(s32 y = startY; y < endY; y++)
+    {
+        for(s32 x = startX; x < endX; x++)
+        {
+            s32 cX = x - centerX;
+            s32 cY = y - centerY;
+            
+            b32 cond1 = (cY*cY + cX*cX) <= (radius*radius);
+            b32 cond2 = (cY*cY + cX*cX) >= ((radius-thickness)*(radius-thickness));
+            
+            if(cond1 && cond2)
             {
                 Color base         = { .value = At[y*c->width + x] };
                 Color blendedColor = ls_uiAlphaBlend(col, base);
@@ -4335,7 +4379,7 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
     }
 }
 
-void ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 r, s32 zLayer = 0)
+b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 r, s32 zLayer = 0)
 {
     Input *UserInput = &c->UserInput;
     
@@ -4358,9 +4402,16 @@ void ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 r, 
         picker->value = value;
     }
     
+    Color tmp      = c->widgetColor;
+    c->widgetColor = picker->pickedColor;
+    b32 usedInput  = ls_uiButton(c, &picker->apply, x - 30, y-r-45, zLayer);
+    c->widgetColor = tmp;
+    
     RenderCommand command = { UI_RC_COLOR_PICKER, x, y, r };
     command.colorPicker   = picker;
     ls_uiPushRenderCommand(c, command, zLayer);
+    
+    return usedInput;
 }
 
 void ls_uiRender(UIContext *c)
@@ -4836,10 +4887,17 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 {
                     UIColorPicker *picker = curr->colorPicker;
                     
+                    s32 rectWidth = picker->valueRectW + 2.45f*w;
+                    ls_uiBorderedRect(c, picker->valueRectX - 10, picker->valueRectY - 50, rectWidth, 2.8f*w, threadRect, scissor, scroll);
+                    
                     ls_uiFillColorWheel(c, xPos, yPos, w, picker->value, threadRect, scissor);
                     
                     ls_uiColorValueRect(c, picker->valueRectX, picker->valueRectY, 
                                         picker->valueRectW, picker->valueRectH, threadRect, scissor, scroll);
+                    
+                    //NOTE: Create a visible white rectangle around the selected value
+                    ls_uiBorder(c, picker->valueRectX, picker->valueRectY + (picker->valueRectH*picker->value) - 4, picker->valueRectW, 8, threadRect, scissor, scroll, RGBg(0xFF));
+                    
                     
                     if(picker->hasPicked == TRUE)
                     {
@@ -4854,7 +4912,9 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         
                         picker->pickedColor = ls_uiHSVtoRGB(hue, saturation, picker->value);
                         
-                        c->backgroundColor  = picker->pickedColor;
+                        //NOTE: Draw a small circle around the selected color
+                        ls_uiCircle(c, picker->pickedX, picker->pickedY, w*0.1f+2, 2, threadRect, scissor, RGBg(0x0));
+                        ls_uiCircle(c, picker->pickedX, picker->pickedY, w*0.1f, 2, threadRect, scissor, RGBg(0xFF));
                     }
                 } break;
                 
