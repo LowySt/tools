@@ -280,6 +280,10 @@ struct UIColorPicker
     s32 valueRectH;
     f32 value;
     
+    s32 centerX;
+    s32 centerY;
+    s32 radius;
+    
     b32   hasPicked;
     s32   pickedX;
     s32   pickedY;
@@ -555,6 +559,8 @@ void       ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth,
 void       ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer);
 
 UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *data);
+UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, ButtonProc onClick,
+                           ButtonProc onHold, void *userData);
 UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, 
                            ButtonProc onClick, ButtonProc onHold, void *data);
 UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text,
@@ -617,6 +623,8 @@ void       ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const cha
 b32        ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer);
 
 void       ls_uiTexturedRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, void *data, s32 dataW, s32 dataH, s32 zLayer);
+
+UIColorPicker ls_uiColorPickerInit(UIContext *c, void *userData);
 
 void       ls_uiRender(UIContext *c);
 
@@ -929,24 +937,28 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         {
             c->hasReceivedInput  = TRUE;
             Mouse->isLeftPressed = TRUE;
+            return 0;
         } break;
         
         case WM_LBUTTONUP:
         {
             c->hasReceivedInput  = TRUE;
             Mouse->isLeftPressed = FALSE;
+            return 0;
         } break;
         
         case WM_RBUTTONDOWN:
         { 
             c->hasReceivedInput   = TRUE;
-            Mouse->isRightPressed = TRUE; 
+            Mouse->isRightPressed = TRUE;
+            return 0;
         } break;
         
         case WM_RBUTTONUP:
         { 
             c->hasReceivedInput   = TRUE; 
-            Mouse->isRightPressed = FALSE; 
+            Mouse->isRightPressed = FALSE;
+            return 0;
         } break;
         
         /*
@@ -1265,6 +1277,12 @@ void ls_uiFrameBegin(UIContext *c)
         DispatchMessageA(&Msg);
     }
     
+    //NOTE: Make sure previous frame click is not put on hold this frame.
+    if(c->UserInput.Mouse.wasLeftPressed  ||
+       c->UserInput.Mouse.wasRightPressed || 
+       c->UserInput.Mouse.wasMiddlePressed)
+    { c->hasReceivedInput = TRUE; }
+    
     //NOTE: Window starts hidden, and then is shown after the first frame, 
     //      to avoid flashing because initially the frame buffer is all white.
     if(isStartup) { ShowWindow(c->Window, SW_SHOW); isStartup = FALSE; c->hasReceivedInput = TRUE; }
@@ -1353,21 +1371,21 @@ void ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs)
 inline void ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f)
 { c->onDestroy = f; }
 
-void ls_uiFocusChange(UIContext *cxt, u64 *focus)
+void ls_uiFocusChange(UIContext *c, u64 *focus)
 {
-    cxt->nextFrameFocusChange = TRUE;
-    cxt->nextFrameFocus = focus;
+    c->nextFrameFocusChange = TRUE;
+    c->nextFrameFocus = focus;
 }
 
-b32 ls_uiInFocus(UIContext *cxt, void *p)
+b32 ls_uiInFocus(UIContext *c, void *p)
 {
-    if(cxt->currentFocus == (u64 *)p) { return TRUE; }
+    if(c->currentFocus == (u64 *)p) { return TRUE; }
     return FALSE;
 }
 
-b32 ls_uiHasCapture(UIContext *cxt, void *p)
+b32 ls_uiHasCapture(UIContext *c, void *p)
 {
-    if(cxt->mouseCapture == (u64 *)p) { return TRUE; }
+    if(c->mouseCapture == (u64 *)p) { return TRUE; }
     return FALSE;
 }
 
@@ -2772,12 +2790,13 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
     
     b32 inputUse = FALSE;
     
-    Color bkgColor = c->widgetColor;
-    Color textColor = c->textColor;
+    Color bkgColor    = c->widgetColor;
+    Color textColor   = c->textColor;
+    Color borderColor = c->borderColor;
     
     if(button->style == UIBUTTON_TEXT_NOBORDER) { bkgColor = c->backgroundColor; }
     
-    if(MouseInRect(xPos, yPos, button->w, button->h) && ls_uiHasCapture(c, 0))// && ls_uiInFocus(cxt, 0))
+    if(ls_uiHasCapture(c, 0) && MouseInRect(xPos, yPos, button->w, button->h))// && ls_uiInFocus(cxt, 0))
     { 
         button->isHot = TRUE;
         bkgColor = c->highliteColor;
@@ -2785,14 +2804,15 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
         
         //b32 noCapture = ls_uiHasCapture(cxt, 0);
         
-        if(button->onClick && LeftClick)// && noCapture)
+        if(LeftClick)// && noCapture)
         {
-            inputUse |= button->onClick(c, button->data);
+            if(button->onClick) { inputUse |= button->onClick(c, button->data); }
         }
+        
         if(LeftHold)//  && noCapture)
         {
             button->isHeld = TRUE;
-            bkgColor = c->pressedColor;
+            bkgColor       = c->pressedColor;
             if(button->onHold) { inputUse |= button->onHold(c, button->data); }
         }
     }
@@ -2800,6 +2820,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
     RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->w, button->h };
     command.button        = button;
     command.bkgColor      = bkgColor;
+    command.borderColor   = borderColor;
     command.textColor     = textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
     
@@ -2861,6 +2882,30 @@ b32 ls_uiCheck(UIContext *c, UICheck *check, s32 x, s32 y, s32 zLayer = 0)
     ls_uiPushRenderCommand(c, command, zLayer);
     
     return inputUse;
+}
+
+UIRect ls_uiLabelRect(UIContext *c, utf32 label, s32 xPos, s32 yPos)
+{
+    s32 marginX    = 0.3f*c->currFont->pixelHeight;
+    s32 marginY    = 0.3f*c->currFont->pixelHeight;
+    s32 strWidth   = ls_uiGlyphStringLen(c, c->currFont, label);
+    s32 rectWidth  = strWidth + 2*marginX;
+    s32 rectHeight = c->currFont->pixelHeight + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
+    
+    return { xPos, yPos, rectWidth, rectHeight };
+}
+
+void ls_uiLabelInRect(UIContext *c, utf32 label, s32 xPos, s32 yPos,
+                      Color bkgColor, Color borderColor, Color textColor, s32 zLayer = 0)
+{
+    s32 marginX    = 0.3f*c->currFont->pixelHeight;
+    s32 marginY    = 0.25f*c->currFont->pixelHeight;
+    s32 strWidth   = ls_uiGlyphStringLen(c, c->currFont, label);
+    s32 rectWidth  = strWidth + 2*marginX;
+    s32 rectHeight = c->currFont->pixelHeight + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
+    
+    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY, textColor, zLayer);
+    ls_uiRect(c, xPos, yPos, rectWidth, rectHeight, bkgColor, borderColor, zLayer);
 }
 
 void ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
@@ -4203,6 +4248,15 @@ void ls_uiTexturedRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, void *data, s32
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
+UIColorPicker ls_uiColorPickerInit(UIContext *c, void *userData)
+{
+    UIColorPicker result = {};
+    result.value = 1.0f;
+    result.apply = ls_uiButtonInit(c, UIBUTTON_CLASSIC, U"Apply", NULL, NULL, userData);
+    
+    return result;
+}
+
 void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor, UIScrollableRegion scroll)
 {
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
@@ -4364,7 +4418,7 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
             if(cond)
             {
                 f32 saturation = ls_sqrt(cX*cX + cY*cY) / (f32)radius;
-                saturation     = ls_clamp(saturation*4.00f, 1.0f, 0.0f);
+                saturation     = ls_clamp(saturation*1.00f, 1.0f, 0.0f);
                 
                 f32 angle = ls_atan2((f32)cY, (f32)cX) / PI;
                 s32 hue   = (angle*180) + 179;
@@ -4379,23 +4433,59 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
     }
 }
 
-b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 r, s32 zLayer = 0)
+b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
 {
     Input *UserInput = &c->UserInput;
     
-    if(LeftClickIn(x - r, y - r, r*2, r*2))
-    {
-        picker->pickedX   = UserInput->Mouse.currPosX;
-        picker->pickedY   = UserInput->Mouse.currPosY;
-        picker->hasPicked = TRUE;
+    if(LeftClickIn(x, y, w, h) && ls_uiHasCapture(c, 0)) {
+        c->currentFocus = (u64 *)picker;
+        c->mouseCapture = (u64 *)picker;
+        c->focusWasSetThisFrame = TRUE;
     }
     
-    picker->valueRectX = x - r - r*0.4f;
-    picker->valueRectY = y - r;
-    picker->valueRectW = r * 0.2f;
-    picker->valueRectH = 2.0f * r;
+    s32 xMargin = w*0.1f;
+    s32 yMargin = h*0.1f;
     
-    if(LeftClickIn(picker->valueRectX, picker->valueRectY, picker->valueRectW, picker->valueRectH))
+    s32 valueRectX = x + xMargin;
+    s32 valueRectY = y + yMargin;
+    s32 valueRectW = w*0.1f;
+    s32 valueRectH = h*0.8f;
+    
+    s32 buttonH = picker->apply.h;
+    
+    s32 radius  = w*0.30f;
+    s32 centerX = x + 2*xMargin + valueRectW + radius;
+    s32 centerY = y + 3*yMargin + buttonH + radius;
+    
+    s32 buttonX = centerX - picker->apply.w/2;
+    s32 buttonY = y + yMargin;
+    
+    if(ls_uiHasCapture(c, picker) && LeftClickIn(centerX - radius, centerY - radius, radius*2, radius*2))
+    {
+        s32 cX         = UserInput->Mouse.currPosX - centerX;
+        s32 cY         = UserInput->Mouse.currPosY - centerY;
+        s32 pickRadius = radius + 0.05f*radius;
+        b32 cond = (cY*cY + cX*cX) <= (pickRadius*pickRadius);
+        
+        if(cond)
+        {
+            picker->pickedX   = UserInput->Mouse.currPosX;
+            picker->pickedY   = UserInput->Mouse.currPosY;
+            picker->hasPicked = TRUE;
+        }
+    }
+    
+    picker->centerX = centerX;
+    picker->centerY = centerY;
+    picker->radius  = radius;
+    
+    picker->valueRectX = valueRectX;
+    picker->valueRectY = valueRectY;
+    picker->valueRectW = valueRectW;
+    picker->valueRectH = valueRectH;
+    
+    if(ls_uiHasCapture(c, picker) &&
+       LeftClickIn(picker->valueRectX, picker->valueRectY, picker->valueRectW, picker->valueRectH))
     {
         s32 clickedY  = UserInput->Mouse.currPosY;
         f32 value     = (f32)(clickedY - picker->valueRectY) / (f32)picker->valueRectH;
@@ -4404,11 +4494,12 @@ b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 r, s
     
     Color tmp      = c->widgetColor;
     c->widgetColor = picker->pickedColor;
-    b32 usedInput  = ls_uiButton(c, &picker->apply, x - 30, y-r-45, zLayer);
+    b32 usedInput  = ls_uiButton(c, &picker->apply, buttonX, buttonY, zLayer);
     c->widgetColor = tmp;
     
-    RenderCommand command = { UI_RC_COLOR_PICKER, x, y, r };
+    RenderCommand command = { UI_RC_COLOR_PICKER, x, y, w, h };
     command.colorPicker   = picker;
+    command.textColor     = c->textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
     
     return usedInput;
@@ -4606,7 +4697,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     
                     if(button->style == UIBUTTON_CLASSIC)
                     {
-                        ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, scroll, bkgColor);
+                        ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, scroll, bkgColor, borderColor);
                         
                         if(button->name.data)
                         {
@@ -4887,10 +4978,10 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 {
                     UIColorPicker *picker = curr->colorPicker;
                     
-                    s32 rectWidth = picker->valueRectW + 2.45f*w;
-                    ls_uiBorderedRect(c, picker->valueRectX - 10, picker->valueRectY - 50, rectWidth, 2.8f*w, threadRect, scissor, scroll);
+                    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, scroll);
                     
-                    ls_uiFillColorWheel(c, xPos, yPos, w, picker->value, threadRect, scissor);
+                    ls_uiFillColorWheel(c, picker->centerX, picker->centerY, 
+                                        picker->radius, picker->value, threadRect, scissor);
                     
                     ls_uiColorValueRect(c, picker->valueRectX, picker->valueRectY, 
                                         picker->valueRectW, picker->valueRectH, threadRect, scissor, scroll);
@@ -4898,14 +4989,13 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     //NOTE: Create a visible white rectangle around the selected value
                     ls_uiBorder(c, picker->valueRectX, picker->valueRectY + (picker->valueRectH*picker->value) - 4, picker->valueRectW, 8, threadRect, scissor, scroll, RGBg(0xFF));
                     
-                    
                     if(picker->hasPicked == TRUE)
                     {
-                        s32 cX = picker->pickedX - xPos;
-                        s32 cY = picker->pickedY - yPos;
+                        s32 cX = picker->pickedX - picker->centerX;
+                        s32 cY = picker->pickedY - picker->centerY;
                         
-                        f32 saturation = ls_sqrt(cX*cX + cY*cY) / (f32)w;
-                        saturation     = ls_clamp(saturation*4.00f, 1.0f, 0.0f);
+                        f32 saturation = ls_sqrt(cX*cX + cY*cY) / (f32)picker->radius;
+                        saturation     = ls_clamp(saturation*1.00f, 1.0f, 0.0f);
                         
                         f32 angle = ls_atan2((f32)cY, (f32)cX) / PI;
                         s32 hue   = (angle*180) + 179;
@@ -4913,8 +5003,55 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         picker->pickedColor = ls_uiHSVtoRGB(hue, saturation, picker->value);
                         
                         //NOTE: Draw a small circle around the selected color
-                        ls_uiCircle(c, picker->pickedX, picker->pickedY, w*0.1f+2, 2, threadRect, scissor, RGBg(0x0));
-                        ls_uiCircle(c, picker->pickedX, picker->pickedY, w*0.1f, 2, threadRect, scissor, RGBg(0xFF));
+                        ls_uiCircle(c, picker->pickedX, picker->pickedY, 
+                                    picker->radius*0.1f+2, 2, threadRect, scissor, RGBg(0x0));
+                        ls_uiCircle(c, picker->pickedX, picker->pickedY, 
+                                    picker->radius*0.1f, 2, threadRect, scissor, RGBg(0xFF));
+                        
+                        
+                        //NOTE: Add RGB Label
+                        s32 xMargin = w*0.15f;
+                        s32 yMargin = h*0.07f;
+                        s32 rgbX    = picker->centerX - picker->radius;
+                        s32 rgbY    = picker->centerY - picker->radius - yMargin;
+                        
+                        ls_uiGlyphString(c, font, rgbX, rgbY, threadRect, scissor, scroll,
+                                         ls_utf32Constant(U"RGB"), textColor);
+                        
+                        
+                        u32 numberBuff[32] = {};
+                        utf32 tmp = { numberBuff, 0, 32 };
+                        
+                        rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, ls_utf32Constant(U"RGB"));
+                        ls_utf32FromInt_t(&tmp, picker->pickedColor.r);
+                        ls_uiGlyphString(c, font, rgbX, rgbY, threadRect, scissor, scroll, tmp, textColor);
+                        
+                        rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
+                        ls_utf32FromInt_t(&tmp, picker->pickedColor.g);
+                        ls_uiGlyphString(c, font, rgbX, rgbY, threadRect, scissor, scroll, tmp, textColor);
+                        
+                        rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
+                        ls_utf32FromInt_t(&tmp, picker->pickedColor.b);
+                        ls_uiGlyphString(c, font, rgbX, rgbY, threadRect, scissor, scroll, tmp, textColor);
+                        
+                        //NOTE: Add HSV Label
+                        s32 hsvX = picker->centerX - picker->radius;
+                        s32 hsvY = picker->centerY - picker->radius - 2*yMargin;
+                        ls_uiGlyphString(c, font, hsvX, hsvY, threadRect, scissor, scroll,
+                                         ls_utf32Constant(U"HSV"), textColor);
+                        
+                        hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, ls_utf32Constant(U"HSV"));
+                        ls_utf32FromInt_t(&tmp, hue);
+                        ls_uiGlyphString(c, font, hsvX, hsvY, threadRect, scissor, scroll, tmp, textColor);
+                        
+                        hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
+                        ls_utf32FromInt_t(&tmp, saturation*100);
+                        ls_uiGlyphString(c, font, hsvX, hsvY, threadRect, scissor, scroll, tmp, textColor);
+                        
+                        hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
+                        ls_utf32FromInt_t(&tmp, picker->value*100);
+                        ls_uiGlyphString(c, font, hsvX, hsvY, threadRect, scissor, scroll, tmp, textColor);
+                        
                     }
                 } break;
                 
