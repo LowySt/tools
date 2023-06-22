@@ -570,6 +570,7 @@ void       ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 t,
 void       ls_uiButtonInit(UIContext *c, UIButton *, UIButtonStyle, const char32_t *t,
                            ButtonProc onClick, ButtonProc onHold, void *data);
 
+b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgColor, s32 zLayer);
 b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer);
 
 
@@ -2784,6 +2785,49 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t 
 //     and it also shouldn't use 'normal' buttons for its drop down sub-menus, so... basically @MenuIsShit
 //     and I wanna redo it completely.
 
+b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgColor, s32 zLayer = 0)
+{
+    Input *UserInput = &c->UserInput;
+    
+    b32 inputUse = FALSE;
+    
+    Color textColor   = c->textColor;
+    Color borderColor = c->borderColor;
+    
+    if(button->style == UIBUTTON_TEXT_NOBORDER) { bkgColor = c->backgroundColor; }
+    
+    if(MouseInRect(xPos, yPos, button->w, button->h))// && ls_uiInFocus(cxt, 0))
+    { 
+        button->isHot = TRUE;
+        bkgColor = c->highliteColor;
+        if(button->style == UIBUTTON_LINK) { textColor = c->highliteColor; }
+        
+        //b32 noCapture = ls_uiHasCapture(cxt, 0);
+        
+        if(LeftClick)// && noCapture)
+        {
+            if(button->onClick) { inputUse |= button->onClick(c, button->data); }
+        }
+        
+        if(LeftHold)//  && noCapture)
+        {
+            button->isHeld = TRUE;
+            bkgColor       = c->pressedColor;
+            if(button->onHold) { inputUse |= button->onHold(c, button->data); }
+        }
+    }
+    
+    RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->w, button->h };
+    command.button        = button;
+    command.bkgColor      = bkgColor;
+    command.borderColor   = borderColor;
+    command.textColor     = textColor;
+    ls_uiPushRenderCommand(c, command, zLayer);
+    
+    return inputUse;
+}
+
+
 b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer = 0)
 {
     Input *UserInput = &c->UserInput;
@@ -2796,7 +2840,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
     
     if(button->style == UIBUTTON_TEXT_NOBORDER) { bkgColor = c->backgroundColor; }
     
-    if(ls_uiHasCapture(c, 0) && MouseInRect(xPos, yPos, button->w, button->h))// && ls_uiInFocus(cxt, 0))
+    if(MouseInRect(xPos, yPos, button->w, button->h))// && ls_uiInFocus(cxt, 0))
     { 
         button->isHot = TRUE;
         bkgColor = c->highliteColor;
@@ -4492,10 +4536,7 @@ b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 w, s
         picker->value = value;
     }
     
-    Color tmp      = c->widgetColor;
-    c->widgetColor = picker->pickedColor;
-    b32 usedInput  = ls_uiButton(c, &picker->apply, buttonX, buttonY, zLayer);
-    c->widgetColor = tmp;
+    b32 usedInput  = ls_uiButton(c, &picker->apply, buttonX, buttonY, picker->pickedColor, zLayer);
     
     RenderCommand command = { UI_RC_COLOR_PICKER, x, y, w, h };
     command.colorPicker   = picker;
