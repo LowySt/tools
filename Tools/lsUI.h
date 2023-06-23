@@ -466,6 +466,7 @@ struct UIContext
     
     Color backgroundColor;
     Color borderColor;
+    Color menuBarColor;
     
     Color highliteColor;
     Color pressedColor;
@@ -1169,10 +1170,11 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height, Render
     
     uiContext->renderFunc      = cb;
     uiContext->backgroundColor = RGBg(0x38);
+    uiContext->borderColor     = RGBg(0x22);
+    uiContext->menuBarColor    = RGBg(0x20);
     uiContext->highliteColor   = RGBg(0x65);
     uiContext->pressedColor    = RGBg(0x75);
     uiContext->widgetColor     = RGBg(0x45);
-    uiContext->borderColor     = RGBg(0x22);
     uiContext->textColor       = RGBg(0xCC);
     uiContext->invWidgetColor  = RGBg(0xBA);
     uiContext->invTextColor    = RGBg(0x33);
@@ -4278,7 +4280,7 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     
     RenderCommand command = { UI_RC_MENU, x, y, w, h };
     command.menu          = menu;
-    command.bkgColor      = c->backgroundColor;
+    command.bkgColor      = c->menuBarColor;
     command.textColor     = c->textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
     
