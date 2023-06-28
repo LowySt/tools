@@ -1908,6 +1908,12 @@ void ls_utf8FromF64_t(utf8 *s, f64 x)
     }
 }
 
+utf8 ls_utf8Constant(const char8_t *p)
+{
+    return ls_utf8Constant((const u8 *)p);
+}
+
+
 utf8 ls_utf8Constant(const char *p)
 {
     return ls_utf8Constant((const u8 *)p);
@@ -2254,7 +2260,7 @@ void ls_utf8AppendCStr(utf8 *s1, char *c)
         AssertMsg(FALSE, "Grow utf8 string not implemented yet\n");
     }
     
-    ls_memcpy(c, s1->data, cLen);
+    ls_memcpy(c, s1->data + s1->byteLen, cLen);
     s1->byteLen += cLen;
     s1->len     += cLen;
 }
