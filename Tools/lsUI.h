@@ -3933,14 +3933,14 @@ inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, char *s)
 }
 
 //TODO @MemoryLeak @Leak
-inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, utf32 s)
+inline u32 ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, utf32 s)
 {
     utf32 copy = ls_utf32Copy(s);
-    UIListBoxItem item = { copy, cxt->widgetColor, cxt->textColor };
+    UIListBoxItem item = { copy, c->widgetColor, c->textColor };
     return ls_arrayAppendIndex(&list->list, item);
 }
 
-inline void ls_uiListBoxRemoveEntry(UIContext *cxt, UIListBox *list, u32 index)
+inline void ls_uiListBoxRemoveEntry(UIContext *c, UIListBox *list, u32 index)
 { 
     //NOTETODO: Is this good????
     if(list->selectedIndex == index) { list->selectedIndex = 0; }
