@@ -1380,7 +1380,7 @@ u32 __internal_GetStackTraceUntil(char *out, u32 maxLen, char *lastFuncName, b32
             ls_memcpy(imgHelp.FileName, out + outIndex, fileNameLen);
             outIndex += fileNameLen;
             
-            ls_memcpy(":", out + outIndex, 1);
+            ls_memcpy((void *)":", out + outIndex, 1);
             outIndex += 1;
             
             ls_memcpy(symbol->Name, out + outIndex, symbol->NameLen);
@@ -1439,14 +1439,14 @@ void __internal_AssertMsg(const char * funcHeader, const char* message)
     {
         SymFromAddr(process, (u64)(frames[i]), 0, symbol);
         
-        if(ls_strncmp(symbol->Name, "WinMain", symbol->NameLen) == 0)
+        if(ls_strncmp(symbol->Name, (char *)"WinMain", symbol->NameLen) == 0)
         {
-            windows_WriteConsole("\n", 1);
+            windows_WriteConsole((char *)"\n", 1);
             break;
         }
         
         windows_WriteConsole(symbol->Name, symbol->NameLen);
-        windows_WriteConsole("\n", 1);
+        windows_WriteConsole((char *)"\n", 1);
     }
     
     DebugBreak();
@@ -1482,14 +1482,14 @@ void __internal_AssertMsgF(const char *funcHeader, const char *msgFormat, ...)
     {
         SymFromAddr(process, (u64)(frames[i]), 0, symbol);
         
-        if(ls_strncmp(symbol->Name, "WinMain", symbol->NameLen) == 0)
+        if(ls_strncmp(symbol->Name, (char *)"WinMain", symbol->NameLen) == 0)
         {
-            windows_WriteConsole("\n", 1);
+            windows_WriteConsole((char *)"\n", 1);
             break;
         }
         
         windows_WriteConsole(symbol->Name, symbol->NameLen);
-        windows_WriteConsole("\n", 1);
+        windows_WriteConsole((char *)"\n", 1);
     }
     
     DebugBreak();
@@ -1499,7 +1499,7 @@ void __internal_logError(const char *funcHeader, const char *message)
 {
     windows_WriteConsole((char *)funcHeader, ls_len((char *)funcHeader));
     windows_WriteConsole((char *)message, ls_len((char *)message));
-    windows_WriteConsole("\n", 1);
+    windows_WriteConsole((char *)"\n", 1);
 }
 
 void __internal_logErrorF(const char *funcHeader, const char *msgFormat, ...)
@@ -1515,7 +1515,7 @@ void __internal_logErrorF(const char *funcHeader, const char *msgFormat, ...)
     
     windows_WriteConsole((char *)funcHeader, ls_len((char *)funcHeader));
     windows_WriteConsole((char *)buff, msgLen);
-    windows_WriteConsole("\n", 1);
+    windows_WriteConsole((char *)"\n", 1);
 }
 
 #endif //DEBUG
