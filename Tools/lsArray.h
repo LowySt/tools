@@ -187,4 +187,14 @@ b32 ls_arrayContains(Array<T> *a, T val)
     return FALSE;
 }
 
+template<typename T>
+T *ls_arrayTop(Array<T> *a)
+{
+    AssertMsg(a, "Null Array<>  pointer\n");
+    
+    if(a->count == 0) { return NULL; }
+    
+    return a->data + (a->count - 1);
+}
+
 #endif
