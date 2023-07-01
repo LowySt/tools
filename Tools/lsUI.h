@@ -3924,10 +3924,10 @@ void _ls_uiLPane(UIContext *c, UILPane *pane, s32 xPos, s32 yPos, s32 w, s32 h)
 //          This feels strange, and probably error-prone.
 
 //TODO @MemoryLeak @Leak I really think ListBox shouldn't manage memory. Fix This.
-inline u32 ls_uiListBoxAddEntry(UIContext *cxt, UIListBox *list, char *s)
+inline u32 ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, char *s)
 { 
     utf32 text = ls_utf32FromAscii(s);
-    UIListBoxItem item = { text, cxt->widgetColor, cxt->textColor };
+    UIListBoxItem item = { text, c->widgetColor, c->textColor };
     
     return ls_arrayAppendIndex(&list->list, item);
 }
