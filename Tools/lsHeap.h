@@ -18,7 +18,7 @@ struct heap
 
 heap ls_heapAlloc(s32 itemSize, s32 capacity);
 //heap ls_heapFromArray(void *data, s32 itemSize, s32 count);
-//heap ls_heapMerge(heap first, heap second);
+heap ls_heapMerge(heap *first, heap second);
 
 void ls_heapPush(heap *h, s32 key, void *item);
 void ls_heapPop(heap *h, heap_value *valueBuff);
@@ -106,9 +106,27 @@ void __ls_heapSiftDown(heap *h, s32 idx)
 heap ls_heapAlloc(s32 itemSize, s32 capacity)
 {
     heap result     = {};
-    result.data     = ls_alloc(sizeof(heap_value) * capacity);
+    result.data     = (heap_value *)ls_alloc(sizeof(heap_value) * capacity);
     result.itemSize = itemSize;
     result.capacity = capacity;
+    
+    return result;
+}
+
+heap ls_heapMerge(heap first, heap second)
+{
+    AssertMsg(first.itemSize == second.itemSize, "Item size not matching\n");
+    
+    heap result = ls_heapAlloc(first.itemSize, first.count + second.count);
+    
+    ls_memcpy(first.data, result.data, sizeof(heap_value)*first.count);
+    result.count += first.count;
+    
+    for(s32 i = 0; i < second.count; i++)
+    {
+        heap_value *v = second.data + i;
+        ls_heapPush(&result, v->key, v->item);
+    }
     
     return result;
 }
@@ -124,7 +142,7 @@ void ls_heapPush(heap *h, s32 key, void *item)
     ls_memcpy(item, curr->item, h->itemSize);
     h->count        += 1;
     
-    __ls_heapSiftUp(h, count-1);
+    __ls_heapSiftUp(h, h->count-1);
 }
 
 void ls_heapPop(heap *h, heap_value *valueBuff)
@@ -148,7 +166,6 @@ void ls_heapPop(heap *h, heap_value *valueBuff)
 heap_value *ls_heapPeek(heap *h)
 {
     AssertMsg(h != NULL, "Heap pointer is null\n");
-    AssertMsg(itemBuff != NULL, "ItemBuff return pointer is null\n");
     
     return h->data;
 }
