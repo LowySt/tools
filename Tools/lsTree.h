@@ -3,91 +3,195 @@
 
 #include "lsCRT.h"
 
-typedef b32(*cmpFunc)(void *, void *);
+//--------------------------
+//NOTE: Binary Tree
+
+struct TreeNode
+{
+    TreeNode *left;
+    TreeNode *right;
+    
+    void *data;
+};
 
 struct BinaryTree
 {
-    void *data;
-    
-    BinaryTree *Left;
-    BinaryTree *Right;
-    
-    BinaryTree *Parent;
+    TreeNode *root;
+    s32       itemSize;
 };
 
-extern "C"
+TreeNode   *__ls_binaryTCreateNode(BinaryTree *t, void *item);
+BinaryTree  ls_binaryTInit(s32 itemSize, void *item);
+TreeNode   *ls_binaryTInsertLeft(BinaryTree *t, TreeNode *root, void *item);
+TreeNode   *ls_binaryTInsertRight(BinaryTree *t, TreeNode *root, void *item);
+void        ls_binaryTPrint(BinaryTree *t, TreeNode *_root);
+
+//NOTE: Binary Tree
+//--------------------------
+
+
+//--------------------------
+//NOTE: Binary Search Tree
+
+struct STreeNode
 {
-    void ls_binaryTFree(BinaryTree *Root);
+    STreeNode *left;
+    STreeNode *right;
     
-    void ls_binaryTAddLNode(BinaryTree *Root, void *data);
-    void ls_binaryTAddRNode(BinaryTree *Root, void *data);
-    
-    void ls_binaryTRmvLTree(BinaryTree *Root, void *data);
-    void ls_binaryTRmvRTree(BinaryTree *Root, void *data);
-    
-    BinaryTree *ls_binaryTSearch(BinaryTree *Root, void *target, cmpFunc F);
+    s32 key;
+    void *data;
 };
-#endif
+
+
+struct BinarySTree
+{
+    STreeNode *root;
+    s32        itemSize;
+};
+
+
+STreeNode   *__ls_binarySTCreateNode(BinarySTree *t, s32 key, void *item);
+BinarySTree  ls_binarySTInit(s32 itemSize, s32 key, void *item);
+STreeNode   *ls_binarySTInsert(BinarySTree *t, s32 key, void *item);
+void         ls_binarySTPrint(BinarySTree *t, STreeNode *_root);
+
+//NOTE: Binary Search Tree
+//--------------------------
+
+#endif //LS_TREE_H
 
 #ifdef LS_TREE_IMPLEMENTATION
 
-void ls_binaryTFree(BinaryTree *Root)
+//--------------------------
+//NOTE: Binary Tree
+
+TreeNode *__ls_binaryTCreateNode(BinaryTree *t, void *item)
 {
-    if(Root->Left) { ls_binaryTFree(Root->Left); }
-    if(Root->Right) { ls_binaryTFree(Root->Right); }
+    AssertMsg(t != NULL, "Tree pointer is null\n");
+    AssertMsg(item != NULL, "Item pointer is null\n");
     
-    ls_free(Root->data);
-    ls_free(Root);
+    TreeNode *node = (TreeNode *)ls_alloc(sizeof(TreeNode));
+    node->data     = ls_alloc(t->itemSize);
+    ls_memcpy(item, node->data, t->itemSize);
+    return node;
 }
 
-void ls_binaryTAddLNode(BinaryTree *Root, void *data)
+BinaryTree ls_binaryTInit(s32 itemSize, void *item)
 {
-    Root->Left = (BinaryTree *)ls_alloc(sizeof(BinaryTree));
-    Root->Left->data = data;
+    AssertMsg(item != NULL, "Item pointer is null\n");
     
-    Root->Left->Parent = Root;
+    BinaryTree result = {};
+    
+    result.itemSize = itemSize;
+    result.root     = __ls_binaryTCreateNode(&result, item);
+    
+    return result;
 }
 
-void ls_binaryTAddRNode(BinaryTree *Root, void *data)
+TreeNode *ls_binaryTInsertLeft(BinaryTree *t, TreeNode *root, void *item)
 {
-    Root->Right = (BinaryTree *)ls_alloc(sizeof(BinaryTree));
-    Root->Right->data = data;
+    AssertMsg(t != NULL, "Tree pointer is null\n");
+    AssertMsg(root != NULL, "Root pointer is null\n");
+    AssertMsg(item != NULL, "Item pointer is null\n");
     
-    Root->Right->Parent = Root;
+    AssertMsg(root->left == NULL, "Left node is not empty\n");
+    
+    root->left = __ls_binaryTCreateNode(t, item);
+    return root->left;
 }
 
-void ls_binaryTRmvLTree(BinaryTree *Root, void *data)
-{ ls_binaryTFree(Root->Left); }
-
-void ls_binaryTRmvRTree(BinaryTree *Root, void *data)
-{ ls_binaryTFree(Root->Right); }
-
-BinaryTree *ls_binaryTSearch(BinaryTree *Root, void *target, cmpFunc F)
+TreeNode *ls_binaryTInsertRight(BinaryTree *t, TreeNode *root, void *item)
 {
-    // Traverse the binary tree and call the 
-    // cmpFunc on every node's data
+    AssertMsg(t != NULL, "Tree pointer is null\n");
+    AssertMsg(root != NULL, "Root pointer is null\n");
+    AssertMsg(item != NULL, "Item pointer is null\n");
     
-    b32 Result = FALSE;
-    if(Root->data) 
-    { Result = F(Root->data, target); }
+    AssertMsg(root->right == NULL, "Left node is not empty\n");
     
-    if(Result == TRUE) { return Root; }
-    else 
-    { 
-        if((Root->Left == NULL) && (Root->Right == NULL))
-        { return NULL; }
+    root->right = __ls_binaryTCreateNode(t, item);
+    return root->right;
+}
+
+void ls_binaryTPrint(BinaryTree *t, TreeNode *_root = NULL)
+{
+    TreeNode *root = _root; 
+    if(root == NULL) { root = t->root; }
+    
+    s32 value = *(s32 *)root->data;
+    ls_log("{s32} -> ", value);
+    
+    if(root->left)  { ls_binaryTPrint(t, root->left);  }
+    if(root->right) { ls_binaryTPrint(t, root->right); }
+}
+
+//NOTE: Binary Tree
+//--------------------------
+
+
+//--------------------------
+//NOTE: Binary Search Tree
+
+STreeNode *__ls_binarySTCreateNode(BinarySTree *t, s32 key, void *item)
+{
+    AssertMsg(t != NULL, "Tree pointer is null\n");
+    AssertMsg(item != NULL, "Item pointer is null\n");
+    
+    STreeNode *node = (STreeNode *)ls_alloc(sizeof(STreeNode));
+    node->key       = key;
+    node->data      = ls_alloc(t->itemSize);
+    ls_memcpy(item, node->data, t->itemSize);
+    return node;
+}
+
+BinarySTree ls_binarySTInit(s32 itemSize, s32 key, void *item)
+{
+    AssertMsg(item != NULL, "Item pointer is null\n");
+    
+    BinarySTree result = {};
+    
+    result.itemSize = itemSize;
+    result.root     = __ls_binarySTCreateNode(&result, key, item);
+    
+    return result;
+}
+
+STreeNode *ls_binarySTInsert(BinarySTree *t, s32 key, void *item)
+{
+    AssertMsg(t != NULL, "Tree pointer is null\n");
+    AssertMsg(item != NULL, "Item pointer is null\n");
+    
+    STreeNode *curr = t->root;
+    STreeNode *next = curr;
+    
+    bool isLeft = FALSE;
+    
+    while(next != NULL)
+    {
+        curr = next;
         
-        else
-        {
-            if(Root->Right == NULL)
-            { return ls_binaryTSearch(Root->Left, target, F); }
-            
-            if(Root->Left == NULL)
-            { return ls_binaryTSearch(Root->Right, target, F); }
-        }
+        if(key < curr->key) { next = curr->left; isLeft = TRUE;   continue; }
+        if(key > curr->key) { next = curr->right; isLeft = FALSE; continue; }
+        
+        if(key == curr->key) { return NULL; }
     }
     
-    return NULL;
+    if(isLeft)  { curr->left  = __ls_binarySTCreateNode(t, key, item); return curr->left; }
+    else        { curr->right = __ls_binarySTCreateNode(t, key, item); return curr->right; }
 }
 
-#endif
+void ls_binarySTPrint(BinarySTree *t, STreeNode *_root = NULL)
+{
+    STreeNode *root = _root; 
+    if(root == NULL) { root = t->root; }
+    
+    s32 value = *(s32 *)root->data;
+    ls_log("Key: {s32}, Value: {s32} -> ", root->key, value);
+    
+    if(root->left)  { ls_log("left: "); ls_binarySTPrint(t, root->left);  }
+    if(root->right) { ls_log("right: "); ls_binarySTPrint(t, root->right); }
+}
+
+//NOTE: Binary Search Tree
+//--------------------------
+
+#endif //LS_TREE_IMPLEMENTATION
