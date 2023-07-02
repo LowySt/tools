@@ -44,6 +44,18 @@ void ls_cqueueDequeue(cqueue *q, void *itemBuff);
 //NOTE: Circular Queue
 //-----------------------
 
+
+//-----------------------
+//NOTE: Priority Queue
+
+struct pqueue
+{
+    heap items;
+};
+
+//NOTE: Priority Queue
+//-----------------------
+
 #endif //LS_QUEUE_H
 
 
@@ -145,5 +157,38 @@ void ls_cqueueDequeue(cqueue *q, void *itemBuff)
 
 //NOTE: Circular Queue
 //-----------------------
+
+
+//-----------------------
+//NOTE: Priority Queue
+
+pqueue ls_pqueueAlloc(s32 itemSize, s32 capacity)
+{
+    pqueue result = {};
+    result.items  = ls_heapAlloc(itemSize, capacity);
+    
+    return result;
+}
+
+void ls_pqueueInsert(pqueue *p, s32 priority, void *item)
+{
+    ls_heapPush(&p->items, priority, item);
+}
+
+void ls_pqueuePopHighest(pqueue *p, void *itemBuff)
+{
+    heap_value value = {};
+    ls_heapPop(&p->items, &value);
+    ls_memcpy(value.item, itemBuff, p->items.itemSize);
+}
+
+bool ls_pqueueIsEmpty(pqueue *p)
+{
+    return (p->items.count == 0);
+}
+
+//NOTE: Priority Queue
+//-----------------------
+
 
 #endif //LS_QUEUE_IMPLEMENTATION
