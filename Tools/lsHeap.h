@@ -17,7 +17,7 @@ struct heap
 };
 
 heap ls_heapAlloc(s32 itemSize, s32 capacity);
-//heap ls_heapFromArray(void *data, s32 itemSize, s32 count);
+heap ls_heapFromArray(void *data, s64 *keys, s32 itemSize, s32 count);
 heap ls_heapMerge(heap *first, heap second);
 
 void ls_heapPush(heap *h, s32 key, void *item);
@@ -25,6 +25,8 @@ void ls_heapPop(heap *h, heap_value *valueBuff);
 void ls_heapPeek(heap *h, heap_value *valueBuff);
 void ls_heapRemoveRoot(heap *h);
 void ls_heapReplaceRoot(heap *h, s32 key, void *item);
+
+void ls_heapFree(heap *h);
 
 #endif //LS_HEAP_H
 
@@ -109,6 +111,28 @@ heap ls_heapAlloc(s32 itemSize, s32 capacity)
     result.data     = (heap_value *)ls_alloc(sizeof(heap_value) * capacity);
     result.itemSize = itemSize;
     result.capacity = capacity;
+    
+    return result;
+}
+
+heap ls_heapFromArray(void *data, s64 *keys, s32 itemSize, s32 count)
+{
+    heap result     = {};
+    result.data     = (heap_value *)ls_alloc(sizeof(heap_value)*count);
+    result.itemSize = itemSize;
+    result.capacity = count;
+    result.count    = count;
+    
+    for(s32 i = 0; i < count; i++)
+    {
+        u8 *At = ((u8 *)data) + (i*itemSize);
+        heap_value *curr = result.data + i;
+        curr->key = (s32)(keys[i]);
+        ls_memcpy(At, curr->item, itemSize);
+    }
+    
+    for(s32 i = 0; i < count; i++) { __ls_heapSiftDown(&result, i); }
+    __ls_heapSiftDown(&result, 0);
     
     return result;
 }
@@ -200,5 +224,12 @@ void ls_heapReplaceRoot(heap *h, s32 key, void *item)
     __ls_heapSiftDown(h, 0);
 }
 
+void ls_heapFree(heap *h)
+{
+    ls_free(h->data);
+    h->itemSize = 0;
+    h->count    = 0;
+    h->capacity = 0;
+}
 
 #endif //LS_HEAP_IMPLEMENTATION
