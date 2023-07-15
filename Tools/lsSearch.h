@@ -6,7 +6,10 @@
 //                           1 if A is bigger than B
 typedef s32(*compareFunc)(void *A, void *B);
 
+b32 ls_searchLinear(void *data, void *item, s32 itemSize, s32 count, compareFunc compare);
 b32 ls_searchBinary(void *data, void *item, s32 itemSize, s32 count, compareFunc compare);
+b32 ls_searchInterpolation(s64 *keys, s64 itemKey, s32 count);
+s32 ls_searchDijkstra(s64 **graph, s32 count, s32 startIdx, s32 endIdx);
 
 #endif //LS_SEARCH_H
 
