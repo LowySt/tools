@@ -67,7 +67,7 @@ if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
 #define WheelRotatedIn(x, y, w, h) (WheelRotated && MouseInRect(x, y, w, h))
 
 
-const     u32 THREAD_COUNT       = 1;
+const     u32 THREAD_COUNT       = 2;
 constexpr u32 RENDER_GROUP_COUNT = THREAD_COUNT == 0 ? 1 : THREAD_COUNT;
 
 #if 1
@@ -198,7 +198,7 @@ typedef b32(*TextBoxProc)(UIContext *, void *userData);
 struct UITextBox
 {
     utf32 text;
-    u32 maxLen;
+    u32 maxLen; // maxLen == 0 means it is ignored. No max Len.
     
     b32 isSingleLine;
     b32 isReadonly;
@@ -546,8 +546,8 @@ b32        ls_uiHasCapture(UIContext *c, void *p);
 void       ls_uiSelectFontByPixelHeight(UIContext *cxt, u32 pixelHeight);
 s32        ls_uiSelectFontByFontSize(UIContext *cxt, UIFontSize fontSize);
 
-Color      ls_uiDarkenRGB(Color c, f32 factor);
-Color      ls_uiLightenRGB(Color c, f32 factor);
+Color      ls_uiDarkenRGB(Color c, f32 percentage);
+Color      ls_uiLightenRGB(Color c, f32 percentage);
 Color      ls_uiAlphaBlend(Color source, Color dest, u8 alpha);
 Color      ls_uiAlphaBlend(Color source, Color dest);
 Color      ls_uiRGBAtoARGB(Color c);
@@ -604,7 +604,8 @@ UIRect     ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRe
 void       ls_uiTextBoxClear(UIContext *c, UITextBox *box);
 void       ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s);
 void       ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s);
-b32        ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h);
+void       ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen, b32 singleLine, b32 readOnly, TextBoxProc preInput, TextBoxProc postInput);
+b32        ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
 
 u32        ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, char *s);
 u32        ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, utf32 s);
@@ -1597,7 +1598,7 @@ void ls_uiEndScrollableRegion(UIContext *c)
     c->scissor = UIRect { 0, 0, s32(c->width), s32(c->height) };
 }
 
-Color ls_uiDarkenRGB(Color c, f32 factor)
+Color ls_uiDarkenRGB(Color c, f32 percentage)
 {
     u8 *c8 = (u8 *)&c;
     
@@ -1608,7 +1609,7 @@ Color ls_uiDarkenRGB(Color c, f32 factor)
     
     if(highest == 0)  { return c; }
     
-    u8 reduction = (255.0f*factor);
+    u8 reduction = (255.0f*percentage);
     if(highest < reduction) { reduction = highest; }
     
     f32 realFactor = (f32)(highest - reduction) / highest;
@@ -1620,7 +1621,7 @@ Color ls_uiDarkenRGB(Color c, f32 factor)
     return c;
 }
 
-Color ls_uiLightenRGB(Color c, f32 factor)
+Color ls_uiLightenRGB(Color c, f32 percentage)
 {
     u8 *c8 = (u8 *)&c;
     
@@ -1632,7 +1633,7 @@ Color ls_uiLightenRGB(Color c, f32 factor)
     if(lowest == 255)  { return c; }
     
     u8 diffFactor  = 255 - lowest;
-    u8  sum        = diffFactor * factor;
+    u8  sum        = diffFactor * percentage;
     f32 realFactor = (f32)sum / (f32)diffFactor;
     
     c8[0] += (255 - c8[0]) * realFactor;
@@ -3128,10 +3129,21 @@ void ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s)
 void ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s)
 {
     ls_utf32Set(&box->text, s);
+    
+}
+
+void ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen = 0, b32 singleLine = TRUE, b32 readOnly = FALSE, TextBoxProc preInput = NULL, TextBoxProc postInput = NULL)
+{
+    box->text         = ls_utf32Alloc(len);
+    box->maxLen       = maxLen;
+    box->isSingleLine = singleLine;
+    box->isReadonly   = readOnly;
+    box->preInput     = preInput;
+    box->postInput    = postInput;
 }
 
 //TODO: Text Alignment
-b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
+b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer = 0)
 {
     Input *UserInput = &c->UserInput;
     b32 inputUse = FALSE;
@@ -3704,7 +3716,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h)
     }
     
     RenderCommand command = {UI_RC_TEXTBOX, xPos, yPos, w, h, 0, 0, 0, 0, box, c->widgetColor, c->textColor};
-    ls_uiPushRenderCommand(c, command, 0);
+    ls_uiPushRenderCommand(c, command, zLayer);
     
     return inputUse;
 }
@@ -4565,7 +4577,7 @@ void ls_uiRender(UIContext *c)
         volatile b32 allDone = TRUE;
         for(u32 i = 0; i < THREAD_COUNT; i++)
         {
-            allDone &= c->renderGroups[i].isDone;
+            allDone = allDone && c->renderGroups[i].isDone;
         }
         
         areAllDone = allDone;
@@ -5005,8 +5017,8 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     s32 scrollBarYOff = ((f32)-scroll.deltaY / (f32)totalHeight) * usableHeight;
                     s32 scrollBarY    = (yPos + h - 4) - scrollBarYOff - scrollBarH;
                     
-                    if(scrollBarY < yPos+2)   scrollBarY = yPos+2;
-                    if(scrollBarY > yPos+h-2-scrollBarH) scrollBarY = yPos+h-2-scrollBarH;
+                    if(scrollBarY < yPos+2)                  { scrollBarY = yPos+2; }
+                    if(scrollBarY > yPos+h-2-scrollBarH)     { scrollBarY = yPos+h-2-scrollBarH; }
                     
                     ls_uiFillRect(c, scrollRectX+2, scrollBarY, 12, scrollBarH,
                                   threadRect, scissor, {}, c->borderColor);
