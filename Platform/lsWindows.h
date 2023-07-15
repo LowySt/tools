@@ -37,14 +37,14 @@ void   ls_zeroMem(void *mem, size_t size);
 
 struct windowsDate
 {
-	u32 Year;
-	u32 Month;
-	u32 DayOfWeek;
-	u32 Day;
-	u32 Hour;
-	u32 Minute;
-	u32 Second;
-	u32 Milliseconds;
+	s32 Year;
+	s32 Month;
+	s32 DayOfWeek;
+	s32 Day;
+	s32 Hour;
+	s32 Minute;
+	s32 Second;
+	s32 Milliseconds;
 };
 
 enum RegionTimerPrecision
@@ -1336,14 +1336,14 @@ windowsDate windows_GetDate(b32 localTime)
     
     windowsDate result = {};
     
-    result.Year         = (u32)time.wYear;;
-    result.Month        = (u32)time.wMonth;;
-    result.DayOfWeek    = (u32)time.wDayOfWeek;;
-    result.Day          = (u32)time.wDay;;
-    result.Hour         = (u32)time.wHour;;
-    result.Minute       = (u32)time.wMinute;;
-    result.Second       = (u32)time.wSecond;;
-    result.Milliseconds = (u32)time.wMilliseconds;;
+    result.Year         = (s32)time.wYear;;
+    result.Month        = (s32)time.wMonth;;
+    result.DayOfWeek    = (s32)time.wDayOfWeek;;
+    result.Day          = (s32)time.wDay;;
+    result.Hour         = (s32)time.wHour;;
+    result.Minute       = (s32)time.wMinute;;
+    result.Second       = (s32)time.wSecond;;
+    result.Milliseconds = (s32)time.wMilliseconds;;
     
     return result;
 }
