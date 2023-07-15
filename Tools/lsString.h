@@ -3247,7 +3247,7 @@ s32 ls_utf32RightFind(utf32 s, s32 off, u32 c)
     u32 *At = s.data + off;
     s32 offset = off;
     
-    while(At != s.data)
+    while(offset >= 0)
     {
         if(*At == c) { return offset; }
         At--; offset--;
@@ -3271,7 +3271,7 @@ s32 ls_utf32RightFindNumber(utf32 s, s32 off)
     
     u32 *At    = s.data + off;
     s32 offset = off;
-    while (At != s.data)
+    while(offset >= 0)
     { 
         if(ls_utf32IsNumber(*At)) { return offset; }
         At--; offset--;
