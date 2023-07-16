@@ -618,11 +618,11 @@ s32        ls_uiSliderGetValue(UIContext *c, UISlider *f);
 b32        ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h);
 
 UIButton   ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 height);
-void       ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub);
-void       ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name);
-void       ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, ButtonProc onClick, void *userData);
-void       ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, ButtonProc onClick, void *userData);
-void       ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, ButtonProc onClick, void *data);
+UISubMenu  *ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub);
+UISubMenu  *ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name);
+UIMenuItem *ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, ButtonProc onClick, void *userData);
+UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, ButtonProc onClick, void *userData);
+UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, ButtonProc onClick, void *data);
 b32        ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer);
 
 void       ls_uiTexturedRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, void *data, s32 dataW, s32 dataH, s32 zLayer);
@@ -4130,38 +4130,27 @@ UIButton ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 heig
     return result;
 }
 
-inline void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub)
-{ ls_arrayAppend(&menu->subMenus, sub); }
+inline UISubMenu *ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub)
+{ return ls_arrayAppend(&menu->subMenus, sub); }
 
-void ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name)
+UISubMenu *ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name)
 { 
     UISubMenu newSub = {};
     newSub.name = ls_utf32FromUTF32(name);
-    ls_arrayAppend(&menu->subMenus, newSub);
+    return ls_arrayAppend(&menu->subMenus, newSub);
 }
 
-void ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, ButtonProc onClick, void *userData)
+UIMenuItem *ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, ButtonProc onClick, void *userData)
 {
     UIMenuItem newItem = {};
     newItem.name       = ls_utf32FromUTF32(name);
     newItem.isVisible  = TRUE;
     newItem.onClick    = onClick;
     newItem.userData   = userData;
-    ls_arrayAppend(&menu->items, newItem);
+    return ls_arrayAppend(&menu->items, newItem);
 }
 
-void ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, ButtonProc onClick, void *userData)
-{
-    UIMenuItem newItem = {};
-    
-    newItem.name       = ls_utf32FromUTF32(name);
-    newItem.isVisible  = TRUE;
-    newItem.onClick    = onClick;
-    newItem.userData   = userData;
-    ls_arrayAppend(&sub->items, newItem);
-}
-
-void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, ButtonProc onClick, void *userData)
+UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, ButtonProc onClick, void *userData)
 {
     UIMenuItem newItem = {};
     
@@ -4169,7 +4158,18 @@ void ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t 
     newItem.isVisible  = TRUE;
     newItem.onClick    = onClick;
     newItem.userData   = userData;
-    ls_arrayAppend(&menu->subMenus[subIdx].items, newItem);
+    return ls_arrayAppend(&sub->items, newItem);
+}
+
+UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, ButtonProc onClick, void *userData)
+{
+    UIMenuItem newItem = {};
+    
+    newItem.name       = ls_utf32FromUTF32(name);
+    newItem.isVisible  = TRUE;
+    newItem.onClick    = onClick;
+    newItem.userData   = userData;
+    return ls_arrayAppend(&menu->subMenus[subIdx].items, newItem);
 }
 
 b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 2)
@@ -4958,9 +4958,17 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                                 strWidth = ls_uiGlyphStringLen(c, font, item->name);
                                 xOff = (subW - strWidth) / 2;
                                 
-                                if(item->isHot) {
+                                if(item->isVisible) {
+                                    if(item->isHot) {
+                                        ls_uiRect(c, subX, currY, subW, subH,
+                                                  threadRect, scissor, scroll, c->highliteColor);
+                                    }
+                                }
+                                else
+                                {
+                                    Color bkgColor = ls_uiAlphaBlend(c->widgetColor, RGBg(0xAA));
                                     ls_uiRect(c, subX, currY, subW, subH,
-                                              threadRect, scissor, scroll, c->highliteColor);
+                                              threadRect, scissor, scroll, bkgColor);
                                 }
                                 
                                 ls_uiGlyphString(c, font, subX+xOff, currY+yOff, threadRect, scissor, scroll,
