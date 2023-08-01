@@ -7,6 +7,8 @@
 -Premultiplied Alpha
 
 -8 Render Threads
+
+-@Alpha-Un-Multiply
 */
 
 #include "lsWindows.h"
@@ -78,7 +80,8 @@ if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
 const     u32 THREAD_COUNT       = 4;
 constexpr u32 RENDER_GROUP_COUNT = THREAD_COUNT == 0 ? 1 : THREAD_COUNT;
 
-#if 1
+//-------------------------
+//NOTE: Color RGBA stuff
 
 union Color
 {
@@ -86,23 +89,50 @@ union Color
     struct { u8 b, g, r, a; };
 };
 
-Color RGBA(u8 r, u8 g, u8 b, u8 a) { Color res = { .b = b, .g = g, .r = r, .a = a };    return res; }
-Color RGB(u8 r, u8 g, u8 b)        { Color res = { .b = b, .g = g, .r = r, .a = 0xFF }; return res; }
-Color RGBg(u8 v)                   { Color res = { .b = v, .g = v, .r = v, .a = 0xFF }; return res; }
-Color SetAlpha(Color v, u8 a)      { v.a = a; return v; }
-u8    GetAlpha(Color v)            { return v.a; }
+Color RGBA(u8 r, u8 g, u8 b, u8 a)
+{ 
+    f32 floatAlpha = (f32)a / 255.0f;
+    Color res      = { .b = (u8)(b*floatAlpha), .g = (u8)(g*floatAlpha), .r = (u8)(r*floatAlpha), .a = a };
+    return res;
+}
 
-#else
+Color RGB(u8 r, u8 g, u8 b)
+{ 
+    Color res = { .b = b, .g = g, .r = r, .a = 0xFF };
+    return res;
+}
 
-#define RGBA(r,g,b,a)  (u32)((a<<24)|(r<<16)|(g<<8)|b)
-#define RGB(r,g,b)     (u32)((0xFF<<24)|(r<<16)|(g<<8)|b)
-#define RGBg(v)        (u32)((0xFF<<24)|(v<<16)|(v<<8)|v)
-#define SetAlpha(v, a) (u32)((v & 0x00FFFFFF) | (((u32)a)<<24))
-#define GetAlpha(v)    ( u8)(((v) & 0xFF000000) >> 24)
+Color RGBg(u8 v)
+{ 
+    Color res = { .b = v, .g = v, .r = v, .a = 0xFF };
+    return res;
+}
 
-typedef u32 Color;
+Color ls_uiAlphaPremultiply(Color source)
+{
+    f32 fAlpha = (f32)source.a / 255.0f;
+    Color Result = {
+        .b = (u8)(source.b*fAlpha),
+        .g = (u8)(source.g*fAlpha),
+        .r = (u8)(source.r*fAlpha),
+        .a = source.a
+    };
+    return Result;
+}
 
-#endif
+Color SetAlpha(Color v, u8 a)
+{ 
+    f32 alphaConv = ((f32)a / (f32)v.a);
+    Color res     = { .b = (u8)(v.b*alphaConv), .g = (u8)(v.g*alphaConv), .r = (u8)(v.r*alphaConv), .a = a };
+    return res;
+}
+
+u8 GetAlpha(Color v)
+{ return v.a; }
+
+//NOTE: Color RGBA stuff
+//-------------------------
+
 
 union UIRect
 {
@@ -1840,6 +1870,7 @@ void ls_uiEndScrollableRegion(UIContext *c)
     c->scissor = UIRect { 0, 0, s32(c->width), s32(c->height) };
 }
 
+//TODO: Fix for premultiplied alpha?
 Color ls_uiDarkenRGB(Color c, f32 percentage)
 {
     u8 *c8 = (u8 *)&c;
@@ -1863,6 +1894,7 @@ Color ls_uiDarkenRGB(Color c, f32 percentage)
     return c;
 }
 
+//TODO: Fix for premultiplied alpha?
 Color ls_uiLightenRGB(Color c, f32 percentage)
 {
     u8 *c8 = (u8 *)&c;
@@ -1885,27 +1917,19 @@ Color ls_uiLightenRGB(Color c, f32 percentage)
     return c;
 }
 
+//TODO: This feels wrong. In the backbuffer I'm storing the pixels *emissions* rather then the color.
+//      Why am I not un-multiplying the alpha before writing into the backbuffer, and why does it look
+//      correct?? @Alpha-Un-Multiply
 Color ls_uiAlphaBlend(Color source, Color dest, u8 alpha)
 {
-    u8 *c8 = (u8 *)&source;
-    u8 bS = c8[0];
-    u8 gS = c8[1];
-    u8 rS = c8[2];
-    u8 aS = alpha;
-    
-    c8 = (u8 *)&dest;
-    u8 bD = c8[0];
-    u8 gD = c8[1];
-    u8 rD = c8[2];
-    u8 aD = c8[3];
-    
+    //NOTE: If the alpha was premultiplied
+    //f32 factor = (f32)(255 - source.a) / 255.0f;
     f32 factor = (f32)(255 - alpha) / 255.0f;
-    f32 aMulti = (f32)alpha / 255.0f;
     
     Color Result = {};
-    Result.b = source.b*aMulti + dest.b*factor;
-    Result.g = source.g*aMulti + dest.g*factor;
-    Result.r = source.r*aMulti + dest.r*factor;
+    Result.b = source.b + dest.b*factor;
+    Result.g = source.g + dest.g*factor;
+    Result.r = source.r + dest.r*factor;
     Result.a = alpha + dest.a*factor;
     
     return Result;
@@ -1942,7 +1966,7 @@ Color ls_uiARGBtoRGBA(Color c)
     return c;
 }
 
-//TODO: Should *REALLY* converto to floating point colors, rather than u8 colors.
+//TODO: Should *MAYBE* convert to floating point colors, rather than u8 colors.
 //      Better for converting into different color spaces.
 Color ls_uiHSVtoRGB(u32 h, f32 s, f32 v)
 {
@@ -2478,14 +2502,10 @@ void ls_uiBitmap(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRe
             if(x < 0 || x >= c->width)  continue;
             if(y < 0 || y >= c->height) continue;
             
-            //At[y*c->width + x] = data[eY*w + eX];
-            
             Color src  = { .value = data[eY*w + eX] };
             Color base = { .value = At[y*c->width + x] };
             
-            u8 sourceA = GetAlpha(src);
-            
-            Color blendedColor = ls_uiAlphaBlend(src, base, sourceA);
+            Color blendedColor = ls_uiAlphaBlend(src, base);
             At[y*c->width + x] = blendedColor.value;
         }
     }
@@ -2521,16 +2541,18 @@ void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, UIRect threadRect, UIRect scis
             if(x < scissor.x || x >= scissor.x + scissor.w) break;
             
             Color base = { .value = At[y*c->width + x] };
+            u8 dstA    = glyph->data[eY*glyph->width + eX];
             
-            u8 sourceA = GetAlpha(textColor);
-            u8 dstA = glyph->data[eY*glyph->width + eX];
-            
-            f64 sA = (f64)sourceA / 255.0;
             f64 dA = (f64)dstA / 255.0;
             
-            u8 Alpha = (sA * dA) * 255;
+            Color actual = {
+                .b = (u8)(textColor.b*dA),
+                .g = (u8)(textColor.g*dA),
+                .r = (u8)(textColor.r*dA),
+                .a = (u8)(textColor.a*dA)
+            };
             
-            Color blendedColor = ls_uiAlphaBlend(textColor, base, Alpha);
+            Color blendedColor = ls_uiAlphaBlend(actual, base);
             At[y*c->width + x] = blendedColor.value;
         }
     }
