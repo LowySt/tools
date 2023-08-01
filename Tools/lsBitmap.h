@@ -24,6 +24,7 @@ struct Bitmap
 
 //NOTE: Interface
 Bitmap ls_bitmapLoad(string Path);
+Bitmap ls_bitmapLoad(string Path, u8 rMask, u8 gMask, u8 bMask, u8 aMask);
 void ls_bitmapWrite(string Path, u8 *data, s32 width, s32 height);
 
 
