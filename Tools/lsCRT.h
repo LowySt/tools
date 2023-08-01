@@ -483,9 +483,10 @@ u32 ls_utoax_t(u64 value, char *buff, u32 buffMax)
 {
     char *Result = buff;
     
-    if(buffMax < 4) { return 0; }
+    if(buffMax < 5) { return 0; }
     
-    if (value == 0) { Result[0] = '0'; Result[1] = 'x'; Result[2] = '0'; Result[3] = '\0'; return 3; }
+    u64 orig = value;
+    if(value == 0) { Result[0] = '0'; Result[1] = 'x'; Result[2] = '0'; Result[3] = '0'; Result[4] = '\0'; return 4; }
     
     s32 i = 0;
     while (value != 0)
@@ -497,6 +498,9 @@ u32 ls_utoax_t(u64 value, char *buff, u32 buffMax)
         else          { Result[i++] = unit - 10 + 'A'; }
         value = value >> 4;
     }
+    
+    //TODO: Append a 0 if you don't complete a byte always?
+    if(orig < 16) { Result[i] = '0'; i += 1; }
     
     if(i == buffMax) { return i; }
     Result[i] = 'x';
