@@ -9,6 +9,7 @@
 -8 Render Threads
 
 -@Alpha-Un-Multiply
+-Fix pre-multiplied alpha for LightenRGB and DarkenRGB
 */
 
 #include "lsWindows.h"
