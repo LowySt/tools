@@ -7,6 +7,7 @@
 -Premultiplied Alpha
 
 -8 Render Threads
+-Maybe pre-compute thread rects and collapse even further the pushRenderCommand function sub-switch cases.
 
 -@Alpha-Un-Multiply
 -Fix pre-multiplied alpha for LightenRGB and DarkenRGB
@@ -1618,194 +1619,1143 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
         
         case 4:
         {
-            b32 bl = ls_uiRectIntersects(commandRect, c->renderUIRects[0]);
-            b32 br = ls_uiRectIntersects(commandRect, c->renderUIRects[1]);
-            b32 tl = ls_uiRectIntersects(commandRect, c->renderUIRects[2]);
-            b32 tr = ls_uiRectIntersects(commandRect, c->renderUIRects[3]);
+            s32 mask = ls_uiRectIntersects(commandRect, c->renderUIRects[0]);
+            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[1]) << 1;
+            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[2]) << 2;
+            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[3]) << 3;
             
-            if(!br && !tl && !tr && bl)
+            //NOTE: Drawing outside of the window. No point in pushing a render command
+            if(mask == 0) { return; }
+            
+            switch(mask)
             {
-                command.threadRect       = c->renderUIRects[0];
-                command.threadRect.maxX -= 1;
-                command.threadRect.maxY -= 1;
+                case 1:
+                {
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
                 
-                stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                case 2:
+                {
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
                 
-                ls_stackPush(renderStack, (void *)&command);
-                return;
+                case 4:
+                {
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 8:
+                {
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 5:
+                {
+                    //Bottom Left
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //Top Left
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 10:
+                {
+                    //Bottom Right
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //Top Right
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 12:
+                {
+                    //Top Left
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //Top Right
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 3:
+                {
+                    //Bottom Left
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //Bottom Right
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 15:
+                {
+                    //Bottom Left
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //Bottom Right
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //Top Left
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //Top Right
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                default: { AssertMsg(FALSE, "Unhandled mask in 4 threads\n"); return; } break;
             }
-            else if(!bl && !tl && !tr && br)
+        } break;
+        
+        case 8:
+        {
+            s32 mask = ls_uiRectIntersects(commandRect, c->renderUIRects[0]);
+            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[1]) << 1;
+            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[2]) << 2;
+            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[3]) << 3;
+            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[4]) << 4;
+            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[5]) << 5;
+            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[6]) << 6;
+            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[7]) << 7;
+            
+            //NOTE: Drawing outside of the window. No point in pushing a render command
+            if(mask == 0) { return; }
+            
+            switch(mask)
             {
-                command.threadRect       = c->renderUIRects[1];
-                command.threadRect.maxX  = c->width;
-                command.threadRect.maxY -= 1;
+                case 1:
+                {
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
                 
-                stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                case 2:
+                {
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
                 
-                ls_stackPush(renderStack, (void *)&command);
-                return;
+                case 4:
+                {
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 8:
+                {
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 16:
+                {
+                    command.threadRect       = c->renderUIRects[4];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[4].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 32:
+                {
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 64:
+                {
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 128:
+                {
+                    command.threadRect       = c->renderUIRects[7];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[7].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 3:
+                {
+                    //BL
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCL
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 6:
+                {
+                    //BCL
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCR
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 12:
+                {
+                    //BCR
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BR
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 7:
+                {
+                    //BL
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCL
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCR
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 14:
+                {
+                    //BCL
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCR
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BR
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 15:
+                {
+                    //BL
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCL
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCR
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BR
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 48:
+                {
+                    //TL
+                    command.threadRect       = c->renderUIRects[4];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[4].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCL
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 96:
+                {
+                    //TCL
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCR
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 192:
+                {
+                    //TCR
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TR
+                    command.threadRect       = c->renderUIRects[7];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 112:
+                {
+                    //TL
+                    command.threadRect       = c->renderUIRects[4];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[4].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCL
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCR
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 224:
+                {
+                    //TCL
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCR
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TR
+                    command.threadRect       = c->renderUIRects[7];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 240:
+                {
+                    //TL
+                    command.threadRect       = c->renderUIRects[4];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    stack *renderStack = &c->renderGroups[4].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCL
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCR
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TR
+                    command.threadRect       = c->renderUIRects[7];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 17:
+                {
+                    //BL
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TL
+                    command.threadRect       = c->renderUIRects[4];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[4].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 34:
+                {
+                    //BCL
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCL
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 68:
+                {
+                    //BCR
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCR
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 136:
+                {
+                    //BR
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TR
+                    command.threadRect       = c->renderUIRects[7];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 51:
+                {
+                    //BL
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCL
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TL
+                    command.threadRect       = c->renderUIRects[4];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[4].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCL
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 102:
+                {
+                    //BCL
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCR
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCL
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCR
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 204:
+                {
+                    //BCR
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BR
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCR
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TR
+                    command.threadRect       = c->renderUIRects[7];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 119:
+                {
+                    //BL
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCL
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCR
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TL
+                    command.threadRect       = c->renderUIRects[4];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[4].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCL
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCR
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 238:
+                {
+                    //BCL
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCR
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BR
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCL
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCR
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TR
+                    command.threadRect       = c->renderUIRects[7];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                case 255:
+                {
+                    //BL
+                    command.threadRect       = c->renderUIRects[0];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCL
+                    command.threadRect       = c->renderUIRects[1];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BCR
+                    command.threadRect       = c->renderUIRects[2];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //BR
+                    command.threadRect       = c->renderUIRects[3];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY -= 1;
+                    
+                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TL
+                    command.threadRect       = c->renderUIRects[4];
+                    command.threadRect.maxX -= 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[4].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCL
+                    command.threadRect       = c->renderUIRects[5];
+                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TCR
+                    command.threadRect       = c->renderUIRects[6];
+                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    
+                    //TR
+                    command.threadRect       = c->renderUIRects[7];
+                    command.threadRect.maxX  = c->width;
+                    command.threadRect.maxY  = c->height-1;
+                    
+                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
+                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
+                    
+                    ls_stackPush(renderStack, (void *)&command);
+                    return;
+                } break;
+                
+                default: { AssertMsg(FALSE, "Unhandled mask in 8 threads\n"); return; } break;
             }
-            else if(!bl && !tr && !br && tl)
-            {
-                command.threadRect       = c->renderUIRects[2];
-                command.threadRect.maxX -= 1;
-                command.threadRect.maxY  = c->height-1;
-                
-                stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                return;
-            }
-            else if(!bl && !br && !tl && tr)
-            {
-                command.threadRect       = c->renderUIRects[3];
-                command.threadRect.maxX  = c->width;
-                command.threadRect.maxY  = c->height-1;
-                
-                stack *renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                return;
-            }
-            else if(!br && !tr && bl && tl)
-            {
-                //Bottom Left
-                command.threadRect       = c->renderUIRects[0];
-                command.threadRect.maxX -= 1;
-                command.threadRect.maxY -= 1;
-                
-                stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                
-                //Top Left
-                command.threadRect       = c->renderUIRects[2];
-                command.threadRect.maxX -= 1;
-                command.threadRect.maxY  = c->height-1;
-                
-                renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                return;
-            }
-            else if(!bl && !tl && br && tr)
-            {
-                //Bottom Right
-                command.threadRect       = c->renderUIRects[1];
-                command.threadRect.maxX  = c->width;
-                command.threadRect.maxY -= 1;
-                
-                stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                
-                //Top Right
-                command.threadRect       = c->renderUIRects[3];
-                command.threadRect.maxX  = c->width;
-                command.threadRect.maxY  = c->height-1;
-                
-                renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                return;
-            }
-            else if(!bl && !br && tl && tr)
-            {
-                //Top Left
-                command.threadRect       = c->renderUIRects[2];
-                command.threadRect.maxX -= 1;
-                command.threadRect.maxY  = c->height-1;
-                
-                stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                
-                //Top Right
-                command.threadRect       = c->renderUIRects[3];
-                command.threadRect.maxX  = c->width;
-                command.threadRect.maxY  = c->height-1;
-                
-                renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                return;
-            }
-            else if(!tl && !tr && bl && br)
-            {
-                //Bottom Left
-                command.threadRect       = c->renderUIRects[0];
-                command.threadRect.maxX -= 1;
-                command.threadRect.maxY -= 1;
-                
-                stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                
-                //Bottom Right
-                command.threadRect       = c->renderUIRects[1];
-                command.threadRect.maxX  = c->width;
-                command.threadRect.maxY -= 1;
-                
-                renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                return;
-            }
-            else
-            {
-                //Bottom Left
-                command.threadRect       = c->renderUIRects[0];
-                command.threadRect.maxX -= 1;
-                command.threadRect.maxY -= 1;
-                
-                stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                
-                //Bottom Right
-                command.threadRect       = c->renderUIRects[1];
-                command.threadRect.maxX  = c->width;
-                command.threadRect.maxY -= 1;
-                
-                renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                
-                //Top Left
-                command.threadRect       = c->renderUIRects[2];
-                command.threadRect.maxX -= 1;
-                command.threadRect.maxY  = c->height-1;
-                
-                renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                
-                //Top Right
-                command.threadRect       = c->renderUIRects[3];
-                command.threadRect.maxX  = c->width;
-                command.threadRect.maxY  = c->height-1;
-                
-                renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                return;
-            }
+            
         } break;
         
         default: { AssertMsg(FALSE, "Thread count not supported\n"); } return;
@@ -4895,6 +5845,19 @@ void ls_uiRender__(UIContext *c, u32 threadID)
             s32 tX = halfWidth*(threadID%2);
             s32 tH = halfHeight;
             s32 tW = halfWidth;
+            
+            ls_uiClearRect(c, tX, tY, tW, tH, c->backgroundColor);
+        } break;
+        
+        case 8:
+        {
+            s32 qrtWidth   = c->width/4;
+            s32 halfHeight = c->height/2;
+            
+            s32 tY = halfHeight*(threadID/4);
+            s32 tX = qrtWidth*(threadID%4);
+            s32 tH = halfHeight;
+            s32 tW = qrtWidth;
             
             ls_uiClearRect(c, tX, tY, tW, tH, c->backgroundColor);
         } break;
