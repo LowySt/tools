@@ -9,7 +9,7 @@
 
 //TODO: How to deal with modifiers?
 typedef s32(*LogFormatTypeProc)(char *, va_list *);
-typedef s32(*LogFormatTypeModProc)(char *, char *mods, s32 numMods, va_list *);
+typedef s32(*LogFormatTypeModProc)(char *, char *mods, s32 numMods, s32 lenMod, va_list *);
 
 struct LogRegisteredType
 {
@@ -50,11 +50,11 @@ s32 ls_vlogFormatB32(char *dst, va_list *argList)
     return 0;
 }
 
-s32 ls_vlogFormatS32(char *dst, char *mods, s32 numMods, va_list *argList)
+s32 ls_vlogFormatS32(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *argList)
 {
     s32 intValue = va_arg(*argList, s32);
     
-    const s32 buffSize = 32;
+    const s32 buffSize = 64;
     char intBuff[buffSize] = {};
     s32 sLen = 0;
     
@@ -69,7 +69,7 @@ s32 ls_vlogFormatS32(char *dst, char *mods, s32 numMods, va_list *argList)
         {
             case 'x':
             {
-                sLen = ls_utoax_t((u8)intValue, intBuff, buffSize);
+                sLen = ls_utoax_t((u16)intValue, intBuff, buffSize);
             } break;
             
             default:
@@ -80,7 +80,21 @@ s32 ls_vlogFormatS32(char *dst, char *mods, s32 numMods, va_list *argList)
         }
     }
     
+    if(lenMod > 0)
+    {
+        s32 lenDiff = lenMod - sLen;
+        while(lenDiff > 0)
+        {
+            if(sLen+1 >= buffSize) { return sLen; }
+            
+            intBuff[sLen] = ' ';
+            sLen += 1;
+            lenDiff -= 1;
+        }
+    }
+    
     ls_memcpy(intBuff, dst, sLen);
+    
     return sLen;
 }
 
@@ -124,12 +138,39 @@ s32 ls_vlogFormatF64(char *dst, va_list *argList)
     return sLen;
 }
 
-s32 ls_vlogFormatString(char *dst, va_list *argList)
+s32 ls_vlogFormatChar(char *dst, va_list *argList)
 {
-    string str = va_arg(*argList, string);
+    //NOTE: Auto promotion in c...
+    s32 c = va_arg(*argList, s32);
     
+    ls_memcpy(&c, dst, 1);
+    return 1;
+}
+
+s32 ls_vlogFormatString(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *argList)
+{
+    //NOTETODO: For now mods and numMods params are ignored!
+    (void)(mods);
+    (void)(numMods);
+    
+    string str = va_arg(*argList, string);
     ls_memcpy(str.data, dst, str.len);
-    return str.len;
+    
+    s32 sLen = str.len;
+    if(lenMod > 0)
+    {
+        s32 lenDiff = lenMod - sLen;
+        AssertMsg(lenDiff < 256, "Suspiciously large number. We don't check buffSize in the format, which is bad.\n");
+        
+        while(lenDiff > 0)
+        {
+            dst[sLen] = ' ';
+            sLen += 1;
+            lenDiff -= 1;
+        }
+    }
+    
+    return sLen;
 }
 
 s32 ls_vlogFormatUTF8(char *dst, va_list *argList)
@@ -210,7 +251,7 @@ void ls_vlogRegister(const char *typeName, LogFormatTypeModProc proc)
     ls_arrayAppendIndex(&__internal_logRegisteredTypes, t);
 }
 
-s32 ls_vlogFormat(char *dst, view marker, char *mods, s32 numMods, va_list *argList)
+s32 ls_vlogFormat(char *dst, view marker, char *mods, s32 numMods, s32 lenMod, va_list *argList)
 {
     for(u32 i = 0; i < __internal_logRegisteredTypes.count; i++)
     {
@@ -219,7 +260,7 @@ s32 ls_vlogFormat(char *dst, view marker, char *mods, s32 numMods, va_list *argL
             if(__internal_logRegisteredTypes[i].format)
             { return __internal_logRegisteredTypes[i].format(dst, argList); }
             else if(__internal_logRegisteredTypes[i].modFormat)
-            { return __internal_logRegisteredTypes[i].modFormat(dst, mods, numMods, argList); }
+            { return __internal_logRegisteredTypes[i].modFormat(dst, mods, numMods, lenMod, argList); }
         }
     }
     
@@ -242,6 +283,7 @@ void ls_logDefaultTypesRegister()
         ls_vlogRegister("u64",    ls_vlogFormatU64);
         ls_vlogRegister("f32",    ls_vlogFormatF64);
         ls_vlogRegister("f64",    ls_vlogFormatF64);
+        ls_vlogRegister("char",   ls_vlogFormatChar);
         ls_vlogRegister("string", ls_vlogFormatString);
         ls_vlogRegister("utf8",   ls_vlogFormatUTF8);
         ls_vlogRegister("utf32",  ls_vlogFormatUTF32);
@@ -253,7 +295,7 @@ void ls_logDefaultTypesRegister()
     }
 }
 
-s32 ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList)
+s32 ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList, b32 newline = TRUE)
 {
     if(!__ls_log__initialize) { ls_logDefaultTypesRegister(); }
     
@@ -263,12 +305,17 @@ s32 ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList)
     s32 numMods = 0;
     char mods[8] = {};
     
+    s32 lenMod = 0;
+    s32 lenModCount = 0;
+    
     s32 i = 0;
     for(p = format; *p != 0; p++)
     {
         AssertMsg(i < buffSize, "Log Destination Buffer too small\n");
         
         numMods = 0;
+        lenMod = 0;
+        lenModCount = 0;
         
         if(*p == '{')
         {
@@ -280,6 +327,9 @@ s32 ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList)
                 continue;
             }
             
+            while(ls_isANumber(*(p+1+lenModCount))) { lenModCount += 1; }
+            if(lenModCount > 0) { lenMod = ls_atoi((char *)(p+1), lenModCount); p += lenModCount; }
+            
             if(*(p+1) == 'x')
             {
                 mods[numMods] = 'x';
@@ -288,7 +338,7 @@ s32 ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList)
             }
             
             view marker = ls_viewNextDelimiter(ls_viewCreate(ls_strConstant(p+1)), '}');
-            s32 length = ls_vlogFormat(buff + i, marker, mods, numMods, argList);
+            s32 length = ls_vlogFormat(buff + i, marker, mods, numMods, lenMod, argList);
             i += length;
             p += marker.s.len + 1; //We skip the open braces
             continue;
@@ -301,8 +351,11 @@ s32 ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList)
         }
     }
     
-    buff[i]   = '\n';
-    i        += 1;
+    if(newline == TRUE)
+    {
+        buff[i]   = '\n';
+        i        += 1;
+    }
     //buff[i+1] = 0;
     //i += 2;
     
@@ -311,10 +364,27 @@ s32 ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList)
 
 s32 ls_slog(char *dst, s32 dstMaxLen, const char *format, ...)
 {
+    if(dstMaxLen <= 0) { return 0; }
+    
     va_list argList;
     va_start(argList, format);
     
     s32 ret = ls_vlog(format, dst, dstMaxLen, &argList);
+    
+    va_end(argList);
+    
+    return ret;
+}
+
+s32 ls_slog(string *out, const char *format, ...)
+{
+    if(out->size <= 0) { return 0; }
+    
+    va_list argList;
+    va_start(argList, format);
+    
+    s32 ret = ls_vlog(format, out->data, out->size, &argList);
+    out->len = ret;
     
     va_end(argList);
     
@@ -330,6 +400,53 @@ s32 ls_log(const char *format, ...)
     va_start(argList, format);
     
     s32 ret = ls_vlog(format, buff, buffSize, &argList);
+    
+    va_end(argList);
+    
+    ls_writeConsole(LS_STDOUT, buff, ret);
+    
+    return ret;
+}
+
+//TODO: Shitty names
+s32 ls_slogs(char *dst, s32 dstMaxLen, const char *format, ...)
+{
+    if(dstMaxLen <= 0) { return 0; }
+    
+    va_list argList;
+    va_start(argList, format);
+    
+    s32 ret = ls_vlog(format, dst, dstMaxLen, &argList, FALSE);
+    
+    va_end(argList);
+    
+    return ret;
+}
+
+s32 ls_slogs(string *out, const char *format, ...)
+{
+    if(out->size <= 0) { return 0; }
+    
+    va_list argList;
+    va_start(argList, format);
+    
+    s32 ret = ls_vlog(format, out->data, out->size, &argList, FALSE);
+    out->len = ret;
+    
+    va_end(argList);
+    
+    return ret;
+}
+
+s32 ls_logs(const char *format, ...)
+{
+    const s32 buffSize = KB(4);
+    char buff[buffSize] = {};
+    
+    va_list argList;
+    va_start(argList, format);
+    
+    s32 ret = ls_vlog(format, buff, buffSize, &argList, FALSE);
     
     va_end(argList);
     
