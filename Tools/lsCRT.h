@@ -616,6 +616,8 @@ s64 ls_atoi(char *s, u32 len)
         At += 1; numLen += 1;
     }
     
+    if(numLen == 0) { return 0; }
+    
     b32 isNegative = s[0] == '-' ? TRUE : FALSE;
     b32 hasPositive = s[0] == '+' ? TRUE : FALSE;
     
