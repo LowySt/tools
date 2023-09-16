@@ -329,6 +329,9 @@ view  ls_viewCreate(string s);
 uview ls_uviewCreate(utf32 s);
 
 //OperateOn
+view  ls_viewExpect(view v, char c);
+view  ls_viewExpectAndConsume(view v, char c);
+char  ls_viewPeekNextChar(view v);
 view  ls_viewEatWhitespace(view v);
 view  ls_viewNextNChars(view v, u32 n);
 view  ls_viewNextDelimiter(view v, char c);
@@ -336,7 +339,6 @@ view  ls_viewNextWord(view v);
 view  ls_viewNextLine(view v);
 view  ls_viewNextLineSkipWS(view v);
 b32   ls_viewIsLineEmpty(view v);
-
 
 uview  ls_uviewEatWhitespace(uview v);
 uview  ls_uviewNextNChars(uview v, u32 n);
@@ -3719,6 +3721,28 @@ uview ls_uviewCreate(utf32 s)
 
 //------------------//
 //     OperateOn    //
+
+view ls_viewExpect(view v, char c)
+{
+    char *At = v.next;
+    AssertMsgF(*At == c, "View Expect %c Failed\n", c);
+    return v;
+}
+
+view ls_viewExpectAndConsume(view v, char c)
+{
+    char *At = v.next;
+    AssertMsgF(*At == c, "View Expect %c Failed\n", c);
+    
+    view Result = { {}, v.next + 1, v.len - 1 };
+    return Result;
+}
+
+char ls_viewPeekNextChar(view v)
+{
+    char *At = v.next;
+    return *At;
+}
 
 view ls_viewEatWhitespace(view v)
 {
