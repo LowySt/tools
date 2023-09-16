@@ -118,24 +118,67 @@ s32 ls_vlogFormatU32(char *dst, va_list *argList)
     return sLen;
 }
 
-s32 ls_vlogFormatU64(char *dst, va_list *argList)
+s32 ls_vlogFormatU64(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *argList)
 {
+    //TODO:
+    (void)(mods);
+    (void)(numMods);
+    
     u64 intValue = va_arg(*argList, u64);
     
     char intBuff[32] = {};
     s32 sLen = ls_utoa_t(intValue, intBuff, 32);
     ls_memcpy(intBuff, dst, sLen);
+    
+    if(lenMod > 0)
+    {
+        s32 lenDiff = lenMod - sLen;
+        AssertMsg(lenDiff < 256, "Suspiciously large number. We don't check buffSize in the format, which is bad.\n");
+        
+        while(lenDiff > 0)
+        {
+            dst[sLen] = ' ';
+            sLen += 1;
+            lenDiff -= 1;
+        }
+    }
+    
+    
     return sLen;
 }
 
-s32 ls_vlogFormatF64(char *dst, va_list *argList)
+s32 ls_vlogFormatF64(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *argList)
 {
     f64 floatValue = va_arg(*argList, f64);
     
     char floatBuff[32] = {};
     u32 sLen = ls_ftoa_t(floatValue, floatBuff, 32);
-    ls_memcpy(floatBuff, dst, sLen);
-    return sLen;
+    
+    s32 copyLen = sLen;
+    if(numMods > 0 && mods[0] == '.')
+    {
+        s32 i = 0; char *At = floatBuff;
+        while(*At != '.' && i < sLen) { At += 1; i += 1; }
+        
+        if(i < sLen) { copyLen = i + mods[1] + 1; }
+    }
+    
+    ls_memcpy(floatBuff, dst, copyLen);
+    
+    if(lenMod > 0)
+    {
+        s32 lenDiff = lenMod - copyLen;
+        AssertMsg(lenDiff < 256, "Suspiciously large number. We don't check buffSize in the format, which is bad.\n");
+        
+        while(lenDiff > 0)
+        {
+            dst[copyLen] = ' ';
+            copyLen += 1;
+            lenDiff -= 1;
+        }
+    }
+    
+    return copyLen;
 }
 
 s32 ls_vlogFormatChar(char *dst, va_list *argList)
@@ -171,6 +214,32 @@ s32 ls_vlogFormatString(char *dst, char *mods, s32 numMods, s32 lenMod, va_list 
     }
     
     return sLen;
+}
+
+s32 ls_vlogFormatCString(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *argList)
+{
+    //NOTETODO: For now mods and numMods params are ignored!
+    (void)(mods);
+    (void)(numMods);
+    
+    char *cStr = va_arg(*argList, char*);
+    s32 len = ls_len(cStr);
+    ls_memcpy(cStr, dst, len);
+    
+    if(lenMod > 0)
+    {
+        s32 lenDiff = lenMod - len;
+        AssertMsg(lenDiff < 256, "Suspiciously large number. We don't check buffSize in the format, which is bad.\n");
+        
+        while(lenDiff > 0)
+        {
+            dst[len] = ' ';
+            len += 1;
+            lenDiff -= 1;
+        }
+    }
+    
+    return len;
 }
 
 s32 ls_vlogFormatUTF8(char *dst, va_list *argList)
@@ -285,6 +354,7 @@ void ls_logDefaultTypesRegister()
         ls_vlogRegister("f64",    ls_vlogFormatF64);
         ls_vlogRegister("char",   ls_vlogFormatChar);
         ls_vlogRegister("string", ls_vlogFormatString);
+        ls_vlogRegister("char*",  ls_vlogFormatCString);
         ls_vlogRegister("utf8",   ls_vlogFormatUTF8);
         ls_vlogRegister("utf32",  ls_vlogFormatUTF32);
         
@@ -327,13 +397,30 @@ s32 ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList, b32 
                 continue;
             }
             
+            //NOTE: First we check a len mod for right padding
             while(ls_isANumber(*(p+1+lenModCount))) { lenModCount += 1; }
             if(lenModCount > 0) { lenMod = ls_atoi((char *)(p+1), lenModCount); p += lenModCount; }
             
+            //NOTE: Then we check modifiers
             if(*(p+1) == 'x')
             {
                 mods[numMods] = 'x';
                 p += 1;
+                numMods += 1;
+            }
+            
+            if(*(p+1) == '.')
+            {
+                mods[numMods]   = '.';
+                p += 1;
+                numMods += 1;
+                
+                s32 precLenCount = 0;
+                s32 precLen      = 0;
+                while(ls_isANumber(*(p+1+precLenCount))) { precLenCount += 1; }
+                if(precLenCount > 0) { precLen = ls_atoi((char *)(p+1), precLenCount); p += precLenCount; }
+                
+                mods[numMods] = precLen;
                 numMods += 1;
             }
             
