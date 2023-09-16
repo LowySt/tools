@@ -529,18 +529,23 @@ u32 ls_ftoa_t(f64 x, char *buff, u32 buffMax)
     char *ResultBuffer = buff;
     u32 BuffIdx = 0;
     
+    //NOTE: itoa_t already adds the - in front of negative integers!
+    //      Before I had to do the check here. Now it's not necessary!
     char IntegerPart[32] = {};
-    u32 intLen = 0;
+    u32 intLen = ls_itoa_t((int)x, IntegerPart, 32);
+    /*
     if(isNegative && x < 1.0f)
     {
-        IntegerPart[0] = '-';
-        intLen = ls_itoa_t((int)x, IntegerPart+1, 31);
-        intLen += 1;
+        //IntegerPart[0] = '-';
+        //intLen = ls_itoa_t((int)x, IntegerPart+1, 31);
+        //intLen += 1;
+        intLen = ls_itoa_t((int)x, IntegerPart, 32);
     }
     else
     {
         intLen = ls_itoa_t((int)x, IntegerPart, 32);
     }
+    */
     
     char FractPart[32] = {};
     u32 fractLen = 0;
@@ -648,6 +653,7 @@ f32 ls_atof(char *s, u32 len)
 {
     f32 base = 0;
     f32 decimal = 0;
+    b32 isNeg = FALSE;
     
     if(len == 0) { return 0.0f; }
     
@@ -667,6 +673,7 @@ f32 ls_atof(char *s, u32 len)
     done += count + 1;
     
     base = (f32)ls_atoi(buff, count);
+    if(base < 0) { isNeg = TRUE; }
     
     //NOTE: Means there's no decimal part. It's an integer.
     if(len == 0) { return base; }
@@ -689,9 +696,12 @@ f32 ls_atof(char *s, u32 len)
     
     Result += base;
     
-    u32 tenPow = 1;
-    for(u32 i = 0; i < count; i++) { tenPow *= 10; }
-    Result += (decimal / (f32)tenPow);
+    AssertMsg(count < 19, "Too many digits. Must implement cutoff.");
+    u64 tenPow = 1;
+    for(s32 i = 0; i < count; i++) { tenPow *= 10; }
+    f32 fract = (decimal / (f32)tenPow);
+    if(isNeg) { fract *= -1.0; }
+    Result += fract;
     
     return Result;
 }
@@ -1124,7 +1134,7 @@ u64 ls_writeConsole(s32 ConsoleHandle, char *Source, u32 bytesToWrite)
 #endif
 }
 
-u64 ls_writeFile(char *Path, void *Source, u32 bytesToWrite, b32 append)
+u64 ls_writeFile(char *Path, void *Source, u32 bytesToWrite, b32 append = FALSE)
 {
 #ifdef LS_PLAT_WINDOWS
     return windows_WriteFile(Path, (char *)Source, bytesToWrite, append);
