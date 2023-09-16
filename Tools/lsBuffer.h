@@ -6,6 +6,8 @@
 
 //TODO: Add a debug-only member called 'isView' that is checked and asserts if a destructive operation is
 //      applied to the view (like a free or re-alloc).
+//      Or maybe decide that buffer always owns the data, and create a separate type called maybe "buffer_view"
+//      which never owns the data.
 struct buffer
 {
     void *data;
@@ -84,6 +86,7 @@ extern "C"
     
 #ifdef LS_STRING_H
     void   ls_bufferAddString(buffer *buff, string v);
+    void   ls_bufferAddStringClean(buffer *buff, string v);
     void   ls_bufferAddUTF32(buffer *buff, utf32 v);
     
     string ls_bufferReadString(buffer *buff);
@@ -142,12 +145,14 @@ buffer ls_bufferInitFromFile(string path)
     return Result;
 }
 
+//NOTE: bufferClear and bufferSeekBegin are the same, but the intention is different!
+//      When we use clear, we don't care about the data currently inside the buffer
+//      When we use SeekBegin we do care, and may re-use it!
 void ls_bufferClear(buffer *buff)
-{
-    buff->data   = 0;
-    buff->size   = 0;
-    buff->cursor = 0;
-}
+{ buff->cursor = 0; }
+
+void ls_bufferSeekBegin(buffer *buff)
+{ buff->cursor = 0; }
 
 void ls_bufferDestroy(buffer *buff)
 {
@@ -155,9 +160,6 @@ void ls_bufferDestroy(buffer *buff)
     buff->size   = 0;
     buff->cursor = 0;
 }
-
-void ls_bufferSeekBegin(buffer *buff)
-{ buff->cursor = 0; }
 
 static void ls_bufferGrow(buffer *buff, u32 amount)
 {
@@ -646,6 +648,20 @@ void ls_bufferAddString(buffer *buff, string v)
     { ls_bufferGrow(buff, v.len + sizeof(u32) + 4096); }
     
     ls_bufferAddDWord(buff, v.len);
+    
+    u8 *At = (u8 *)buff->data + buff->cursor;
+    ls_memcpy(v.data, At, v.len);
+    buff->cursor += v.len;
+}
+
+void ls_bufferAddStringClean(buffer *buff, string v)
+{
+    AssertMsg(buff,       "Buffer pointer is NULL\n");
+    AssertMsg(buff->data, "Buffer data is not allocated\n");
+    AssertMsg(v.data,     "String data is NULL\n");
+    
+    if(buff->cursor + v.len > buff->size)
+    { ls_bufferGrow(buff, v.len + 4096); }
     
     u8 *At = (u8 *)buff->data + buff->cursor;
     ls_memcpy(v.data, At, v.len);
