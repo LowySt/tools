@@ -650,6 +650,8 @@ void windows_memFree(void *ptr)
               "pointer wasn't punt in the busy list?\n");
     
     //TODO: ZeroMem the slice??
+    //TODO: We need to clean up blocks.
+    AssertMsg(Memory.totalBytesVirtualAlloc < GBytes(1), "We are never freeing blocks, and that is fucking us\n");
     windows_freeSlice(curr, slice);
     
     //NOTE: Logging the memory usage.
