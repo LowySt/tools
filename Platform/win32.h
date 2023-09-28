@@ -82,7 +82,9 @@ extern "C" {
 #define WAIT_IO_COMPLETION               STATUS_USER_APC
 #pragma endregion
     
+#ifndef _ACRTIMP
 #define _ACRTIMP __declspec(dllimport)
+#endif
     
 #define MAX_PATH 0x00000104
     
