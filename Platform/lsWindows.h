@@ -112,7 +112,7 @@ struct MemoryList
     MemoryList *next;
     MemoryList *prev;
     
-    u32 relativePtr; 
+    u32 relativePtr;
     u32 sliceSize;
 };
 
@@ -508,48 +508,60 @@ void *windows_memAlloc(size_t size)
     
     
     /*Blocks*/
-    if(Memory.head == NULL) { windows_InitMemory(size); }
+    if(Memory.head == NULL) {
+        ProfileBlock("memAlloc: Init Memory");
+        windows_InitMemory(size);
+    }
+    
     
     MemoryBlock *curr = Memory.head;
     MemoryList   bestTmp = { 0, 0, 0, UINT32_MAX };
     MemoryList  *best = &bestTmp;
-    for(u32 i = 0; i < Memory.numOfBlocks; i++)
+    
     {
-        //TODO: Add Merging
-        //if(curr->curSlices == curr->maxSlices) {};
-        //TODO: Add Merging
-        
-        //NOTETODO: 24/08/2020 Gotten into a bug, I think that maxSlices
-        // Shouldn't be ignored, as it is right now???
-        // So gonna skip any block that has reached curSlices == maxSlices
-        //
-        //NOTETODO: 26/12/2021 If a block has reached maxSlices, but there are free slices
-        // it won't use them. Kinda stupid design. It should look to see if there are free
-        // slices, rather than just if the block has been sliced max number of times!!
-        if(curr->curSlices == curr->maxSlices) { curr = curr->next; continue; }
-        
-        
-        MemoryList *free = curr->free;
-        LogMsg(free != 0x0, "This assert was placed here for some reason, but I can't understand why.\n");
-        Assert(free != 0x0); //NOTE: What? Why can't free be == 0 here????
-        
-        do
+        ProfileBlock("memAlloc: Lookup Block");
+        for(u32 i = 0; i < Memory.numOfBlocks; i++)
         {
-            u32 sliceSize = free->sliceSize;
-            if((sliceSize >= size) && (sliceSize < best->sliceSize))
+            //TODO: Add Merging
+            //if(curr->curSlices == curr->maxSlices) {};
+            //TODO: Add Merging
+            
+            //NOTETODO: 24/08/2020 Gotten into a bug, I think that maxSlices
+            // Shouldn't be ignored, as it is right now???
+            // So gonna skip any block that has reached curSlices == maxSlices
+            //
+            //NOTETODO: 26/12/2021 If a block has reached maxSlices, but there are free slices
+            // it won't use them. Kinda stupid design. It should look to see if there are free
+            // slices, rather than just if the block has been sliced max number of times!!
+            if(curr->curSlices == curr->maxSlices) { curr = curr->next; continue; }
+            
+            MemoryList *free = curr->free;
+            LogMsg(free != 0x0, "This assert was placed here for some reason, but I can't understand why.\n");
+            Assert(free != 0x0); //NOTE: What? Why can't free be == 0 here????
+            
             {
-                best = free;
+                ProfileBlock("memAlloc: LookupBlock do while");
+                do
+                {
+                    u32 sliceSize = free->sliceSize;
+                    if((sliceSize >= size) && (sliceSize < best->sliceSize))
+                    {
+                        best = free;
+                    }
+                    free = free->next;
+                } while(free != 0);
             }
-            free = free->next;
-        } while(free != 0);
-        
-        if(best->relativePtr != 0) { break; }
-        curr = curr->next;
+            
+            if(best->relativePtr != 0) { break; }
+            curr = curr->next;
+        }
     }
     
     MemoryBlock *newBlock = 0;
     if(best->relativePtr == 0)
     {
+        ProfileBlock("memAlloc: Add And Slice");
+        
         newBlock = windows_memAddBlock(size);
         void *beginOfSliceData = windows_sliceBlockIfNeeded(newBlock, newBlock->free, size);
         return beginOfSliceData;
