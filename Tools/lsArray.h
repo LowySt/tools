@@ -27,10 +27,14 @@ struct Array
 template<typename T>
 Array<T> ls_arrayAlloc(s32 n)
 { 
+    ProfileFunc;
+    //auto bpArrayAlloc = BlockProfiler(__FUNCTION__, __COUNTER__ + 1);
+    
     AssertMsgF(n > 0, "Number of Elements is Non-Positive: %d", n);
     
     Array<T> result = {};
     result.data     = (T *)ls_alloc(n*sizeof(T));
+    //result.data = (T *)VirtualAlloc(NULL, n*sizeof(T), MEM_COMMIT, PAGE_EXECUTE_READWRITE);
     result.count    = 0;
     result.cap      = n;
     return result;
@@ -68,6 +72,9 @@ void ls_arrayClear(Array<T> *a)
 template<typename T>
 void ls_arrayGrow(Array<T> *a, s32 amount)
 {
+    ProfileFunc;
+    //auto bpArrayGrow = BlockProfiler(__FUNCTION__, __COUNTER__ + 1);
+    
     AssertMsg(a, "Null Array<> pointer\n");
     AssertMsgF(amount > 0, "Grow Amount is Non-Positive: %d\n", amount);
     
@@ -82,6 +89,9 @@ b32 ls_arrayIsFull(Array<T> a)
 template<typename T>
 T *ls_arrayAppend(Array<T> *a, T val)
 {
+    ProfileFunc;
+    //auto bpArrayAppend = BlockProfiler(__FUNCTION__, __COUNTER__ + 1);
+    
     AssertMsg(a, "Null Array<>  pointer\n");
     
     if(a->count == a->cap) { ls_arrayGrow(a, 32); }
