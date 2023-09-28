@@ -3724,6 +3724,8 @@ uview ls_uviewCreate(utf32 s)
 
 view ls_viewExpect(view v, char c)
 {
+    ProfileFunc;
+    
     char *At = v.next;
     AssertMsgF(*At == c, "View Expect %c Failed\n", c);
     return v;
@@ -3731,6 +3733,8 @@ view ls_viewExpect(view v, char c)
 
 view ls_viewExpectAndConsume(view v, char c)
 {
+    ProfileFunc;
+    
     char *At = v.next;
     AssertMsgF(*At == c, "View Expect %c Failed\n", c);
     
@@ -3740,12 +3744,16 @@ view ls_viewExpectAndConsume(view v, char c)
 
 char ls_viewPeekNextChar(view v)
 {
+    ProfileFunc;
+    
     char *At = v.next;
     return *At;
 }
 
 view ls_viewEatWhitespace(view v)
 {
+    ProfileFunc;
+    
     char *At = v.next;
     u32 advance = 0;
     while(ls_isWhitespace(*At))
@@ -3761,6 +3769,8 @@ view ls_viewEatWhitespace(view v)
 
 view ls_viewNextNChars(view v, u32 n)
 {
+    ProfileFunc;
+    
     view Result = {};
     
     Result.s = {v.next, (s32)n, (s32)n};
@@ -3772,6 +3782,8 @@ view ls_viewNextNChars(view v, u32 n)
 
 view ls_viewNextDelimiter(view v, char c)
 {
+    ProfileFunc;
+    
     view Result = {};
     
     v = ls_viewEatWhitespace(v);
