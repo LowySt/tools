@@ -104,7 +104,7 @@ T *ls_arrayAppend(Array<T> *a, T val)
 }
 
 template<typename T>
-u32 ls_arrayAppendIndex(Array<T> *a, T val)
+s32 ls_arrayAppendIndex(Array<T> *a, T val)
 {
     AssertMsg(a, "Null Array<> pointer\n");
     
@@ -201,6 +201,163 @@ template<typename T>
 T *ls_arrayTop(Array<T> *a)
 {
     AssertMsg(a, "Null Array<>  pointer\n");
+    
+    if(a->count == 0) { return NULL; }
+    
+    return a->data + (a->count - 1);
+}
+
+
+//---------------------------------------//
+//----         STATIC ARRAYS         ----//
+//---------------------------------------//
+
+template<typename T, int N>
+struct StaticArray
+{
+    T data[N];
+    s32 count;
+    
+    T& operator[](s32 index)
+    {
+        AssertMsg(index < N, "Index out of bounds in StaticArray<>\n"); //NOTE: Should this be a crash or an error?
+        AssertMsg(index < count, "Index out of bounds in StaticArray<>\n"); //NOTE: Should this be a crash or an error?
+        AssertMsg(index >= 0, "Index is negative StaticArray<>\n"); //NOTE: Should this be a crash or an error?
+        return data[index];
+    }
+    
+    T* operator+(s32 index)
+    {
+        AssertMsg(index < N, "Index out of bounds in StaticArray<>\n"); //NOTE: Should this be a crash or an error?
+        AssertMsg(index < count, "Index out of bounds in StaticArray<>\n"); //NOTE: Should this be a crash or an error?
+        AssertMsg(index >= 0, "Index is negative StaticArray<>\n"); //NOTE: Should this be a crash or an error?
+        return data + index;
+    }
+};
+
+template<typename T, int N>
+void ls_staticArrayClear(StaticArray<T, N> *a)  { AssertMsg(a, "Null StaticArray<> pointer\n"); a->count = 0; }
+
+template<typename T, int N>
+b32 ls_staticArrayIsFull(StaticArray<T, N> a)
+{ return (a.count == N); }
+
+template<typename T, int N>
+T *ls_staticArrayAppend(StaticArray<T, N> *a, T val)
+{
+    ProfileFunc;
+    
+    AssertMsg(a, "Null StaticArray<> pointer\n");
+    
+    if(a->count == N) { AssertMsg(FALSE, "Trying to append to full StaticArray<>"); return NULL; }
+    
+    a->data[a->count] = val;
+    T *toReturn       = a->data + a->count;
+    a->count         += 1;
+    
+    return toReturn;
+}
+
+template<typename T, int N>
+s32 ls_staticArrayAppendIndex(StaticArray<T, N> *a, T val)
+{
+    AssertMsg(a, "Null StaticArray<> pointer\n");
+    
+    if(a->count == N) { AssertMsg(FALSE, "Trying to append to full StaticArray<>"); return -1; }
+    
+    a->data[a->count] = val;
+    a->count         += 1;
+    
+    return (a->count - 1);
+}
+
+template<typename T, int N>
+T *ls_staticArrayPop(StaticArray<T, N> *a)
+{
+    AssertMsg(a, "Null StaticArray<> pointer\n");
+    AssertMsg(a->count > 0, "Can't pop empty StaticArray<>\n");
+    
+    T *value  = &a->data[a->count - 1];
+    a->count -= 1;
+    return value;
+}
+
+template<typename T, int N>
+void ls_staticArrayInsert(StaticArray<T, N> *a, T val, s32 index)
+{
+    AssertMsg(a, "Null StaticArray<> pointer\n");
+    AssertMsgF(index < N, "Index %d is out of bounds (%d) in StaticArray<>\n", index, N);
+    AssertMsg(index >= 0, "Index is negative in StaticArray<>\n");
+    
+    if(a->count == N) { AssertMsg(FALSE, "Trying to insert in full StaticArray<>"); return; }
+    size_t dataSize = sizeof(T);
+    
+    s32 numElements = a->count - index;
+    
+    AssertMsg(numElements >= 0, "Number of elements to move in StaticArray<> insertion is negative. Maybe bad StaticArray<>?\n");
+    AssertMsg(numElements <= N, "Somehow the number of elements to move in StaticArray<> insertion is > cap?\n");
+    
+    ls_memcpy(a->data + index, a->data + index + 1, numElements*dataSize);
+    a->count += 1;
+    a->data[index] = val;
+}
+
+template<typename T, int N>
+void ls_staticArraySet(StaticArray<T, N> *a, T val, s32 index)
+{
+    AssertMsg(a, "Null StaticArray<> pointer\n");
+    AssertMsgF(index < N, "Index %d is out of bounds (%d) in StaticArray<>\n", index, N);
+    AssertMsg(index >= 0, "Index is negative StaticArray<>\n");
+    
+    a->data[index] = val;
+}
+
+template<typename T, int N>
+void ls_staticArrayRemove(StaticArray<T, N> *a, s32 index)
+{
+    AssertMsg(a, "Null StaticArray<> pointer\n");
+    AssertMsgF(index < N, "Index %d is out of bounds (%d) in StaticArray<>\n", index, N);
+    AssertMsg(index >= 0, "Index is negative StaticArray<>\n");
+    
+    size_t dataSize = sizeof(T);
+    u32 numElements = a->count - index;
+    
+    AssertMsg(numElements >= 0, "Number of elements to move in StaticArray<> remove is negative. Maybe bad StaticArray<>?\n");
+    AssertMsg(numElements <= a->cap, "Somehow the number of elements to move in StaticArray<> remove is > cap?\n");
+    
+    ls_memcpy(a->data + index + 1, a->data + index, numElements*dataSize);
+    a->count -= 1;
+}
+
+template<typename T, int N>
+void ls_staticArrayRemoveUnordered(StaticArray<T, N> *a, s32 index)
+{
+    AssertMsg(a, "Null StaticArray<> pointer\n");
+    AssertMsgF(index < N, "Index %d is out of bounds (%d) in StaticArray<>\n", index, N);
+    AssertMsg(index >= 0, "Index is negative StaticArray<>\n");
+    
+    //NOTETODO: Should I zero the last element? Or fill it with sentinel values?
+    a->data[index] = a->data[a->count-1];
+    a->count -= 1;
+}
+
+template<typename T, int N>
+b32 ls_staticArrayContains(StaticArray<T, N> *a, T val)
+{
+    AssertMsg(a, "Null StaticArray<> pointer\n");
+    
+    for(s32 i = 0; i < a->count; i++)
+    {
+        if (a->data[i] == val) { return TRUE; }
+    }
+    
+    return FALSE;
+}
+
+template<typename T, int N>
+T *ls_staticArrayTop(StaticArray<T, N> *a)
+{
+    AssertMsg(a, "Null StaticArray<>  pointer\n");
     
     if(a->count == 0) { return NULL; }
     
