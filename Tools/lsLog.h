@@ -27,7 +27,9 @@ s32  ls_slog(char *dst, s32 dstMaxLen, const char *format, ...);
 #endif //LS_LOG_H
 #ifdef LS_LOG_IMPLEMENTATION
 
-static Array<LogRegisteredType> __internal_logRegisteredTypes = {};
+static const s32 LS_LOG_MAX_REGISTERED_TYPES = 64;
+static LogRegisteredType __internal_logRegisteredTypes[LS_LOG_MAX_REGISTERED_TYPES] = {};
+static s32 __ls_log__registered_types_count = 0;
 static b32 __ls_log__initialize = FALSE;
 
 s32 ls_vlogFormatPTR(char *dst, va_list *argList)
@@ -310,19 +312,21 @@ s32 ls_vlogFormatArena(char *dst, va_list *argList)
 
 void ls_vlogRegister(const char *typeName, LogFormatTypeProc proc)
 {
-    LogRegisteredType t = { ls_strInit(typeName), proc, 0 };
-    ls_arrayAppendIndex(&__internal_logRegisteredTypes, t);
+    LogRegisteredType t = { ls_strConstant(typeName), proc, 0 };
+    __internal_logRegisteredTypes[__ls_log__registered_types_count] = t;
+    __ls_log__registered_types_count += 1;
 }
 
 void ls_vlogRegister(const char *typeName, LogFormatTypeModProc proc)
 {
-    LogRegisteredType t = { ls_strInit(typeName), 0, proc };
-    ls_arrayAppendIndex(&__internal_logRegisteredTypes, t);
+    LogRegisteredType t = { ls_strConstant(typeName), 0, proc };
+    __internal_logRegisteredTypes[__ls_log__registered_types_count] = t;
+    __ls_log__registered_types_count += 1;
 }
 
 s32 ls_vlogFormat(char *dst, view marker, char *mods, s32 numMods, s32 lenMod, va_list *argList)
 {
-    for(u32 i = 0; i < __internal_logRegisteredTypes.count; i++)
+    for(u32 i = 0; i < __ls_log__registered_types_count; i++)
     {
         if(marker.s == __internal_logRegisteredTypes[i].typeName)
         {
@@ -332,6 +336,8 @@ s32 ls_vlogFormat(char *dst, view marker, char *mods, s32 numMods, s32 lenMod, v
             { return __internal_logRegisteredTypes[i].modFormat(dst, mods, numMods, lenMod, argList); }
         }
     }
+    
+    AssertMsgF(FALSE, "Unhandled Log Format %s\n", marker.s);
     
     return 0;
 }
