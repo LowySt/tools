@@ -62,8 +62,6 @@ struct MouseInput
     b32 isWheelRotated;
 };
 
-
-
 struct Input
 {
     MouseInput Mouse;
