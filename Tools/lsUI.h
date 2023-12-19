@@ -897,8 +897,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                           0, 0, c->width, c->height,
                           c->drawBuffer, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
             
-            Result = BitBlt(c->WindowDC, 0, 0, c->width, c->height,
-                            c->BackBufferDC, 0, 0, SRCCOPY);
+            Result = BitBlt(c->WindowDC, 0, 0, c->width, c->height, c->BackBufferDC, 0, 0, SRCCOPY);
             
             if(Result == 0) {
                 DWORD Err = GetLastError();
@@ -1122,7 +1121,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
 {
     
-    u32 prop = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
+    u32 prop = CS_VREDRAW | CS_HREDRAW; //CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
     
     WNDCLASSA WindowClass = { 0 };
     WindowClass.style = prop;
@@ -1159,10 +1158,8 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     //NOTE: We repliacate windowName in both the windowClass name and the actual window name, to avoid conflict
     //      when creating multiple windows under the same process.
     HWND WindowHandle;
-    if ((WindowHandle = CreateWindowExA(0, windowName,
-                                        windowName, style,
-                                        spaceX, spaceY, //CW_USEDEFAULT, CW_USEDEFAULT,
-                                        c->backbufferW, c->backbufferH,
+    if ((WindowHandle = CreateWindowExA(0 /*WS_EX_LAYERED*/, windowName, windowName, style,
+                                        spaceX, spaceY, c->backbufferW, c->backbufferH,
                                         0, 0, MainInstance, c)) == nullptr)
     {
         DWORD Error = GetLastError();
@@ -1243,7 +1240,24 @@ DWORD ls_uiRenderThreadProc(void *param)
 
 void __ui_default_windows_render_callback(UIContext *c)
 {
+#if 1
     InvalidateRect(c->Window, NULL, TRUE);
+#else
+    //TODO: Works but appears transparent? My alpha is not being used?
+    BLENDFUNCTION BlendFunc = { 
+        .BlendOp = AC_SRC_OVER, 
+        .BlendFlags = 0, 
+        .SourceConstantAlpha = 0xFF, 
+        .AlphaFormat = AC_SRC_ALPHA
+    };
+    
+    if(UpdateLayeredWindow(c->Window, NULL, NULL, NULL, c->BackBufferDC, NULL, NULL, &BlendFunc, ULW_ALPHA) == 0)
+    {
+        DWORD Error = GetLastError();
+        AssertMsgF(FALSE, "When Updating a Layered Window got error: %d", Error);
+    }
+#endif
+    
 }
 
 UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height, RenderCallback cb = __ui_default_windows_render_callback)
@@ -5786,6 +5800,9 @@ b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 w, s
 
 void ls_uiRender(UIContext *c)
 {
+    AssertMsg(c->drawBuffer != NULL, "Trying to Call ls_uiRender on a Fake UIContext "
+              "which doesn't have a draw buffer allocated!\n");
+    
     if(THREAD_COUNT == 0)
     {
         ls_uiRender__(c, 0);
