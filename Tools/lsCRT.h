@@ -1606,13 +1606,61 @@ b32 ls_memcmp(void *a, void *b, size_t size)
     
     for (u32 i = 0; i < size; i++)
     {
-        if (*At != *Bt)
+        if(*At != *Bt)
         { return FALSE; }
         At++;
         Bt++;
     }
     
     return TRUE;
+}
+
+b32 ls_memcmpQuick(void *a, void *b, size_t size)
+{
+    if(size < 8)
+    {
+        char *At = (char *)a;
+        char *Bt = (char *)b;
+        
+        for(u32 i = 0; i < size; i++)
+        {
+            if(*At != *Bt)
+            { return FALSE; }
+            At++;
+            Bt++;
+        }
+        
+        return TRUE;
+    }
+    else
+    {
+        s32 remaining = size % 8;
+        s32 effective = size / 8;
+        
+        u64 *wAt = (u64 *)a;
+        u64 *wBt = (u64 *)b;
+        
+        for(u32 i = 0; i < effective; i++)
+        {
+            if(*wAt != *wBt)
+            { return FALSE; }
+            wAt++;
+            wBt++;
+        }
+        
+        u8 *At = (u8 *)wAt;
+        u8 *Bt = (u8 *)wBt;
+        
+        for(u32 i = 0; i < remaining; i++)
+        {
+            if(*At != *Bt)
+            { return FALSE; }
+            At++;
+            Bt++;
+        }
+        
+        return TRUE;
+    }
 }
 
 void ls_zeroMem(void *mem, size_t size)
