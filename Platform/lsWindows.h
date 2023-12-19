@@ -8,6 +8,10 @@
 #include "lsCRT.h"
 #endif
 
+#ifndef LS_PROFILE_H
+#include "lsProfile.h"
+#endif
+
 //Really don't have time to fukin fight with includes...
 #pragma region GL TYPES
 typedef unsigned int GLenum;
@@ -509,7 +513,7 @@ void *windows_memAlloc(size_t size)
     
     /*Blocks*/
     if(Memory.head == NULL) {
-        ProfileBlock("memAlloc: Init Memory");
+        //ProfileBlock("memAlloc: Init Memory");
         windows_InitMemory(size);
     }
     
@@ -519,7 +523,7 @@ void *windows_memAlloc(size_t size)
     MemoryList  *best = &bestTmp;
     
     {
-        ProfileBlock("memAlloc: Lookup Block");
+        //ProfileBlock("memAlloc: Lookup Block");
         for(u32 i = 0; i < Memory.numOfBlocks; i++)
         {
             //TODO: Add Merging
@@ -540,7 +544,7 @@ void *windows_memAlloc(size_t size)
             Assert(free != 0x0); //NOTE: What? Why can't free be == 0 here????
             
             {
-                ProfileBlock("memAlloc: LookupBlock do while");
+                //ProfileBlock("memAlloc: LookupBlock do while");
                 do
                 {
                     u32 sliceSize = free->sliceSize;
@@ -560,7 +564,7 @@ void *windows_memAlloc(size_t size)
     MemoryBlock *newBlock = 0;
     if(best->relativePtr == 0)
     {
-        ProfileBlock("memAlloc: Add And Slice");
+        //ProfileBlock("memAlloc: Add And Slice");
         
         newBlock = windows_memAddBlock(size);
         void *beginOfSliceData = windows_sliceBlockIfNeeded(newBlock, newBlock->free, size);
