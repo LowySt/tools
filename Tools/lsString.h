@@ -98,7 +98,7 @@ void    ls_strInsertCStr(string *s, char *toInsert, u32 insertIdx);
 
 //NOTE: Maybe reword these?
 string  *ls_strBreakByDelimeter(string s, u32 *numOfStrings, char c);
-string  *ls_strBreakByLine(string s, u32 *numOfLines);
+string  *ls_strBreakByLine(string s, s32 *numOfLines);
 string  *ls_strBreakByWhitespace(string s, u32 *numOfStrings);
 string  *ls_strBreakBySpace(string s, u32 *numOfStrings);
 string  *ls_strBreakBySpaceUntilDelimiter(string s, char delimiter, u32 *numOfStrings);
@@ -130,6 +130,8 @@ s64     ls_stoi(string s);
 f32	 ls_stof(string s);
 string  ls_ftos(f32 x);
 
+//CRTish?
+string  ls_strReadFile(char *path, s32 readLenInBytes); //NOTE: Entire File -> readLenInBytes == 0
 
 //Operator
 b32     operator==(string s1, string s2);
@@ -248,7 +250,7 @@ utf32  ls_utf32FromInt(s64 x);
 void   ls_utf32FromInt_t(utf32 *s, s64 x);
 utf32  ls_utf32FromF64(f64 x);
 void   ls_utf32FromF64_t(utf32 *s, f64 x);
-utf32  ls_utf32Constant(const char32_t *p);
+const utf32  ls_utf32Constant(const char32_t *p);
 
 u32    ls_utf32CharFromUtf8(utf8 src, s32 characterIndex);
 
@@ -306,11 +308,13 @@ void   ls_utf32Prepend(utf32 *s1, utf32 s2);
 void   ls_utf32PrependChar(utf32 *s, u32 c);
 void   ls_utf32PrependCStr(utf32 *s, char *c);
 void   ls_utf32Append(utf32 *s1, utf32 s2);
+void   ls_utf32Append(utf32 *s1, const char32_t *s);
 void   ls_utf32AppendWithSeparator(utf32 *s1, const char32_t *sep, utf32 s2);
 void   ls_utf32AppendChar(utf32 *s1, u32 c);
 void   ls_utf32AppendCStr(utf32 *s1, char *c);
 void   ls_utf32AppendNCStr(utf32 *s1, char *c, s32 len);
 void   ls_utf32AppendBuffer(utf32 *s1, u32 *buff, s32 buffLen);
+void   ls_utf32AppendInt(utf32 *s, s64 val);
 
 // Convert
 s32    ls_utf32ToAscii_t(utf32 *s, char *buff, s32 buffMaxLen);
@@ -333,6 +337,8 @@ view  ls_viewExpect(view v, char c);
 view  ls_viewExpectAndConsume(view v, char c);
 char  ls_viewPeekNextChar(view v);
 view  ls_viewEatWhitespace(view v);
+view  ls_viewNextNumeric(view v);
+view  ls_viewNextDigit(view v);
 view  ls_viewNextNChars(view v, u32 n);
 view  ls_viewNextDelimiter(view v, char c);
 view  ls_viewNextWord(view v);
@@ -823,7 +829,7 @@ string *ls_strBreakByDelimeter(string s, u32 *numOfStrings, char c)
     return Result;
 }
 
-string *ls_strBreakByLine(string s, u32 *numOfLines)
+string *ls_strBreakByLine(string s, s32 *numOfLines)
 {
     AssertMsg(numOfLines, "Null pointer to out param numOfLines\n");
     
@@ -1451,6 +1457,24 @@ string ls_ftos(f32 x)
 //   To/From Data   //
 //------------------//
 
+//------------------//
+//      CRT-ish     //
+
+//NOTE: if we want the entire file -> readLenInBytes == 0 
+//      else set to the amount of bytes to be read.
+string ls_strReadFile(char *path, s32 readLenInBytes)
+{
+    string result = {};
+    result.len    = ls_readFile(path, &result.data, readLenInBytes);
+    
+    if(result.data == NULL) { return {}; }
+    
+    result.size   = result.len;
+    return result;
+}
+
+//      CRT-ish     //
+//------------------//
 
 //------------------//
 //     Operator     //
@@ -2597,7 +2621,7 @@ void ls_utf32FromUTF32_t(utf32 *dst, const char32_t *s)
     return;
 }
 
-utf32 ls_utf32Constant(const char32_t *p)
+const utf32 ls_utf32Constant(const char32_t *p)
 {
     AssertMsg(p, "Null source literal string\n");
     
@@ -3459,6 +3483,38 @@ void ls_utf32Append(utf32 *s1, utf32 s2)
     s1->len += s2.len;
 }
 
+void ls_utf32Append(utf32 *s1, const char32_t *s)
+{
+    AssertMsg(s1, "Base utf32 ptr is null\n");
+    AssertMsg(s1->data, "Base utf32 data is null\n");
+    AssertMsgF(s1->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s1->size);
+    AssertMsg(s, "Input utf32 data is null\n");
+    
+    s32 s2Len = ls_utf32Len(s);
+    
+    if(s1->len + s2Len > s1->size)
+    {
+        u32 growSize = ((s1->len + s2Len) - s1->size) + 32;
+        ls_utf32Grow(s1, growSize);
+    }
+    
+    ls_memcpy((void *)s, s1->data + s1->len, s2Len*4);
+    s1->len += s2Len;
+}
+
+void ls_utf32AppendInt(utf32 *s, s64 val)
+{
+    AssertMsg(s, "Base utf32 ptr is null\n");
+    AssertMsg(s->data, "Base utf32 data is null\n");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
+    
+    u32 tmpBuff[32] = {};
+    utf32 temp = { tmpBuff, 0, 32 };
+    
+    ls_utf32FromInt_t(&temp, val);
+    ls_utf32Append(s, temp);
+}
+
 void ls_utf32AppendWithSeparator(utf32 *s1, const char32_t *sep, utf32 s2)
 {
     AssertMsg(s1, "Base utf32 ptr is null\n");
@@ -3724,8 +3780,6 @@ uview ls_uviewCreate(utf32 s)
 
 view ls_viewExpect(view v, char c)
 {
-    ProfileFunc;
-    
     char *At = v.next;
     AssertMsgF(*At == c, "View Expect %c Failed\n", c);
     return v;
@@ -3733,8 +3787,6 @@ view ls_viewExpect(view v, char c)
 
 view ls_viewExpectAndConsume(view v, char c)
 {
-    ProfileFunc;
-    
     char *At = v.next;
     AssertMsgF(*At == c, "View Expect %c Failed\n", c);
     
@@ -3744,16 +3796,12 @@ view ls_viewExpectAndConsume(view v, char c)
 
 char ls_viewPeekNextChar(view v)
 {
-    ProfileFunc;
-    
     char *At = v.next;
     return *At;
 }
 
 view ls_viewEatWhitespace(view v)
 {
-    ProfileFunc;
-    
     char *At = v.next;
     u32 advance = 0;
     while(ls_isWhitespace(*At))
@@ -3767,10 +3815,49 @@ view ls_viewEatWhitespace(view v)
     return Result;
 }
 
+view ls_viewNextNumeric(view v)
+{
+    view Result = {};
+    
+    v = ls_viewEatWhitespace(v);
+    
+    s32 wordLen = 0;
+    s32 beginIdx = 0;
+    char *At = v.next;
+    
+    while(!ls_isANumber(*At) && At < v.next + v.len) { At += 1; beginIdx += 1; }
+    if(At >= v.next + v.len) { return Result; }
+    
+    while(ls_isANumber(*At) && At < v.next + v.len && wordLen < v.len) { At += 1; wordLen += 1; }
+    
+    Result.s    = { v.next + beginIdx, wordLen, wordLen };
+    Result.next = v.next + beginIdx + wordLen;
+    Result.len  = v.len - (beginIdx + wordLen);
+    
+    return Result;
+}
+
+view ls_viewNextDigit(view v)
+{
+    view Result = {};
+    
+    v = ls_viewEatWhitespace(v);
+    
+    s32 beginIdx = 0;
+    char *At = v.next;
+    
+    while(!ls_isANumber(*At) && At < v.next + v.len) { At += 1; beginIdx += 1; }
+    if(At >= v.next + v.len) { return Result; }
+    
+    Result.s    = { v.next + beginIdx, 1, 1 };
+    Result.next = v.next + beginIdx + 1;
+    Result.len  = v.len - (beginIdx + 1);
+    
+    return Result;
+}
+
 view ls_viewNextNChars(view v, u32 n)
 {
-    ProfileFunc;
-    
     view Result = {};
     
     Result.s = {v.next, (s32)n, (s32)n};
@@ -3782,8 +3869,6 @@ view ls_viewNextNChars(view v, u32 n)
 
 view ls_viewNextDelimiter(view v, char c)
 {
-    ProfileFunc;
-    
     view Result = {};
     
     v = ls_viewEatWhitespace(v);
