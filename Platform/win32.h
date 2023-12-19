@@ -956,6 +956,21 @@ SYNCHRONIZE)
             DWORD dwDamageMask;
         } PIXELFORMATDESCRIPTOR, *PPIXELFORMATDESCRIPTOR, *LPPIXELFORMATDESCRIPTOR;
         
+        typedef struct _BLENDFUNCTION
+        {
+            BYTE   BlendOp;
+            BYTE   BlendFlags;
+            BYTE   SourceConstantAlpha;
+            BYTE   AlphaFormat;
+        }BLENDFUNCTION,*PBLENDFUNCTION;
+        
+        
+        // currently defined blend function
+#define AC_SRC_OVER                 0x00
+        
+        // alpha format flags
+#define AC_SRC_ALPHA                0x01
+        
 #pragma region PixelDefines
         
         //	pixel types
@@ -1650,6 +1665,19 @@ SYNCHRONIZE)
             void* _Placeholder;
         } FILE;
         
+        typedef struct _PROCESS_MEMORY_COUNTERS {
+            DWORD  cb;
+            DWORD  PageFaultCount;
+            SIZE_T PeakWorkingSetSize;
+            SIZE_T WorkingSetSize;
+            SIZE_T QuotaPeakPagedPoolUsage;
+            SIZE_T QuotaPagedPoolUsage;
+            SIZE_T QuotaPeakNonPagedPoolUsage;
+            SIZE_T QuotaNonPagedPoolUsage;
+            SIZE_T PagefileUsage;
+            SIZE_T PeakPagefileUsage;
+        } PROCESS_MEMORY_COUNTERS;
+        
         //
         //	Network Structures
         //
@@ -2330,6 +2358,51 @@ WS_SYSMENU)
         
 #define WS_CHILDWINDOW      (WS_CHILD)
         
+        /*
+ * Extended Window Styles
+ */
+#define WS_EX_DLGMODALFRAME     0x00000001L
+#define WS_EX_NOPARENTNOTIFY    0x00000004L
+#define WS_EX_TOPMOST           0x00000008L
+#define WS_EX_ACCEPTFILES       0x00000010L
+#define WS_EX_TRANSPARENT       0x00000020L
+#define WS_EX_MDICHILD          0x00000040L
+#define WS_EX_TOOLWINDOW        0x00000080L
+#define WS_EX_WINDOWEDGE        0x00000100L
+#define WS_EX_CLIENTEDGE        0x00000200L
+#define WS_EX_CONTEXTHELP       0x00000400L
+#define WS_EX_RIGHT             0x00001000L
+#define WS_EX_LEFT              0x00000000L
+#define WS_EX_RTLREADING        0x00002000L
+#define WS_EX_LTRREADING        0x00000000L
+#define WS_EX_LEFTSCROLLBAR     0x00004000L
+#define WS_EX_RIGHTSCROLLBAR    0x00000000L
+#define WS_EX_CONTROLPARENT     0x00010000L
+#define WS_EX_STATICEDGE        0x00020000L
+#define WS_EX_APPWINDOW         0x00040000L
+#define WS_EX_OVERLAPPEDWINDOW  (WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE)
+#define WS_EX_PALETTEWINDOW     (WS_EX_WINDOWEDGE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST)
+#define WS_EX_LAYERED           0x00080000
+#define WS_EX_NOINHERITLAYOUT   0x00100000L // Disable inheritence of mirroring by children
+#define WS_EX_NOREDIRECTIONBITMAP 0x00200000L
+#define WS_EX_LAYOUTRTL         0x00400000L // Right to left mirroring
+#define WS_EX_COMPOSITED        0x02000000L
+#define WS_EX_NOACTIVATE        0x08000000L
+        
+        
+        /*
+        * Layered Window Defines
+        */
+#define LWA_COLORKEY          0x00000001
+#define LWA_ALPHA             0x00000002
+        
+        
+#define ULW_COLORKEY           0x00000001
+#define ULW_ALPHA              0x00000002
+#define ULW_OPAQUE             0x00000004
+        
+#define ULW_EX_NORESIZE        0x00000008
+        
         
         //////////////////////////////////////////////
         // WINDOWS FUNCTIONS
@@ -2560,6 +2633,20 @@ SECTION_EXTEND_SIZE)
         
 #define ENCLAVE_TYPE_SGX            0x00000001
         
+#define PROCESS_ALL_ACCESS                0x001FFFFF
+#define PROCESS_CREATE_PROCESS            0x0080
+#define PROCESS_CREATE_THREAD             0x0002
+#define PROCESS_DUP_HANDLE                0x0040
+#define PROCESS_QUERY_INFORMATION         0x0400
+#define PROCESS_QUERY_LIMITED_INFORMATION 0x1000
+#define PROCESS_SET_INFORMATION           0x0200
+#define PROCESS_SET_QUOTA                 0x0100
+#define PROCESS_SUSPEND_RESUME            0x0800
+#define PROCESS_TERMINATE                 0x0001
+#define PROCESS_VM_OPERATION              0x0008
+#define PROCESS_VM_READ                   0x0010
+#define PROCESS_VM_WRITE                  0x0020
+        
 #pragma endregion
         
 #ifdef __GNUG__ //NOTE: Because of warning: 'allocator' attribute directive ignored [-Wattributes]
@@ -2573,7 +2660,11 @@ SECTION_EXTEND_SIZE)
         BOOL       VirtualFree(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType);
         HANDLE     GetProcessHeap(VOID);
         HANDLE     GetCurrentProcess();
+        DWORD      GetCurrentProcessId();
         void       RtlCopyMemory(PVOID  Destination, const VOID *Source, SIZE_T Length);
+        HANDLE     OpenProcess(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwProcessId);
+        BOOL       GetProcessMemoryInfo(HANDLE Process, PROCESS_MEMORY_COUNTERS *ppsmemCounters, DWORD cb);
+        
         
         //
         // Message Queue
@@ -4736,6 +4827,12 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         WINGDIAPI    HRGN         WINAPI        CreateRectRgn(int x1, int y1, int x2, int y2);
         WINGDIAPI    BOOL         WINAPI        FillRgn(HDC hdc, HRGN hrgn, HBRUSH hbr);
         WINGDIAPI    BOOL         WINAPI        BitBlt(HDC hdc, int x, int y, int cx, int cy, HDC hdcSrc, int x1, int y1, DWORD rop);
+        WINGDIAPI    BOOL         WINAPI        AlphaBlend(HDC hdcDest, int xoriginDest, int yoriginDest, int wDest, int hDest, HDC hdcSrc, int xoriginSrc, int yoriginSrc, int wSrc, int hSrc, BLENDFUNCTION ftn);
+        WINGDIAPI    BOOL         WINAPI        TransparentBlt(HDC hdcDest, int xoriginDest, int yoriginDest, int wDest, int hDest, HDC hdcSrc, int xoriginSrc, int yoriginSrc, int wSrc, int hSrc, UINT crTransparent);
+        WINUSERAPI   BOOL         WINAPI        UpdateLayeredWindow(HWND hWnd, HDC hdcDst, POINT* pptDst, SIZE* psize,
+                                                                    HDC hdcSrc, POINT* pptSrc, COLORREF crKey, BLENDFUNCTION* pblend, DWORD dwFlags);
+        
+        
         WINGDIAPI    BOOL         WINAPI        SetViewportOrgEx(HDC hdc, int x, int y, LPPOINT lppt);
         WINGDIAPI    BOOL         WINAPI        SetViewportExtEx(HDC hdc, int x, int y, LPSIZE lpsz);
         WINGDIAPI	BOOL 		WINAPI		SwapBuffers(HDC);
