@@ -1541,6 +1541,9 @@ void ls_memcpy(void *src, void *dest, size_t size)
     AssertMsg(src, "Source ptr was null\n");
     AssertMsg(dest, "Destination ptr was null\n");
     AssertMsgF(size < 4000000000, "Size is surely fucked up: %d\n", size);
+    AssertMsg(!((((u8*)src <= (u8*)dest) && ((u8*)src+size > (u8*)dest)) || 
+                (((u8*)dest <= (u8*)src)  && ((u8*)dest+size > (u8*)src))), 
+              "Trying to memcpy an overlapping region of memory. It CANNOT work\n");
     
     if(size == 0) { return; }
     
