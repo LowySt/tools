@@ -20,7 +20,7 @@ extern "C"
     Arena ls_arenaCreate(u64 arenaSize);
     void  ls_arenaDestroy(Arena a);
     
-    void  ls_arenaUse(Arena a);
+    Arena ls_arenaUse(Arena a);
     void  ls_arenaStop();
     void  ls_arenaClear(Arena a);
 };
@@ -61,10 +61,13 @@ void ls_arenaDestroy(Arena a)
 }
 
 
-void ls_arenaUse(Arena a)
+Arena ls_arenaUse(Arena a)
 {
+    InternalArena prevArena = {};
 #ifdef LS_PLAT_WINDOWS
-    return windows_useArena(a.id);
+    prevArena = windows_useArena(a.id);
+    Arena previous = {prevArena.data, prevArena.id};
+    return previous;
 #endif
     
 #ifdef LS_PLAT_LINUX
