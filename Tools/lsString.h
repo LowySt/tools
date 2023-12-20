@@ -21,6 +21,11 @@ struct utf8
     s32  size;
 };
 
+//TODO: Using a normal utf32 string is a PROBLEM (especially when mixed with arenas).
+//      The reason is, we don't really want some strings be re-allocated, or grown.
+//      We want the memory to be the same size all the time, and never be handled.
+//      What we should really do is make a `StaticUTF32` kind of string, that is only allocated once,
+//      And never again. It can't be grown, and will give a runtime error when the space is not enough.
 struct utf32
 {
     u32 *data;
@@ -315,6 +320,8 @@ void   ls_utf32AppendCStr(utf32 *s1, char *c);
 void   ls_utf32AppendNCStr(utf32 *s1, char *c, s32 len);
 void   ls_utf32AppendBuffer(utf32 *s1, u32 *buff, s32 buffLen);
 void   ls_utf32AppendInt(utf32 *s, s64 val);
+
+void   ls_utf32Replace(utf32 *s, char32_t *pattern, char32_t *replacement);
 
 // Convert
 s32    ls_utf32ToAscii_t(utf32 *s, char *buff, s32 buffMaxLen);
@@ -673,7 +680,14 @@ void ls_strRmSubstr(string *s, u32 beginIdx, u32 endIdx)
     u32 copyLen = s->len - (endIdx + 1);
     copyLen = copyLen == 0 ? 1 : copyLen;
     
-    ls_memcpy((void *)(s->data + endIdx + 1), (void *)(s->data + beginIdx), copyLen);
+    //NOTE: This is to avoid memcpying overlapping memory locations
+    u32 *tempMem = (u32 *)ls_alloc(copyLen+1);
+    
+    ls_memcpy((void *)(s->data + endIdx + 1), tempMem, copyLen);
+    ls_memcpy(tempMem, (void *)(s->data + beginIdx), copyLen);
+    
+    ls_free(tempMem);
+    
     s->len -= remove;
     s->data[s->len] = 0; //TODO: Fuck C strings. Remove this abomination.
     
@@ -2807,7 +2821,14 @@ void ls_utf32RmSubstr(utf32 *s, u32 beginIdx, u32 endIdx)
     u32 remove  = ((endIdx - beginIdx) + 1);
     u32 copyLen = s->len - (endIdx + 1);
     
-    ls_memcpy((void *)(s->data + endIdx + 1), (void *)(s->data + beginIdx), copyLen*4);
+    //NOTE: This is to avoid memcpying overlapping memory regions
+    u32 *tempMem = (u32 *)ls_alloc((copyLen+1)*4);
+    
+    ls_memcpy((void *)(s->data + endIdx + 1), tempMem, copyLen*4);
+    ls_memcpy(tempMem, (void *)(s->data + beginIdx), copyLen*4);
+    
+    ls_free(tempMem);
+    
     s->len -= remove;
     
     return;
@@ -2835,7 +2856,8 @@ void ls_utf32InsertSubstr(utf32 *s, utf32 toInsert, u32 insertIdx)
 {
     AssertMsg(s, "Null utf32 pointer passed\n");
     AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
-    AssertMsg(insertIdx < s->len, "Insertion index past utf32 length\n");
+    AssertMsg(toInsert.data, "Null toInsert data ptr\n");
+    AssertMsg(insertIdx <= s->len, "Insertion index past utf32 length\n");
     
     if(s->len + toInsert.len > s->size)
     {
@@ -2845,12 +2867,12 @@ void ls_utf32InsertSubstr(utf32 *s, utf32 toInsert, u32 insertIdx)
     
     //TODO:Make a better reverse memcpy for non byte-boundary blocks.
     s32 moveBytes = (s->len - insertIdx)*sizeof(u32);
+    u32 *tempMem = (u32 *)ls_alloc(moveBytes + 1);
     
-    u32 *tempBuff = (u32 *)ls_alloc(moveBytes);
-    ls_memcpy(s->data + insertIdx, tempBuff, moveBytes);
-    ls_memcpy(tempBuff, s->data + insertIdx + toInsert.len, moveBytes);
+    ls_memcpy(s->data + insertIdx, tempMem, moveBytes);
+    ls_memcpy(tempMem, s->data + insertIdx + toInsert.len, moveBytes);
     
-    ls_free(tempBuff);
+    ls_free(tempMem);
     
     ls_memcpy(toInsert.data, s->data + insertIdx, toInsert.len*sizeof(u32));
     
@@ -2868,7 +2890,7 @@ void ls_utf32InsertCStr(utf32 *s, char *toInsert, u32 insertIdx)
     AssertMsg(s, "Null utf32 pointer passed\n");
     AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n");
     AssertMsg(toInsert, "C String pointer passed is null\n");
-    AssertMsg(insertIdx < s->len, "Insertion index past utf32 length\n");
+    AssertMsg(insertIdx <= s->len, "Insertion index past utf32 length\n");
     
     u32 len = ls_len(toInsert);
     
@@ -3606,6 +3628,27 @@ void ls_utf32AppendBuffer(utf32 *s1, u32 *buff, s32 buffLen)
     s1->len += buffLen;
 }
 
+
+void ls_utf32Replace(utf32 *s, char32_t *pattern, char32_t *replacement)
+{
+    AssertMsg(s, "Base utf32 ptr is null\n");
+    AssertMsg(s->data, "Base utf32 data is null\n");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
+    AssertMsg(pattern, "Pattern ptr is null\n");
+    AssertMsg(replacement, "Replacement ptr is null\n");
+    
+    utf32 patStr  = ls_utf32Constant(pattern);
+    utf32 replStr = ls_utf32Constant(replacement);
+    
+    s32 findIdx = -1;
+    while((findIdx = ls_utf32LeftFind(*s, patStr)) != -1)
+    {
+        ls_utf32RmSubstr(s, findIdx, findIdx+patStr.len-1);
+        ls_utf32InsertSubstr(s, replStr, findIdx);
+    }
+    
+    return;
+}
 
 //      Merge       //
 //------------------//
