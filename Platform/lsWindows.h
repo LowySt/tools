@@ -142,6 +142,9 @@ struct InternalArena
     u64 capacity;
     u64 used;
     
+    void *lastAllocation;
+    u64   lastAllocationSize;
+    
     u32 id;
 };
 
@@ -170,7 +173,7 @@ extern "C"
 	void windows_memFree(void *ptr);
     
     void *windows_createArena(u64 arenaSize, u32 *id);
-    void windows_useArena(u32 id);
+    InternalArena windows_useArena(u32 id);
     void windows_stopArena();
     void windows_clearArena(u32 id);
     void windows_destroyArena(u32 id);
@@ -502,10 +505,13 @@ void *windows_memAlloc(size_t size)
         
         AssertMsgF(Ar->used + size <= Ar->capacity,
                    "Arena is out of space (cap: %d, size: %d, req: %d).\n", Ar->capacity, Ar->used, size);
-        //Assert(Ar->used + size <= Ar->capacity);
         
         u8 *ResultPtr = (u8 *)Ar->data + Ar->used;
         Ar->used += size;
+        
+        //NOTE: These are used to optimize the freeing allocation-deallocation pattern.
+        Ar->lastAllocation = (void *)ResultPtr;
+        Ar->lastAllocationSize = size;
         
         return (void *)ResultPtr;
     }
@@ -626,7 +632,20 @@ void windows_memFree(void *ptr)
     if(!ptr) { return; }
     
     /*Arenas*/
-    if(Memory.isUsingArena == TRUE) { return; }
+    if(Memory.isUsingArena == TRUE) {
+        
+        //NOTE: Simple optimization. If we are allocating and immediately de-allocating a piece of memory
+        //      We can keep the arena compact and truly de-allocate the memory. Helps keeping the arenas
+        //      smaller when performing allocation heavy work, like large string manipulation.
+        InternalArena *curr = Memory.arenas + Memory.currArenaId;
+        if(ptr == curr->lastAllocation) { 
+            curr->used              -= curr->lastAllocationSize;
+            curr->lastAllocation     = NULL;
+            curr->lastAllocationSize = 0;
+        }
+        
+        return;
+    }
     
     
     /*Blocks*/
@@ -702,14 +721,15 @@ void *windows_createArena(u64 arenaSize, u32 *id)
     return Ar->data;
 }
 
-void windows_useArena(u32 id)
+InternalArena windows_useArena(u32 id)
 {
     AssertMsg(Memory.arenas[id].data != 0x0, "Arena at chosen ID is not inizialied. Data is NULL.\n");
     
+    InternalArena prevArena = Memory.arenas[Memory.currArenaId];
     Memory.isUsingArena = TRUE;
     Memory.currArenaId  = id;
     
-    return;
+    return prevArena;
 }
 
 void windows_stopArena()
@@ -722,7 +742,9 @@ void windows_stopArena()
 void windows_clearArena(u32 id)
 {
     AssertMsg(Memory.used[id] == TRUE, "The given ID refers to an Arena which was not being used.\n");
-    Memory.arenas[id].used = 0;
+    Memory.arenas[id].used               = 0;
+    Memory.arenas[id].lastAllocation     = 0;
+    Memory.arenas[id].lastAllocationSize = 0;
     return;
 }
 
