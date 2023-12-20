@@ -2878,7 +2878,10 @@ void ls_utf32InsertCStr(utf32 *s, char *toInsert, u32 insertIdx)
         ls_utf32Grow(s, growSize);
     }
     
-    ls_memcpy(s->data + insertIdx, s->data + insertIdx + len, (s->len - insertIdx)*sizeof(u32));
+    //NOTE: Must be done passing through a temporary buffer because memory will overlap otherwise.
+    u32 tmpBuffer[1024] = {};
+    ls_memcpy(s->data + insertIdx, tmpBuffer, (s->len - insertIdx)*sizeof(u32));
+    ls_memcpy(tmpBuffer, s->data + insertIdx + len, (s->len - insertIdx)*sizeof(u32));
     
     u32 *At = s->data + insertIdx;
     for(u32 i = 0; i < len; i++) { At[i] = (u32)toInsert[i]; }
