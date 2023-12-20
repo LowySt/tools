@@ -218,10 +218,10 @@ struct StaticArray
     T data[N];
     s32 count;
     
+    //NOTE: It's okay to index into a value >= count, as long as it's smaller than N, because the array is static.
     T& operator[](s32 index)
     {
         AssertMsg(index < N, "Index out of bounds in StaticArray<>\n"); //NOTE: Should this be a crash or an error?
-        AssertMsg(index < count, "Index out of bounds in StaticArray<>\n"); //NOTE: Should this be a crash or an error?
         AssertMsg(index >= 0, "Index is negative StaticArray<>\n"); //NOTE: Should this be a crash or an error?
         return data[index];
     }
@@ -229,8 +229,8 @@ struct StaticArray
     T* operator+(s32 index)
     {
         AssertMsg(index < N, "Index out of bounds in StaticArray<>\n"); //NOTE: Should this be a crash or an error?
-        AssertMsg(index < count, "Index out of bounds in StaticArray<>\n"); //NOTE: Should this be a crash or an error?
         AssertMsg(index >= 0, "Index is negative StaticArray<>\n"); //NOTE: Should this be a crash or an error?
+        
         return data + index;
     }
 };
