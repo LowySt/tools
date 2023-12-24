@@ -122,9 +122,13 @@ static u32 qs_partition(void *data, u32 elementSize, sortFunc customFunc, s32 lo
             dataAt += elementSize*i;
             void *replaceElem = (void *)dataAt;
             
-            ls_memcpy(replaceElem, tempBuff, elementSize);
-            ls_memcpy(currElement, replaceElem, elementSize);
-            ls_memcpy(tempBuff, currElement, elementSize);
+            //TODO: Is this ok?
+            if(currElement != replaceElem)
+            {
+                ls_memcpy(replaceElem, tempBuff, elementSize);
+                ls_memcpy(currElement, replaceElem, elementSize);
+                ls_memcpy(tempBuff, currElement, elementSize);
+            }
         }
     }
     
@@ -132,9 +136,13 @@ static u32 qs_partition(void *data, u32 elementSize, sortFunc customFunc, s32 lo
     dataAt += elementSize*(i+1);
     void *finalElem = (void *)dataAt;
     
-    ls_memcpy(finalElem, tempBuff, elementSize);
-    ls_memcpy(pivotElement, finalElem, elementSize);
-    ls_memcpy(tempBuff, pivotElement, elementSize);
+    //TODO: Is this ok?
+    if(finalElem != pivotElement)
+    {
+        ls_memcpy(finalElem, tempBuff, elementSize);
+        ls_memcpy(pivotElement, finalElem, elementSize);
+        ls_memcpy(tempBuff, pivotElement, elementSize);
+    }
     
     return (i + 1);
 }
