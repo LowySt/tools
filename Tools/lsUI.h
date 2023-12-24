@@ -142,6 +142,12 @@ union UIRect
     struct { s32 x,    y,    w,    h; };
 };
 
+struct UILayoutRect
+{
+    s32 minX, minY, maxX, maxY;
+    s32 startX, startY;
+};
+
 struct UIGlyph
 {
     u8 *data;
@@ -421,13 +427,17 @@ enum RenderCommandType
     UI_RC_COLOR_PICKER,
 };
 
+static s32 RenderCommandUID = 0;
 //TODO: RenderCommand is getting big.
 struct RenderCommand
 {
     RenderCommandType  type;
     
     //NOTE: The render coord. after threaded dispatch
+    //      Most widgets only use the rect. The layout contains 2 extra members: startX & startY
+    //      other than the bounding rect, which are necessary when, for example, layouting text.
     UIRect rect;
+    UILayoutRect layout;
     
     //TODO: Can we make this happen at compile time and just globally assign it to each
     //      Render Thread by ThreadID?
@@ -469,6 +479,7 @@ struct RenderCommand
     
 #if _DEBUG
     b32 isTagged;
+    s32 UID;
 #endif
 };
 
@@ -576,112 +587,112 @@ struct ___threadCtx
 
 //NOTE: Functions
 
-HWND       ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c);
-HWND       ls_uiCreateWindow(UIContext *c);
-UIContext *ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, RenderCallback cb);
+HWND         ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c);
+HWND         ls_uiCreateWindow(UIContext *c);
+UIContext *  ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, RenderCallback cb);
 
-void       ls_uiFrameBegin(UIContext *c);
-void       ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs);
+void         ls_uiFrameBegin(UIContext *c);
+void         ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs);
 
-void       ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f);
+void         ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f);
 
-void       ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer);
-void       ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll);
-void       ls_uiEndScrollableRegion(UIContext *c);
+void         ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer);
+void         ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll);
+void         ls_uiEndScrollableRegion(UIContext *c);
 
-void       ls_uiFocusChange(UIContext *c, u64 *focus);
-b32        ls_uiInFocus(UIContext *c, void *p);
-b32        ls_uiHasCapture(UIContext *c, void *p);
-void       ls_uiSelectFontByPixelHeight(UIContext *cxt, u32 pixelHeight);
-s32        ls_uiSelectFontByFontSize(UIContext *cxt, UIFontSize fontSize);
+void         ls_uiFocusChange(UIContext *c, u64 *focus);
+b32          ls_uiInFocus(UIContext *c, void *p);
+b32          ls_uiHasCapture(UIContext *c, void *p);
+void         ls_uiSelectFontByPixelHeight(UIContext *cxt, u32 pixelHeight);
+s32          ls_uiSelectFontByFontSize(UIContext *cxt, UIFontSize fontSize);
 
-Color      ls_uiDarkenRGB(Color c, f32 percentage);
-Color      ls_uiLightenRGB(Color c, f32 percentage);
-Color      ls_uiAlphaBlend(Color source, Color dest, u8 alpha);
-Color      ls_uiAlphaBlend(Color source, Color dest);
-Color      ls_uiRGBAtoARGB(Color c);
-Color      ls_uiARGBtoRGBA(Color c);
+Color        ls_uiDarkenRGB(Color c, f32 percentage);
+Color        ls_uiLightenRGB(Color c, f32 percentage);
+Color        ls_uiAlphaBlend(Color source, Color dest, u8 alpha);
+Color        ls_uiAlphaBlend(Color source, Color dest);
+Color        ls_uiRGBAtoARGB(Color c);
+Color        ls_uiARGBtoRGBA(Color c);
 
-void       ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
-
-
-void       ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
-void       ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer);
-
-UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *data);
-UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, ButtonProc onClick,
-                           ButtonProc onHold, void *userData);
-UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, 
-                           ButtonProc onClick, ButtonProc onHold, void *data);
-UIButton   ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text,
-                           ButtonProc onClick, ButtonProc onHold, void *data);
-void       ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 t,
-                           ButtonProc onClick, ButtonProc onHold, void *data);
-void       ls_uiButtonInit(UIContext *c, UIButton *, UIButtonStyle, const char32_t *t,
-                           ButtonProc onClick, ButtonProc onHold, void *data);
-
-b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgColor, s32 zLayer);
-b32        ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer);
+void         ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
 
 
-UICheck    ls_uiCheckInit(UIContext *c, UICheckStyle s,
-                          u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, CheckProc onChange, void *data);
-UICheck    ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32 h,
-                          u8 *bmpAdditive, s32 addW, s32 addH, CheckProc onChange, void *data);
+void         ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
+void         ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer);
 
-void       ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
-                            Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
-void       ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 minWidth, s32 minHeight,
-                            Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
+UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *data);
+UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, ButtonProc onClick,
+                             ButtonProc onHold, void *userData);
+UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, 
+                             ButtonProc onClick, ButtonProc onHold, void *data);
+UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text,
+                             ButtonProc onClick, ButtonProc onHold, void *data);
+void         ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 t,
+                             ButtonProc onClick, ButtonProc onHold, void *data);
+void         ls_uiButtonInit(UIContext *c, UIButton *, UIButtonStyle, const char32_t *t,
+                             ButtonProc onClick, ButtonProc onHold, void *data);
 
-void       ls_uiLabel(UIContext *c, utf32 label, f32 xPos, f32 yPos, Color textColor, s32 zLayer);
+b32          ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgColor, s32 zLayer);
+b32          ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer);
 
-void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
-void       ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
-void       ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
-void       ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
-UIRect     ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textColor, s32 zLayer);
-UIRect     ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, Color textColor, s32 zLayer);
 
-void       ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer);
-void       ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer);
-void       ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer);
-void       ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer);
-UIRect     ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer);
-UIRect     ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, s32 zLayer);
+UICheck      ls_uiCheckInit(UIContext *c, UICheckStyle s,
+                            u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, CheckProc onChange, void *data);
+UICheck      ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32 h,
+                            u8 *bmpAdditive, s32 addW, s32 addH, CheckProc onChange, void *data);
 
-void       ls_uiTextBoxClear(UIContext *c, UITextBox *box);
-void       ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s);
-void       ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s);
-void       ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen, b32 singleLine, b32 readOnly, TextBoxProc preInput, TextBoxProc postInput);
-b32        ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
+void         ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
+                              Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
+void         ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 minWidth, s32 minHeight,
+                              Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
 
-u32        ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, char *s);
-u32        ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, utf32 s);
-void       ls_uiListBoxRemoveEntry(UIContext *c, UIListBox *list, u32 index);
-b32        ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer);
+void         ls_uiLabel(UIContext *c, utf32 label, f32 xPos, f32 yPos, Color textColor, s32 zLayer);
 
-UISlider   ls_uiSliderInit(char32_t *name, s32 maxVal, s32 minVal, f64 currPos, SliderStyle s, Color l, Color r);
-void       ls_uiSliderChangeValueBy(UIContext *c, UISlider *f, s32 valueDiff);
-s32        ls_uiSliderGetValue(UIContext *c, UISlider *f);
-b32        ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h);
+void         ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
+void         ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
+void         ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
+void         ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
+UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, Color textColor, s32 zLayer);
+UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect layout, Color textColor, s32 zLayer);
 
-UIButton   ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 height);
-UISubMenu  *ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub);
-UISubMenu  *ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name);
-UIMenuItem *ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, ButtonProc onClick, void *userData);
-UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, ButtonProc onClick, void *userData);
-UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, ButtonProc onClick, void *data);
-b32        ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer);
+void         ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer);
+void         ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer);
+void         ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer);
+void         ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer);
+UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, s32 zLayer);
+UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect layout, s32 zLayer);
 
-void       ls_uiTexturedRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, void *data, s32 dataW, s32 dataH, s32 zLayer);
+void         ls_uiTextBoxClear(UIContext *c, UITextBox *box);
+void         ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s);
+void         ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s);
+void         ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen, b32 singleLine, b32 readOnly, TextBoxProc preInput, TextBoxProc postInput);
+b32          ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
+
+u32          ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, char *s);
+u32          ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, utf32 s);
+void         ls_uiListBoxRemoveEntry(UIContext *c, UIListBox *list, u32 index);
+b32          ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer);
+
+UISlider     ls_uiSliderInit(char32_t *name, s32 maxVal, s32 minVal, f64 currPos, SliderStyle s, Color l, Color r);
+void         ls_uiSliderChangeValueBy(UIContext *c, UISlider *f, s32 valueDiff);
+s32          ls_uiSliderGetValue(UIContext *c, UISlider *f);
+b32          ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h);
+
+UIButton     ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 height);
+UISubMenu  * ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub);
+UISubMenu  * ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name);
+UIMenuItem * ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, ButtonProc onClick, void *userData);
+UIMenuItem * ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, ButtonProc onClick, void *userData);
+UIMenuItem * ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, ButtonProc onClick, void *data);
+b32          ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer);
+
+void         ls_uiTexturedRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, void *data, s32 dataW, s32 dataH, s32 zLayer);
 
 UIColorPicker ls_uiColorPickerInit(UIContext *c, void *userData);
 
-void       ls_uiRender(UIContext *c);
+void         ls_uiRender(UIContext *c);
 
 #if _DEBUG
-void       ls_uiDebugLog(UIContext *c, s32 x, s32 y, const char *fmt, ...);
+void         ls_uiDebugLog(UIContext *c, s32 x, s32 y, const char *fmt, ...);
 #endif
 
 #endif
@@ -1537,6 +1548,10 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     AssertMsg(command.type != UI_RC_INVALID,  "Uninitialized Render Command?\n");
     AssertMsg(zLayer < UI_Z_LAYERS, "zLayer is invalid. A function call did an oopsie\n");
     
+#if _DEBUG
+    command.UID = RenderCommandUID++;
+#endif
+    
     command.selectedFont = c->currFont;
     command.scissor      = c->scissor;
     
@@ -1545,6 +1560,9 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     {
         command.rect.x -= c->scroll.deltaX;
         command.rect.y -= c->scroll.deltaY;
+        
+        command.layout.startY -= c->scroll.deltaY;
+        command.layout.startX -= c->scroll.deltaX;
     }
     
     UIRect commandRect = command.rect;
@@ -1556,7 +1574,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     if(command.type == UI_RC_LABEL_LAYOUT)
     {
         s32 fontHeight = command.selectedFont->pixelHeight;
-        commandRect.y  = commandRect.y + fontHeight;
+        command.rect.y = command.rect.y + fontHeight;
     }
     
     switch(THREAD_COUNT)
@@ -3704,15 +3722,15 @@ void ls_uiGlyphString_8(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
 
 //TODO: Should I always pass a layout, and maybe only keep an helper when I want no layout, so the layout region
 //      would just be the entire window???
-void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UIRect layout,
+void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UILayoutRect layout,
                               UIRect threadRect, UIRect scissor, utf32 text, Color textColor)
 {
     AssertMsg(c, "Context is null\n");
     LogMsg(font, "Passed font is null\n");
     if(!font) { return; }
     
-    s32 currXPos = layout.x;
-    s32 currYPos = layout.y + layout.h;
+    s32 currXPos = layout.startX;
+    s32 currYPos = layout.startY + layout.maxY;
     for(u32 i = 0; i < text.len; i++)
     {
         u32 indexInGlyphArray = text.data[i];
@@ -3720,7 +3738,7 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UIRect layout,
         
         if(indexInGlyphArray == (u32)'\n') {
             currYPos -= font->pixelHeight;
-            currXPos = layout.x;
+            currXPos = layout.minX;
             continue;
         }
         
@@ -3731,10 +3749,10 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UIRect layout,
         if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
         
         s32 newAdvance = currGlyph->xAdv + kernAdvance;
-        if((currXPos + newAdvance) > (layout.x + layout.w))
+        if((currXPos + newAdvance) > (layout.maxX))
         { 
             currYPos -= font->pixelHeight; 
-            currXPos = layout.x;
+            currXPos = layout.minX;
             continue;
         }
         
@@ -3864,7 +3882,13 @@ s32 ls_uiMonoGlyphMaxIndexDiff(UIContext *c, UIFont *font, s32 width)
     return maxGlyphs;
 }
 
-UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOff)
+//NOTE: ls_uiGlyphStringLayout calculates the height of the rectangle of the layout text 
+//      (finalLayout.y, finalLayout.h in the return value).
+//      It also returns the coordinates of where the next character would go, if you were to keep writing.
+//      (finalLayout.x, finalLayout.y in the return value).
+//
+//      This is done to allow automatic layout of multiple strings inside a given rect (UILayoutRect).
+UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, UILayoutRect layout, utf32 text)
 {
     //TODO: Only one quirk remains, the y offset is determined based on the font height of the current element, 
     //      which obviously generates too large gaps when the font becomes smaller from one call to the 
@@ -3878,16 +3902,16 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOf
     LogMsg(font, "Passed font is null\n");
     if(!font) { return {}; }
     
-    s32 largestXOff = 0;
-    s32 currXOff = 0;
-    s32 currYOff = 0;
+    s32 currX          = layout.startX;
+    s32 currY          = layout.startY;
     s32 currLineHeight = font->pixelHeight;
     for(u32 i = 0; i < text.len; i++)
     {
         u32 indexInGlyphArray = text.data[i];
         AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
         
-        if(indexInGlyphArray == (u32)'\n') { currXOff = 0; currYOff -= font->pixelHeight; currLineHeight += font->pixelHeight; continue; }
+        if(indexInGlyphArray == (u32)'\n')
+        { currX = layout.minX; currY -= font->pixelHeight; currLineHeight += font->pixelHeight; continue; }
         
         UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
         
@@ -3895,15 +3919,14 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, utf32 text, s32 maxXOf
         if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
         
         s32 newAdvance = currGlyph->xAdv + kernAdvance;
-        if(currXOff + newAdvance > maxXOff) { currXOff = 0; currYOff -= font->pixelHeight; currLineHeight += font->pixelHeight; continue; }
+        if(currX + newAdvance > layout.maxX)
+        { currX = layout.minX; currY -= font->pixelHeight; currLineHeight += font->pixelHeight; continue; }
         
-        currXOff += newAdvance;
-        if(largestXOff < currXOff) { largestXOff = currXOff; }
+        currX += newAdvance;
     }
     
-    //s32 firstLineRemoved = currYOff - font->pixelHeight;
-    
-    UIRect finalLayout = { currXOff, -currYOff, largestXOff, currLineHeight };
+    //UIRect finalLayout = { currX, currY, layout.maxX, currLineHeight };
+    UIRect finalLayout = { currX, currY, layout.maxX, layout.startY - currY + (s32)font->pixelHeight };
     
     return finalLayout;
 }
@@ -4282,28 +4305,21 @@ void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer = 
     ls_uiLabel(c, lab, xPos, yPos, c->textColor, zLayer);
 }
 
-//TODO: To be fixed the layout system has to use a 6 point bound, rather than just 4 points
-//      So that we have a minimumX and a baseX, to know where to position the newline. @NewLayout
-UIRect ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color textColor, s32 zLayer = 0)
+UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, Color textColor, s32 zLayer = 0)
 {
     AssertMsg(c, "Context pointer was null");
     AssertMsg(c->currFont, "No font was selected before sizing a label\n");
     
     if(label.len == 0) { return {}; }
     
-    //TODO: We are not using the layoutRegion.h value 
-    //      (Which is actually inverted from the meaning in the struct 
-    //       because text grows downward and Y grows upward)
-    //      So BE CAREFUL!!! the Y value in layoutRegion.h /layoutRegion.maxY is actually the MINIMUM Y!!!
-    s32 maxXOff = layoutRegion.w - layoutRegion.x;
-    UIRect deltaPos = ls_uiGlyphStringLayout(c, c->currFont, label, maxXOff);
+    UIRect deltaPos = ls_uiGlyphStringLayout(c, c->currFont, layout, label);
     
     //NOTE: layoutRegion.y refers to the top of the string, which grows downward
     //      The rect containing it has the y growing up, thus we offset it by it's height, deltaPos.h
-    //RenderCommand command = { UI_RC_LABEL_LAYOUT, layoutRegion.x, layoutRegion.y-deltaPos.h, maxXOff, deltaPos.h };
-    RenderCommand command = { UI_RC_LABEL_LAYOUT, layoutRegion.x, layoutRegion.y-deltaPos.h, deltaPos.w, deltaPos.h };
-    command.label32 = label;
-    command.textColor = textColor;
+    RenderCommand command = { UI_RC_LABEL_LAYOUT, layout.minX, deltaPos.y, layout.maxX-layout.minX, deltaPos.h };
+    command.layout = { layout.minX, layout.minY, layout.maxX, deltaPos.h, layout.startX, layout.startY-deltaPos.h };
+    command.label32       = label;
+    command.textColor     = textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
     
 #if 0
@@ -4314,25 +4330,26 @@ UIRect ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, Color te
     ls_uiPushRenderCommand(c, test, zLayer);
 #endif
     
-    UIRect correctedDelta = { layoutRegion.x + deltaPos.x, layoutRegion.y - deltaPos.y, deltaPos.w, deltaPos.h };
-    return correctedDelta;
+    UILayoutRect newLayout = { layout.minX, layout.minY, layout.maxX, deltaPos.h, deltaPos.x, deltaPos.y };
+    return newLayout;
 }
 
-UIRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, Color textColor, s32 zLayer = 0)
+UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect layout, 
+                              Color textColor, s32 zLayer = 0)
 {
     utf32 lab = ls_utf32Constant(label);
-    return ls_uiLabelLayout(c, lab, layoutRegion, textColor, zLayer);
+    return ls_uiLabelLayout(c, lab, layout, textColor, zLayer);
 }
 
-UIRect ls_uiLabelLayout(UIContext *c, utf32 label, UIRect layoutRegion, s32 zLayer = 0)
+UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, s32 zLayer = 0)
 {
-    return ls_uiLabelLayout(c, label, layoutRegion, c->textColor, zLayer);
+    return ls_uiLabelLayout(c, label, layout, c->textColor, zLayer);
 }
 
-UIRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UIRect layoutRegion, s32 zLayer = 0)
+UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect layout, s32 zLayer = 0)
 {
     utf32 lab = ls_utf32Constant(label);
-    return ls_uiLabelLayout(c, lab, layoutRegion, c->textColor, zLayer);
+    return ls_uiLabelLayout(c, lab, layout, c->textColor, zLayer);
 }
 
 void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
@@ -4950,7 +4967,10 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
         { box->postInput(c, box->data); }
     }
     
-    RenderCommand command = {UI_RC_TEXTBOX, xPos, yPos, w, h, 0, 0, 0, 0, box, c->widgetColor, c->textColor};
+    RenderCommand command = {UI_RC_TEXTBOX, xPos, yPos, w, h };
+    command.textBox       = box;
+    command.bkgColor      = c->widgetColor;
+    command.textColor     = c->textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
     
     return inputUse;
@@ -5925,8 +5945,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 
                 case UI_RC_LABEL_LAYOUT:
                 {
-                    UIRect layoutRegion = { xPos, yPos, w, h };
-                    ls_uiGlyphStringInLayout(c, font, layoutRegion, threadRect, scissor, curr->label32, textColor);
+                    ls_uiGlyphStringInLayout(c, font, curr->layout, threadRect, scissor, curr->label32, textColor);
                 } break;
                 
                 case UI_RC_TEXTBOX:
@@ -6382,6 +6401,10 @@ void ls_uiRender__(UIContext *c, u32 threadID)
     }
     
     c->renderGroups[threadID].isDone = TRUE;
+    
+#if _DEBUG
+    RenderCommandUID = 0;
+#endif
     
     return;
 }
