@@ -11,15 +11,15 @@ struct Array
     
     T& operator[](s32 index)
     {
-        AssertMsg(index < count, "Index out of bounds in Array<>\n"); //NOTE: Should this be a crash or an error?
-        AssertMsg(index >= 0, "Index is negative Array<>\n"); //NOTE: Should this be a crash or an error?
+        AssertMsgF(index < count, "Index (%d) out of bounds in Array<>\n", index); //NOTE: Should this be a crash or an error?
+        AssertMsgF(index >= 0, "Index (%d) is negative Array<>\n", index); //NOTE: Should this be a crash or an error?
         return data[index];
     }
     
     T* operator+(s32 index)
     {
-        AssertMsg(index < count, "Index out of bounds in Array<>\n"); //NOTE: Should this be a crash or an error?
-        AssertMsg(index >= 0, "Index is negative Array<>\n"); //NOTE: Should this be a crash or an error?
+        AssertMsgF(index < count, "Index (%d) out of bounds in Array<>\n", index); //NOTE: Should this be a crash or an error?
+        AssertMsgF(index >= 0, "Index (%d) is negative Array<>\n", index); //NOTE: Should this be a crash or an error?
         return data + index;
     }
 };
