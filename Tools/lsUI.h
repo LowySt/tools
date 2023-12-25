@@ -651,6 +651,8 @@ void         ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color tex
 void         ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
 void         ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
 void         ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
+
+UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, UIRect deltaPos, Color textColor, s32 zLayer);
 UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, Color textColor, s32 zLayer);
 UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect layout, Color textColor, s32 zLayer);
 
@@ -4305,6 +4307,26 @@ void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer = 
     ls_uiLabel(c, lab, xPos, yPos, c->textColor, zLayer);
 }
 
+UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, UIRect deltaPos,
+                              Color textColor, s32 zLayer = 0)
+{
+    AssertMsg(c, "Context pointer was null");
+    AssertMsg(c->currFont, "No font was selected before sizing a label\n");
+    
+    if(label.len == 0) { return {}; }
+    
+    //NOTE: layoutRegion.y refers to the top of the string, which grows downward
+    //      The rect containing it has the y growing up, thus we offset it by it's height, deltaPos.h
+    RenderCommand command = { UI_RC_LABEL_LAYOUT, layout.minX, deltaPos.y, layout.maxX-layout.minX, deltaPos.h };
+    command.layout = { layout.minX, layout.minY, layout.maxX, deltaPos.h, layout.startX, layout.startY-deltaPos.h };
+    command.label32       = label;
+    command.textColor     = textColor;
+    ls_uiPushRenderCommand(c, command, zLayer);
+    
+    UILayoutRect newLayout = { layout.minX, layout.minY, layout.maxX, deltaPos.h, deltaPos.x, deltaPos.y };
+    return newLayout;
+}
+
 UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, Color textColor, s32 zLayer = 0)
 {
     AssertMsg(c, "Context pointer was null");
@@ -4321,14 +4343,6 @@ UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, Co
     command.label32       = label;
     command.textColor     = textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
-    
-#if 0
-    //NOTE: Debug render code to show the rect in which the text is rendered.
-    RenderCommand test = {UI_RC_RECT, layoutRegion.x, layoutRegion.y-deltaPos.h+c->currFont->pixelHeight, deltaPos.w, deltaPos.h };
-    test.bkgColor    = RGBA(0,0,0,0);
-    test.borderColor = RGB(0xFF, 0, 0);
-    ls_uiPushRenderCommand(c, test, zLayer);
-#endif
     
     UILayoutRect newLayout = { layout.minX, layout.minY, layout.maxX, deltaPos.h, deltaPos.x, deltaPos.y };
     return newLayout;
