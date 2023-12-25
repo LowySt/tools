@@ -533,7 +533,7 @@ struct UIContext
     
     UIRect scissor;
     
-    UIScrollableRegion scroll;
+    UIScrollableRegion *scroll;
     
     u64 *currentFocus;
     u64 *lastFocus;
@@ -599,6 +599,7 @@ void         ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f);
 void         ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer);
 void         ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll);
 void         ls_uiEndScrollableRegion(UIContext *c);
+void         ls_uiResetScrollableRegion(UIContext *c);
 
 void         ls_uiFocusChange(UIContext *c, u64 *focus);
 b32          ls_uiInFocus(UIContext *c, void *p);
@@ -1558,13 +1559,13 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     command.scissor      = c->scissor;
     
     //NOTE: Normalize the scrolled coordinates, and replace them in the render command.
-    if(command.type != UI_RC_SCROLLBAR)
+    if(c->scroll && command.type != UI_RC_SCROLLBAR)
     {
-        command.rect.x -= c->scroll.deltaX;
-        command.rect.y -= c->scroll.deltaY;
+        command.rect.x -= c->scroll->deltaX;
+        command.rect.y -= c->scroll->deltaY;
         
-        command.layout.startY -= c->scroll.deltaY;
-        command.layout.startX -= c->scroll.deltaX;
+        command.layout.startY -= c->scroll->deltaY;
+        command.layout.startX -= c->scroll->deltaX;
     }
     
     UIRect commandRect = command.rect;
@@ -2800,6 +2801,9 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
 
 void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
 { 
+    AssertMsg(c->scroll == NULL, "Starting a scrollable region inside a scrollable region is invalid\n");
+    AssertMsg(scroll, "Invalid Scrollable Region\n");
+    
     Input *UserInput = &c->UserInput;
     
     if(LeftUp) { scroll->isHeld = FALSE; }
@@ -2841,7 +2845,7 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
     if(scroll->deltaY < -totalHeight) { scroll->deltaY = -totalHeight; }
     else if(scroll->deltaY > 0)       { scroll->deltaY = 0; }
     
-    c->scroll    = *scroll;
+    c->scroll    = scroll;
     c->scissor   = UIRect { scroll->x, scroll->y, scroll->w, scroll->h-2 };
     
     RenderCommand command = { UI_RC_SCROLLBAR, scroll->x, scroll->y, scroll->w, scroll->h };
@@ -2851,8 +2855,19 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
 
 void ls_uiEndScrollableRegion(UIContext *c)
 { 
-    c->scroll  = {};
+    c->scroll  = NULL;
     c->scissor = UIRect { 0, 0, s32(c->width), s32(c->height) };
+}
+
+void ls_uiResetScrollableRegion(UIContext *c)
+{
+    AssertMsg(c->scroll, "Null scroll pointer in UIContext\n");
+    AssertMsg(c, "Null context pointer\n");
+    
+    c->scroll->deltaX = 0;
+    c->scroll->deltaY = 0;
+    c->scroll->minY   = 0;
+    //TODO: scroll->maxX?
 }
 
 //TODO: Fix for premultiplied alpha?
