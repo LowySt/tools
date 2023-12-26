@@ -5309,7 +5309,12 @@ b32 ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h
     else
     { list->isOpen = FALSE; }
     
-    RenderCommand list_command = { UI_RC_LISTBOX, xPos, yPos, w, h };
+    s32 maxHeight = (list->list.count)*(h);
+    //NOTE: Here the maxHeight in the command rect is used to determine the maximum height when expanded
+    //      the height passed in the layout rect in minY determines the minimum height when contracted.
+    //      This also means that yPos is shifted by maxHeight
+    RenderCommand list_command = { UI_RC_LISTBOX, xPos, yPos-maxHeight, w, maxHeight };
+    list_command.layout.minY = h;
     list_command.listBox = list;
     ls_uiPushRenderCommand(c, list_command, zLayer);
     
@@ -5941,7 +5946,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
         s32 count = currLayer->count;
         for(u32 commandIdx = 0; commandIdx < count; commandIdx++)
         {
-            RenderCommand *curr = (RenderCommand *)ls_stackPop(currLayer);
+            RenderCommand *curr     = (RenderCommand *)ls_stackPop(currLayer);
             s32 xPos                = curr->rect.x;
             s32 yPos                = curr->rect.y;
             s32 w                   = curr->rect.w;
@@ -6001,19 +6006,20 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 {
                     UIListBox *list = curr->listBox;
                     
+                    s32 h = curr->layout.minY;
+                    s32 maxHeight = curr->rect.h;
+                    
                     s32 strHeight = font->pixelHeight; 
                     s32 vertOff = ((h - strHeight) / 2) + 4; //TODO: @FontDescent
                     
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor);
+                    ls_uiBorderedRect(c, xPos, yPos+maxHeight, w, h, threadRect, scissor);
                     
                     if(list->list.count)
                     {
                         utf32 selected = list->list[list->selectedIndex].name;
-                        ls_uiGlyphString(c, font, xPos+10, yPos + vertOff, threadRect, scissor, selected, c->textColor);
+                        ls_uiGlyphString(c, font, xPos+10, yPos + maxHeight + vertOff, threadRect, scissor, selected, c->textColor);
                     }
                     
-                    
-                    s32 maxHeight = (list->list.count)*h;
                     if(list->isOpening)
                     {
                         s32 height = 0;
@@ -6022,7 +6028,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         if(list->dtOpen > 52)  { height = maxHeight*0.70f; }
                         
                         if(!list->isOpen)
-                        { ls_uiFillRect(c, xPos+1, yPos-height, w-2, height,
+                        { ls_uiFillRect(c, xPos+1, yPos + maxHeight - height, w-2, height,
                                         threadRect, scissor, c->widgetColor); }
                     }
                     
@@ -6030,16 +6036,16 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     {
                         for(u32 i = 0; i < list->list.count; i++)
                         {
-                            s32 currY = yPos - (h*(i+1));
+                            s32 currY = yPos + maxHeight - (h*(i+1));
                             UIListBoxItem *currItem = list->list + i;
                             
                             ls_uiRect(c, xPos+1, currY, w-2, h, threadRect, scissor, currItem->bkgColor);
-                            ls_uiGlyphString(c, font, xPos+10, yPos + vertOff - (h*(i+1)),
+                            ls_uiGlyphString(c, font, xPos+10, yPos + maxHeight + vertOff - (h*(i+1)),
                                              threadRect, scissor, currItem->name, currItem->textColor);
                             
                         }
                         
-                        ls_uiBorder(c, xPos, yPos-maxHeight, w, maxHeight+1, threadRect, scissor);
+                        ls_uiBorder(c, xPos, yPos, w, maxHeight+1, threadRect, scissor);
                     }
                     
                 } break;
