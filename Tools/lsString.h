@@ -273,7 +273,7 @@ void   ls_utf32TrimRight(utf32 *s, u32 numChars);
 
 void   ls_utf32InsertSubstr(utf32 *s, utf32 toInsert, u32 insertIdx);
 void   ls_utf32InsertChar(utf32 *s, u32 c, u32 idx);
-void   ls_utf32InsertCStr(utf32 *s, char *toInsert, u32 insertIdx);
+void   ls_utf32InsertCStr(utf32 *s, const char *toInsert, u32 insertIdx);
 void   ls_utf32InsertBuffer(utf32 *s, u32 *toInsert, s32 buffLen, u32 insertIdx);
 
 utf32 *ls_utf32Split(utf32 s, u32 *outNum, utf32 delim);
@@ -321,7 +321,7 @@ void   ls_utf32AppendNCStr(utf32 *s1, char *c, s32 len);
 void   ls_utf32AppendBuffer(utf32 *s1, u32 *buff, s32 buffLen);
 void   ls_utf32AppendInt(utf32 *s, s64 val);
 
-void   ls_utf32Replace(utf32 *s, char32_t *pattern, char32_t *replacement);
+void   ls_utf32Replace(utf32 *s, const char32_t *pattern, const char32_t *replacement);
 
 // Convert
 s32    ls_utf32ToAscii_t(utf32 *s, char *buff, s32 buffMaxLen);
@@ -2885,14 +2885,14 @@ void ls_utf32InsertChar(utf32 *s, u32 c, u32 idx)
     ls_utf32InsertSubstr(s, insertString, idx);
 }
 
-void ls_utf32InsertCStr(utf32 *s, char *toInsert, u32 insertIdx)
+void ls_utf32InsertCStr(utf32 *s, const char *toInsert, u32 insertIdx)
 {
     AssertMsg(s, "Null utf32 pointer passed\n");
     AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n");
     AssertMsg(toInsert, "C String pointer passed is null\n");
     AssertMsg(insertIdx <= s->len, "Insertion index past utf32 length\n");
     
-    u32 len = ls_len(toInsert);
+    u32 len = ls_len((char *)toInsert);
     
     if(s->len + len > s->size)
     {
@@ -3629,7 +3629,7 @@ void ls_utf32AppendBuffer(utf32 *s1, u32 *buff, s32 buffLen)
 }
 
 
-void ls_utf32Replace(utf32 *s, char32_t *pattern, char32_t *replacement)
+void ls_utf32Replace(utf32 *s, const char32_t *pattern, const char32_t *replacement)
 {
     AssertMsg(s, "Base utf32 ptr is null\n");
     AssertMsg(s->data, "Base utf32 data is null\n");
