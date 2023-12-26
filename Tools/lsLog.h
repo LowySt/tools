@@ -256,9 +256,14 @@ s32 ls_vlogFormatUTF32(char *dst, va_list *argList)
 {
     utf32 str = va_arg(*argList, utf32);
     
-    s32 bytesWritten = str.len*sizeof(u32);
-    ls_memcpy(str.data, dst, bytesWritten);
-    return bytesWritten;
+    for(s32 i = 0; i < str.len; i++)
+    { dst[i] = ls_strCharFromUTF32(str.data[i]); }
+    
+    return str.len;
+    
+    //s32 bytesWritten = str.len*sizeof(u32);
+    //ls_memcpy(str.data, dst, bytesWritten);
+    //return bytesWritten;
 }
 
 s32 ls_vlogFormatM128I(char *dst, va_list *argList)
