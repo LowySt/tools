@@ -127,6 +127,7 @@ void    ls_strAppend(string *s1, const char *c);
 void    ls_strAppend(string *s1, char *c, u32 len);
 
 //To/From Data
+u8      ls_strCharFromUTF32(u32 codepoint);
 b32     ls_strIsANumber(string s);
 string  ls_itos(s64 x);
 void    ls_itosOn(s64 x, string *out);
@@ -292,6 +293,7 @@ s32    ls_utf32LeftFind(utf32 s, s32 offset, utf32 needle);
 s32    ls_utf32LeftFind(utf32 s, utf32 needle);
 s32    ls_utf32LeftFind(utf32 s, s32 offset, u32 c);
 s32    ls_utf32LeftFind(utf32 s, u32 c);
+s32    ls_utf32LeftFindAny(utf32 s, utf32 *needles, s32 count);
 
 typedef b32(*UTF32FindProc)(u32 c);
 s32    ls_utf32LeftFind(utf32 s, UTF32FindProc);
@@ -1305,6 +1307,13 @@ void ls_strAppend(string *s1, char *c, u32 s2Len)
 
 //------------------//
 //   To/From Data   //
+
+//NOTE: Is returning a space for an invalid ascii codepoint ok?
+u8 ls_strCharFromUTF32(u32 codepoint)
+{
+    if(codepoint < 128) { return (u8)codepoint; }
+    else                { return ' '; }
+}
 
 b32 ls_strIsANumber(string s)
 {
@@ -3204,6 +3213,17 @@ s32 ls_utf32LeftFind(utf32 s, s32 off, u32 c)
 
 s32 ls_utf32LeftFind(utf32 s, u32 c)
 { return ls_utf32LeftFind(s, 0, c); }
+
+s32 ls_utf32LeftFindAny(utf32 s, utf32 *needles, s32 count)
+{
+    s32 result = -1;
+    for(s32 i = 0; i < count; i++)
+    {
+        if((result = ls_utf32LeftFind(s, 0, needles[i])) != -1) { return result; }
+    }
+    
+    return -1;
+}
 
 //TODO: This doesn't seem worth it
 s32 ls_utf32LeftFind(utf32 s, s32 off, UTF32FindProc proc)
