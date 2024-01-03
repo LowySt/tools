@@ -237,9 +237,12 @@ utf32 *ls_utf32AllocArr(u32 numStrings, s32 initialSize);
 void   ls_utf32Free(utf32 *s);
 void   ls_utf32FreeArr(utf32 *s, s32 arrSize);
 
+constexpr utf32 operator""_W(const char32_t *lit, size_t);
+
 b32    ls_utf32AreEqual(utf32 a, utf32 b);
 b32    ls_utf32AreEqualUpTo(utf32 a, utf32 b, s32 len);
 b32    ls_utf32AsciiAreEqual(utf32 a, string b);
+s32    ls_utf32FirstEqual(utf32 a, utf32 *set, s32 count);
 void   ls_utf32Set(utf32 *toSet, utf32 source);
 
 s32    ls_utf32Len(const char32_t *s);
@@ -256,13 +259,14 @@ utf32  ls_utf32FromInt(s64 x);
 void   ls_utf32FromInt_t(utf32 *s, s64 x);
 utf32  ls_utf32FromF64(f64 x);
 void   ls_utf32FromF64_t(utf32 *s, f64 x);
-const utf32  ls_utf32Constant(const char32_t *p);
+constexpr utf32 ls_utf32Constant(const char32_t *p);
 
 u32    ls_utf32CharFromUtf8(utf8 src, s32 characterIndex);
 
 //Manage
 void   ls_utf32Clear(utf32 *s);
 utf32  ls_utf32Copy(utf32 s);
+void   ls_utf32Copy_t(utf32 s, utf32 *out);
 void   ls_utf32NCopy(utf32 s, utf32 *dst, s32 size);
 utf32  ls_utf32CopySubstr(utf32 s, u32 beginIdx, u32 _endIdx = (u32)-1);
 
@@ -273,6 +277,7 @@ void   ls_utf32RmIdx(utf32 *s, u32 idx);
 void   ls_utf32TrimRight(utf32 *s, u32 numChars);
 
 void   ls_utf32InsertSubstr(utf32 *s, utf32 toInsert, u32 insertIdx);
+void   ls_utf32InsertSubstr(utf32 *s, const char32_t *toInsert, s32 insertIdx);
 void   ls_utf32InsertChar(utf32 *s, u32 c, u32 idx);
 void   ls_utf32InsertCStr(utf32 *s, const char *toInsert, u32 insertIdx);
 void   ls_utf32InsertBuffer(utf32 *s, u32 *toInsert, s32 buffLen, u32 insertIdx);
@@ -326,7 +331,7 @@ void   ls_utf32AppendInt(utf32 *s, s64 val);
 void   ls_utf32Replace(utf32 *s, const char32_t *pattern, const char32_t *replacement);
 
 // Convert
-s32    ls_utf32ToAscii_t(utf32 *s, char *buff, s32 buffMaxLen);
+s32    ls_utf32ToAscii_t(utf32 s, char *buff, s32 buffMaxLen);
 s64    ls_utf32ToInt(utf32 s);
 
 b32    ls_utf32IsNumber(u32 c);
@@ -2404,10 +2409,12 @@ void ls_utf32FreeArr(utf32 *s, s32 arrSize)
     ls_free(s);
 }
 
+constexpr utf32 operator""_W(const char32_t *lit, size_t s) { return ls_utf32Constant(lit); }
+
 b32 ls_utf32AreEqual(utf32 a, utf32 b)
 {
-    AssertMsg(a.data, "First string's data pointer is null");
-    AssertMsg(b.data, "Second string's data pointer is null");
+    AssertMsg(a.data, "First string's data pointer is null\n");
+    AssertMsg(b.data, "Second string's data pointer is null\n");
     
     if(a.len != b.len)   { return FALSE; }
     if(a.data == b.data) { return TRUE; }
@@ -2417,8 +2424,8 @@ b32 ls_utf32AreEqual(utf32 a, utf32 b)
 
 b32 ls_utf32AreEqualUpTo(utf32 a, utf32 b, s32 len)
 {
-    AssertMsg(a.data, "First string's data pointer is null");
-    AssertMsg(b.data, "Second string's data pointer is null");
+    AssertMsg(a.data, "First string's data pointer is null\n");
+    AssertMsg(b.data, "Second string's data pointer is null\n");
     
     if(a.len < len)      { return FALSE; }
     if(b.len < len)      { return FALSE; }
@@ -2429,8 +2436,8 @@ b32 ls_utf32AreEqualUpTo(utf32 a, utf32 b, s32 len)
 
 b32 ls_utf32AsciiAreEqual(utf32 a, string b)
 {
-    AssertMsg(a.data, "First string's data pointer is null");
-    AssertMsg(b.data, "Second string's data pointer is null");
+    AssertMsg(a.data, "First string's data pointer is null\n");
+    AssertMsg(b.data, "Second string's data pointer is null\n");
     
     if(a.len != b.len)   { return FALSE; }
     
@@ -2439,6 +2446,17 @@ b32 ls_utf32AsciiAreEqual(utf32 a, string b)
     }
     
     return TRUE;
+}
+
+s32 ls_utf32FirstEqual(utf32 a, utf32 *set, s32 count)
+{
+    AssertMsg(set, "Array pointer to be checked is null\n");
+    AssertMsg(count > 0, "Invalid number of utf32 strings in array\n");
+    
+    for(s32 i = 0; i < count; i++)
+    { if(ls_utf32AreEqual(a, set[i])) { return i; } }
+    
+    return -1;
 }
 
 void ls_utf32Set(utf32 *toSet, utf32 source)
@@ -2644,7 +2662,7 @@ void ls_utf32FromUTF32_t(utf32 *dst, const char32_t *s)
     return;
 }
 
-const utf32 ls_utf32Constant(const char32_t *p)
+constexpr utf32 ls_utf32Constant(const char32_t *p)
 {
     AssertMsg(p, "Null source literal string\n");
     
@@ -2748,6 +2766,16 @@ utf32 ls_utf32Copy(utf32 s)
     Result.len = s.len;
     
     return Result;
+}
+
+void ls_utf32Copy_t(utf32 s, utf32 *out)
+{
+    AssertMsg(out, "Output string pointer is null\n");
+    AssertMsg(out->data, "Output string data is un-allocated\n");
+    AssertMsg(out->size > s.len, "Output string is too small to fit original\n");
+    
+    ls_memcpy(s.data, out->data, s.len*4);
+    out->len = s.len;
 }
 
 void ls_utf32NCopy(utf32 src, utf32 *dst, s32 size)
@@ -2886,6 +2914,30 @@ void ls_utf32InsertSubstr(utf32 *s, utf32 toInsert, u32 insertIdx)
     ls_memcpy(toInsert.data, s->data + insertIdx, toInsert.len*sizeof(u32));
     
     s->len += toInsert.len;
+}
+
+void ls_utf32InsertSubstr(utf32 *s, const char32_t *toInsert, s32 insertIdx)
+{
+    AssertMsg(s, "Null utf32 pointer passed\n");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n");
+    AssertMsg(toInsert, "String pointer passed is null\n");
+    AssertMsg(insertIdx >= 0, "Insertion index is negative\n");
+    AssertMsg(insertIdx <= s->len, "Insertion index past utf32 length\n");
+    
+    s32 len = ls_utf32Len(toInsert);
+    
+    if(s->len + len > s->size)
+    {
+        u32 growSize = ((s->len + len) - s->size) + 32;
+        ls_utf32Grow(s, growSize);
+    }
+    
+    //NOTE: Must be done passing through a temporary buffer because memory will overlap otherwise.
+    u32 tmpBuffer[1024] = {};
+    ls_memcpy(s->data + insertIdx, tmpBuffer, (s->len - insertIdx)*sizeof(u32));
+    ls_memcpy(tmpBuffer, s->data + insertIdx + len, (s->len - insertIdx)*sizeof(u32));
+    ls_memcpy((void *)toInsert, s->data + insertIdx, len*sizeof(u32));
+    s->len += len;
 }
 
 void ls_utf32InsertChar(utf32 *s, u32 c, u32 idx)
@@ -3741,18 +3793,16 @@ void ls_utf32FromF64_t(utf32 *s, f64 x)
     }
 }
 
-s32 ls_utf32ToAscii_t(utf32 *s, char *buff, s32 buffMaxLen)
+s32 ls_utf32ToAscii_t(utf32 s, char *buff, s32 buffMaxLen)
 {
-    AssertMsg(s, "Source pointer is null\n");
-    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
     AssertMsg(buff, "Output buffer pointer is null\n");
     AssertMsg(buffMaxLen > 0, "Non-Positive buff max len\n");
     
-    if(buffMaxLen <= 0) { return 0; }
+    if(s.len == 0) { return 0; }
     
-    u32 *At = s->data;
+    u32 *At = s.data;
     u32 idx = 0;
-    while(*At && idx < s->len && idx < buffMaxLen)
+    while(*At && idx < s.len && idx < buffMaxLen)
     {
         buff[idx] = (char)(*At);
         
