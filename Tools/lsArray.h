@@ -259,6 +259,19 @@ T *ls_staticArrayAppend(StaticArray<T, N> *a, T val)
 }
 
 template<typename T, int N>
+void ls_staticArrayAppendUnique(StaticArray<T, N> *a, T val)
+{
+    AssertMsg(a, "Null StaticArray<> pointer\n");
+    
+    if(a->count == N) { AssertMsg(FALSE, "Trying to append to full StaticArray<>"); return; }
+    if(ls_staticArrayContains(a, val)) { return; }
+    
+    a->data[a->count] = val;
+    a->count         += 1;
+    return;
+}
+
+template<typename T, int N>
 s32 ls_staticArrayAppendIndex(StaticArray<T, N> *a, T val)
 {
     AssertMsg(a, "Null StaticArray<> pointer\n");
@@ -348,7 +361,7 @@ b32 ls_staticArrayContains(StaticArray<T, N> *a, T val)
     
     for(s32 i = 0; i < a->count; i++)
     {
-        if (a->data[i] == val) { return TRUE; }
+        if(ls_memcmp(a->data + i, &val, sizeof(T)) == TRUE) { return TRUE; }
     }
     
     return FALSE;
