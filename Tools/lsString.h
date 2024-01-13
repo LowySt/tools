@@ -167,6 +167,7 @@ void  ls_utf8FromAscii_t(utf8 *dst, char *src, s32 len);
 utf8  ls_utf8FromUTF32(utf32 s);
 utf8  ls_utf8FromUTF32(const char32_t *s);
 void  ls_utf8FromUTF32_t(utf8 *dst, const char32_t *s);
+void  ls_utf8FromUTF32_t(utf8 *dst, utf32 s);
 utf8  ls_utf8FromInt(s64 x);
 void  ls_utf8FromInt_t(utf8 *s, s64 x);
 utf8  ls_utf8FromF64(f64 x);
@@ -308,6 +309,8 @@ s32    ls_utf32RightFind(utf32 s, u32 c);
 s32    ls_utf32RightFind(utf32 s, s32 offset, u32 c);
 s32    ls_utf32RightFindNumber(utf32 s, s32 offset);
 s32    ls_utf32CountOccurrences(utf32 s, u32 c);
+
+b32    ls_utf32Contains(utf32 haystack, utf32 needle);
 
 b32    ls_UTF32IsWhitespace(u32 c);
 
@@ -1823,6 +1826,86 @@ void ls_utf8FromUTF32_t(utf8 *dst, const char32_t *s)
     }
     
     u32 *utf32_buffer = (u32 *)s;
+    
+    for(u32 utf32_index = 0, utf8_index = 0; utf32_index < len; utf32_index++)
+    {
+        u32 utf32_code = utf32_buffer[utf32_index];
+        
+        AssertMsg(utf32_code <= 0x10FFFF, "UTF32 codepoint outside valid range [0x0 - 0x10FFFF]");
+        
+        if(utf32_code <= 0x7F)
+        {
+            dst->data[utf8_index] = (u8)utf32_code;
+            utf8_index += 1;
+        }
+        else if(utf32_code <= 0x7FF)
+        {
+            u16 base_bytes = (u16)utf32_code;
+            
+            u8 high = (u8)(((0x07C0 & base_bytes) >> 6) | 0xC0);
+            u8 low  = (u8)((0x003F  & base_bytes)       | 0x80);
+            
+            dst->data[utf8_index]     = high;
+            dst->data[utf8_index + 1] = low;
+            
+            utf8_index += 2;
+        }
+        else if(utf32_code <= 0xFFFF)
+        {
+            u16 base_bytes = (u16)utf32_code;
+            
+            u8 high = (u8)(((0xF000 & base_bytes) >> 12) | 0xE0);
+            u8 mid  = (u8)(((0x0FC0 & base_bytes) >> 6)  | 0x80);
+            u8 low  = (u8)((0x003F  & base_bytes)        | 0x80);
+            
+            dst->data[utf8_index]     = high;
+            dst->data[utf8_index + 1] = mid;
+            dst->data[utf8_index + 2] = low;
+            
+            utf8_index += 3;
+        }
+        else if(utf32_code <= 0x10FFFF)
+        {
+            u8 high = (u8)(((0x001C0000 & utf32_code) >> 18) | 0xF0);
+            u8 midh = (u8)(((0x0003F000 & utf32_code) >> 12) | 0x80);
+            u8 midl = (u8)(((0x00000FC0 & utf32_code) >> 6)  | 0x80);
+            u8 low  = (u8)((0x0000003F  & utf32_code)        | 0x80);
+            
+            dst->data[utf8_index]     = high;
+            dst->data[utf8_index + 1] = midh;
+            dst->data[utf8_index + 2] = midl;
+            dst->data[utf8_index + 3] = low;
+            
+            utf8_index += 4;
+        }
+    }
+    
+    dst->byteLen  = byteLen;
+    dst->len      = len;
+    
+    return;
+}
+
+void ls_utf8FromUTF32_t(utf8 *dst, utf32 s)
+{
+    AssertMsg(dst, "Null destination pointer\n");
+    AssertMsg(dst->data, "Destination string is not allocated\n");
+    if(s.len == 0) { return; }
+    
+    u32 len = s.len;
+    u32 byteLen = 0;
+    for(s32 i = 0; i < len; i++)
+    {
+        if(s.data[i] <= 0x7F)        byteLen += 1;
+        else if(s.data[i] <= 0x7FF)  byteLen += 2;
+        else if(s.data[i] <= 0xFFFF) byteLen += 3;
+        else                         byteLen += 4;
+    }
+    
+    AssertMsg(dst->size >= byteLen, "Destination is not large enough for source string\n");
+    if(dst->size < byteLen) { return; }
+    
+    u32 *utf32_buffer = s.data;
     
     for(u32 utf32_index = 0, utf8_index = 0; utf32_index < len; utf32_index++)
     {
@@ -3418,6 +3501,31 @@ s32 ls_utf32CountOccurrences(utf32 s, u32 c)
     }
     
     return result;
+}
+
+b32 ls_utf32Contains(utf32 haystack, utf32 needle)
+{
+    AssertMsg(haystack.data, "Haystack data is null\n");
+    AssertMsg(needle.data, "Needle data is null\n");
+    
+    if(haystack.data == NULL) { return FALSE; }
+    if(needle.data   == NULL) { return FALSE; }
+    if(haystack.len  == 0)    { return FALSE; }
+    if(needle.len    == 0)    { return FALSE; }
+    
+    u32 *At    = haystack.data;
+    u32 *Check = needle.data;
+    for(u32 i = 0; i < haystack.len; i++)
+    {
+        if((haystack.len - i) < needle.len) { return FALSE; }
+        
+        if(At[i] == Check[0])
+        {
+            if(ls_memcmp(At + i, Check, needle.len*sizeof(u32)) == TRUE) { return TRUE; }
+        }
+    }
+    
+    return FALSE;
 }
 
 b32 ls_UTF32IsWhitespace(u32 c)
