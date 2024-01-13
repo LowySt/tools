@@ -1,6 +1,8 @@
 #ifndef LS_ARRAY_H
 #define LS_ARRAY_H
 
+//NOTE: If cap is -696969 it means the array doesn't own the memory, and thus can't free it
+
 template<typename T>
 struct Array
 {
@@ -47,7 +49,7 @@ void ls_arrayFromPointer(Array<T> *arr, void *src, s32 count)
     AssertMsgF(count > 0, "Number of Elements is Non-Positive: %d\n", count);
     
     arr->count = count;
-    arr->cap   = count;
+    arr->cap   = -696969;
     arr->data  = (T*)src;
 }
 
@@ -56,6 +58,7 @@ void ls_arrayFree(Array<T> *a)
 {
     AssertMsg(a, "Null Array<> pointer\n");
     AssertMsg(a->data, " Array<> is not initialized\n");
+    AssertMsg(a->cap > 0, "Can't free a FixedArray<> with negative cap. It doesn't own the memory\n");
     
     ls_free(a->data);
     a->count = 0;
@@ -77,6 +80,7 @@ void ls_arrayGrow(Array<T> *a, s32 amount)
     
     AssertMsg(a, "Null Array<> pointer\n");
     AssertMsgF(amount > 0, "Grow Amount is Non-Positive: %d\n", amount);
+    AssertMsg(a->cap >= 0, "Can't reallocate a negative cap Array<>. The memory isn't owned.\n");
     
     a->data = (T *)ls_realloc(a->data, a->cap*sizeof(T), (a->cap + amount)*sizeof(T));
     a->cap += amount;
@@ -249,7 +253,7 @@ T *ls_staticArrayAppend(StaticArray<T, N> *a, T val)
     
     AssertMsg(a, "Null StaticArray<> pointer\n");
     
-    if(a->count == N) { AssertMsg(FALSE, "Trying to append to full StaticArray<>"); return NULL; }
+    if(a->count == N) { AssertMsg(FALSE, "Trying to append to full StaticArray<>\n"); return NULL; }
     
     a->data[a->count] = val;
     T *toReturn       = a->data + a->count;
@@ -263,8 +267,8 @@ void ls_staticArrayAppendUnique(StaticArray<T, N> *a, T val)
 {
     AssertMsg(a, "Null StaticArray<> pointer\n");
     
-    if(a->count == N) { AssertMsg(FALSE, "Trying to append to full StaticArray<>"); return; }
     if(ls_staticArrayContains(a, val)) { return; }
+    if(a->count == N) { AssertMsg(FALSE, "Trying to append to full StaticArray<>\n"); return; }
     
     a->data[a->count] = val;
     a->count         += 1;
@@ -371,6 +375,213 @@ template<typename T, int N>
 T *ls_staticArrayTop(StaticArray<T, N> *a)
 {
     AssertMsg(a, "Null StaticArray<>  pointer\n");
+    
+    if(a->count == 0) { return NULL; }
+    
+    return a->data + (a->count - 1);
+}
+
+
+//---------------------------------------//
+//----         FIXED ARRAYS          ----//
+//---------------------------------------//
+
+template<typename T>
+struct FixedArray
+{
+    T *data;
+    s32 count;
+    s32 cap;
+    
+    T& operator[](s32 index)
+    {
+        AssertMsg(index < count, "Index an empty slot in FixedArray<>\n"); //NOTE: Should this be a crash or an error?
+        AssertMsg(index >= 0, "Index is negative FixedArray<>\n"); //NOTE: Should this be a crash or an error?
+        return data[index];
+    }
+    
+    T* operator+(s32 index)
+    {
+        AssertMsg(index < count, "Index an empty slot in FixedArray<>\n"); //NOTE: Should this be a crash or an error?
+        AssertMsg(index >= 0, "Index is negative FixedArray<>\n"); //NOTE: Should this be a crash or an error?
+        
+        return data + index;
+    }
+};
+
+template<typename T>
+FixedArray<T> ls_fixedArrayAlloc(s32 n)
+{ 
+    AssertMsgF(n > 0, "Number of Elements is Non-Positive: %d", n);
+    
+    FixedArray<T> result = {};
+    result.data          = (T *)ls_alloc(n*sizeof(T));
+    //result.data = (T *)VirtualAlloc(NULL, n*sizeof(T), MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    result.count    = 0;
+    result.cap      = n;
+    return result;
+}
+
+template<typename T> 
+void ls_fixedArrayFromPointer(FixedArray<T> *arr, void *src, s32 count)
+{
+    AssertMsg(arr, "Null Array<> pointer\n");
+    AssertMsgF(count > 0, "Number of Elements is Non-Positive: %d\n", count);
+    
+    //NOTE: Cap is set to -696969 to indicate the array doesn't own the memory
+    //      And can't free it.
+    arr->count = count;
+    arr->cap   = -696969;
+    arr->data  = (T*)src;
+}
+
+template<typename T>
+void ls_fixedArrayFree(FixedArray<T> *a)
+{
+    AssertMsg(a, "Null FixedArray<> pointer\n");
+    AssertMsg(a->data, "FixedArray<> is not initialized\n");
+    AssertMsg(a->cap > 0, "Can't free a FixedArray<> with negative cap. It doesn't own the memory\n");
+    
+    ls_free(a->data);
+    a->count = 0;
+    a->cap   = 0;
+}
+
+template<typename T>
+void ls_fixedArrayClear(FixedArray<T> *a)  { AssertMsg(a, "Null FixedArray<> pointer\n"); a->count = 0; }
+
+template<typename T>
+b32 ls_fixedArrayIsFull(FixedArray<T> a)
+{ return (a.count == a.cap); }
+
+template<typename T>
+T *ls_fixedArrayAppend(FixedArray<T> *a, T val)
+{
+    AssertMsg(a, "Null FixedArray<> pointer\n");
+    
+    if(a->count == a.cap) { AssertMsg(FALSE, "Trying to append to full FixedArray<>\n"); return NULL; }
+    
+    a->data[a->count] = val;
+    T *toReturn       = a->data + a->count;
+    a->count         += 1;
+    
+    return toReturn;
+}
+
+template<typename T>
+void ls_fixedArrayAppendUnique(FixedArray<T> *a, T val)
+{
+    AssertMsg(a, "Null FixedArray<> pointer\n");
+    
+    if(ls_fixedArrayContains(a, val)) { return; }
+    if(a->count == a.cap) { AssertMsg(FALSE, "Trying to append to full FixedArray<>\n"); return; }
+    
+    a->data[a->count] = val;
+    a->count         += 1;
+    return;
+}
+
+template<typename T>
+s32 ls_fixedArrayAppendIndex(FixedArray<T> *a, T val)
+{
+    AssertMsg(a, "Null FixedArray<> pointer\n");
+    
+    if(a->count == a.cap) { AssertMsg(FALSE, "Trying to append to full FixedArray<>"); return -1; }
+    
+    a->data[a->count] = val;
+    a->count         += 1;
+    
+    return (a->count - 1);
+}
+
+template<typename T>
+T *ls_fixedArrayPop(FixedArray<T> *a)
+{
+    AssertMsg(a, "Null FixedArray<> pointer\n");
+    AssertMsg(a->count > 0, "Can't pop empty FixedArray<>\n");
+    
+    T *value  = &a->data[a->count - 1];
+    a->count -= 1;
+    return value;
+}
+
+template<typename T>
+void ls_fixedArrayInsert(FixedArray<T> *a, T val, s32 index)
+{
+    AssertMsg(a, "Null FixedArray<> pointer\n");
+    AssertMsg(index < a.cap, "Index is out of allocated bounds in FixedArray<>\n");
+    AssertMsgF(index <= a.count, "Index %d is out of bounds (%d) in FixedArray<>\n", index, a.count);
+    AssertMsg(index >= 0, "Index is negative in FixedArray<>\n");
+    
+    if(a->count == a.cap) { AssertMsg(FALSE, "Trying to insert in full FixedArray<>"); return; }
+    size_t dataSize = sizeof(T);
+    
+    s32 numElements = a->count - index;
+    
+    AssertMsg(numElements >= 0, "Number of elements to move in FixedArray<> insertion is negative. Maybe bad FixedArray<>?\n");
+    AssertMsg(numElements <= a.cap, "Somehow the number of elements to move in FixedArray<> insertion is > cap?\n");
+    
+    ls_memcpy(a->data + index, a->data + index + 1, numElements*dataSize);
+    a->count += 1;
+    a->data[index] = val;
+}
+
+template<typename T>
+void ls_fixedArraySet(FixedArray<T> *a, T val, s32 index)
+{
+    AssertMsg(a, "Null FixedArray<> pointer\n");
+    AssertMsgF(index < a.count, "Index %d is out of bounds (%d) in FixedArray<>\n", index, a.count);
+    AssertMsg(index >= 0, "Index is negative FixedArray<>\n");
+    
+    a->data[index] = val;
+}
+
+template<typename T>
+void ls_fixedArrayRemove(FixedArray<T> *a, s32 index)
+{
+    AssertMsg(a, "Null FixedArray<> pointer\n");
+    AssertMsgF(index < a.count, "Index %d is out of bounds (%d) in FixedArray<>\n", index, a.count);
+    AssertMsg(index >= 0, "Index is negative FixedArray<>\n");
+    
+    size_t dataSize = sizeof(T);
+    u32 numElements = a->count - index;
+    
+    AssertMsg(numElements >= 0, "Number of elements to move in FixedArray<> remove is negative. Maybe bad FixedArray<>?\n");
+    AssertMsg(numElements <= a->cap, "Somehow the number of elements to move in FixedArray<> remove is > cap?\n");
+    
+    ls_memcpy(a->data + index + 1, a->data + index, numElements*dataSize);
+    a->count -= 1;
+}
+
+template<typename T>
+void ls_fixedArrayRemoveUnordered(FixedArray<T> *a, s32 index)
+{
+    AssertMsg(a, "Null FixedArray<> pointer\n");
+    AssertMsgF(index < a.count, "Index %d is out of bounds (%d) in FixedArray<>\n", index, a.count);
+    AssertMsg(index >= 0, "Index is negative FixedArray<>\n");
+    
+    //NOTETODO: Should I zero the last element? Or fill it with sentinel values?
+    a->data[index] = a->data[a->count-1];
+    a->count -= 1;
+}
+
+template<typename T>
+b32 ls_fixedArrayContains(FixedArray<T> *a, T val)
+{
+    AssertMsg(a, "Null FixedArray<> pointer\n");
+    
+    for(s32 i = 0; i < a->count; i++)
+    {
+        if(ls_memcmp(a->data + i, &val, sizeof(T)) == TRUE) { return TRUE; }
+    }
+    
+    return FALSE;
+}
+
+template<typename T>
+T *ls_fixedArrayTop(FixedArray<T> *a)
+{
+    AssertMsg(a, "Null FixedArray<>  pointer\n");
     
     if(a->count == 0) { return NULL; }
     
