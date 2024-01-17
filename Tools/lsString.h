@@ -21,11 +21,6 @@ struct utf8
     s32  size;
 };
 
-//TODO: Using a normal utf32 string is a PROBLEM (especially when mixed with arenas).
-//      The reason is, we don't really want some strings be re-allocated, or grown.
-//      We want the memory to be the same size all the time, and never be handled.
-//      What we should really do is make a `StaticUTF32` kind of string, that is only allocated once,
-//      And never again. It can't be grown, and will give a runtime error when the space is not enough.
 struct utf32
 {
     u32 *data;
@@ -2440,7 +2435,9 @@ b32 ls_utf8IsNumber(u32 c)
 
 
 
-//UTF32 UNICODE STRINGS
+//-----------------------------//
+//    UTF32 UNICODE STRINGS    //
+//-----------------------------//
 
 //------------------//
 //  Create/Destroy  //
@@ -3970,7 +3967,9 @@ b32 ls_utf32IsNumber(u32 c)
 }
 
 
-//VIEWS
+//--------------//
+//    VIEWS     //
+//--------------//
 
 //------------------//
 //      Create      //
