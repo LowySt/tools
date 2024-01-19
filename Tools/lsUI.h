@@ -3777,32 +3777,6 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UILayoutRect layout,
     }
 }
 
-//NOTE: Occupied pixel length of a glyph string
-//TODO: Take into consideration newlines inside a string.?
-//      Maybe instead make glyphstring only do 1 line at a time and push line responsibility outside?
-s32 ls_uiGlyphStringLen(UIContext *c, UIFont *font, utf32 text)
-{
-    AssertMsg(c, "Context is null\n");
-    LogMsg(font, "Passed font is null\n");
-    if(!font) { return 0; }
-    
-    s32 totalLen = 0;
-    for(u32 i = 0; i < text.len; i++)
-    {
-        u32 indexInGlyphArray = text.data[i];
-        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
-        
-        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
-        
-        s32 kernAdvance = 0;
-        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
-        
-        totalLen += (currGlyph->xAdv + kernAdvance);
-    }
-    
-    return totalLen;
-}
-
 UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, utf32 text)
 {
     AssertMsg(c, "Context is null\n");
@@ -3839,13 +3813,16 @@ UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, utf32 text)
     return result;
 }
 
-s32 ls_uiGlyphStringLen_8(UIContext *c, UIFont *font, utf8 text)
+UIRect ls_uiGlyphStringRect_8(UIContext *c, UIFont *font, utf8 text)
 {
     AssertMsg(c, "Context is null\n");
     LogMsg(font, "Passed font is null\n");
-    if(!font) { return 0; }
+    if(!font) { return {}; }
     
-    s32 totalLen = 0;
+    s32 maxWidth = 0;
+    
+    s32 totalWidth  = 0;
+    s32 totalHeight = font->pixelHeight;
     for(u32 i = 0; i < text.len; i++)
     {
         u32 indexInGlyphArray = ls_utf32CharFromUtf8(text, i);
@@ -3856,10 +3833,20 @@ s32 ls_uiGlyphStringLen_8(UIContext *c, UIFont *font, utf8 text)
         s32 kernAdvance = 0;
         if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
         
-        totalLen += (currGlyph->xAdv + kernAdvance);
+        if(indexInGlyphArray == (u32)'\n')
+        {
+            totalHeight += font->pixelHeight;
+            totalWidth   = 0;
+            continue;
+        }
+        
+        totalWidth += (currGlyph->xAdv + kernAdvance);
+        if(totalWidth > maxWidth) { maxWidth = totalWidth; }
     }
     
-    return totalLen;
+    UIRect result = {0, 0, maxWidth, totalHeight};
+    
+    return result;
 }
 
 s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
@@ -3987,7 +3974,7 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, Bu
     utf32 name = ls_utf32FromUTF32(text);
     
     s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
-    s32 width = ls_uiGlyphStringLen(c, c->currFont, name) + 16; //Add margin on each side
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, name).w + 16; //Add margin on each side
     
     UIButton Result = {s, name, 0, width, height, FALSE, FALSE, onClick, onHold, userData};
     return Result;
@@ -4000,7 +3987,7 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, ButtonProc o
     AssertMsg(c->currFont, "Font is not selected\n");
     
     s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
-    s32 width = ls_uiGlyphStringLen(c, c->currFont, text) + 16; //Add margin on each side 
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, text).w + 16; //Add margin on each side 
     
     UIButton Result = {s, text, 0, width, height, FALSE, FALSE, onClick, onHold, userData};
     return Result;
@@ -4019,7 +4006,7 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 text, But
     b->data    = userData;
     
     s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
-    s32 width = ls_uiGlyphStringLen(c, c->currFont, text) + 16; //Add margin on each side
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, text).w + 16; //Add margin on each side
     
     b->w = width;
     b->h = height;
@@ -4040,7 +4027,7 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t 
     b->data    = data;
     
     s32 height = c->currFont->pixelHeight + 2; //TODO: This margin doesn't work for multiple pixel height
-    s32 width = ls_uiGlyphStringLen(c, c->currFont, b->name) + 16; //Add margin on each side
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, b->name).w + 16; //Add margin on each side
     
     b->w = width;
     b->h = height;
@@ -4199,9 +4186,10 @@ UIRect ls_uiLabelRect(UIContext *c, utf32 label, s32 xPos, s32 yPos)
 {
     s32 marginX    = 0.3f*c->currFont->pixelHeight;
     s32 marginY    = 0.3f*c->currFont->pixelHeight;
-    s32 strWidth   = ls_uiGlyphStringLen(c, c->currFont, label);
-    s32 rectWidth  = strWidth + 2*marginX;
-    s32 rectHeight = c->currFont->pixelHeight + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
+    
+    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label);
+    s32 rectWidth  = rect.w + 2*marginX;
+    s32 rectHeight = rect.h + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
     
     return { xPos, yPos, rectWidth, rectHeight };
 }
@@ -4211,40 +4199,46 @@ void ls_uiLabelInRect(UIContext *c, utf32 label, s32 xPos, s32 yPos,
 {
     s32 marginX    = 0.3f*c->currFont->pixelHeight;
     s32 marginY    = 0.25f*c->currFont->pixelHeight;
-    s32 strWidth   = ls_uiGlyphStringLen(c, c->currFont, label);
-    s32 rectWidth  = strWidth + 2*marginX;
-    s32 rectHeight = c->currFont->pixelHeight + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
     
-    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY, textColor, zLayer);
+    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label);
+    s32 rectWidth  = rect.w + 2*marginX;
+    s32 rectHeight = rect.h + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
+    
+    s32 labelOffset = rect.h - c->currFont->pixelHeight;
+    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY + labelOffset, textColor, zLayer);
     ls_uiRect(c, xPos, yPos, rectWidth, rectHeight, bkgColor, borderColor, zLayer);
 }
 
 void ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
                       Color bkgColor, Color borderColor, Color textColor, s32 zLayer = 0)
 {
-    const s32 marginX = 4;
-    const s32 marginY = 4;
-    s32 strWidth   = ls_uiGlyphStringLen_8(c, c->currFont, label);
-    s32 rectWidth  = strWidth + 2*marginX;
-    s32 rectHeight = c->currFont->pixelHeight + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
+    s32 marginX    = 0.3f*c->currFont->pixelHeight;
+    s32 marginY    = 0.25f*c->currFont->pixelHeight;
     
-    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY, textColor, zLayer);
+    UIRect rect = ls_uiGlyphStringRect_8(c, c->currFont, label);
+    s32 rectWidth  = rect.w + 2*marginX;
+    s32 rectHeight = rect.h + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
+    
+    s32 labelOffset = rect.h - c->currFont->pixelHeight;
+    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY + labelOffset, textColor, zLayer);
     ls_uiRect(c, xPos, yPos, rectWidth, rectHeight, bkgColor, borderColor, zLayer);
 }
 
 void ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 minWidth, s32 minHeight,
                       Color bkgColor, Color borderColor, Color textColor, s32 zLayer = 0)
 {
-    s32 marginX = 4;
-    s32 marginY = 4;
-    s32 strWidth   = ls_uiGlyphStringLen_8(c, c->currFont, label);
-    s32 rectWidth  = strWidth + 2*marginX;
-    s32 rectHeight = c->currFont->pixelHeight + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
+    s32 marginX    = 0.3f*c->currFont->pixelHeight;
+    s32 marginY    = 0.25f*c->currFont->pixelHeight;
+    
+    UIRect rect = ls_uiGlyphStringRect_8(c, c->currFont, label);
+    s32 rectWidth  = rect.w + 2*marginX;
+    s32 rectHeight = rect.h + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
     
     if(rectWidth  < minWidth)  { marginX += (minWidth - rectWidth) / 2; rectWidth = minWidth; }
     if(rectHeight < minHeight) { marginY += (minHeight - rectHeight) / 2; rectHeight = minHeight; }
     
-    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY, textColor, zLayer);
+    s32 labelOffset = rect.h - c->currFont->pixelHeight;
+    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY + labelOffset, textColor, zLayer);
     ls_uiRect(c, xPos, yPos, rectWidth, rectHeight, bkgColor, borderColor, zLayer);
 }
 
@@ -4263,10 +4257,10 @@ void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, 
     
     if(label.len == 0) { return; }
     
-    s32 width  = ls_uiGlyphStringLen(c, c->currFont, label);
-    s32 height = c->currFont->pixelHeight;
+    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label);
+    s32 yBaseOff = rect.h - c->currFont->pixelHeight;
     
-    RenderCommand command = { UI_RC_LABEL32, xPos, yPos, width, height };
+    RenderCommand command = { UI_RC_LABEL32, xPos, yPos - yBaseOff, rect.w, rect.h };
     command.label32 = label;
     command.textColor = textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
@@ -4285,10 +4279,10 @@ void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s
     
     if(label.len == 0) { return; }
     
-    s32 width  = ls_uiGlyphStringLen_8(c, c->currFont, label);
-    s32 height = c->currFont->pixelHeight;
+    UIRect rect = ls_uiGlyphStringRect_8(c, c->currFont, label);
+    s32 yBaseOff = rect.h - c->currFont->pixelHeight;
     
-    RenderCommand command = { UI_RC_LABEL8, xPos, yPos, width, height };
+    RenderCommand command = { UI_RC_LABEL8, xPos, yPos - yBaseOff, rect.w, rect.h };
     command.label8 = label;
     command.textColor = textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
@@ -5350,6 +5344,7 @@ void ls_uiSliderChangeValueBy(UIContext *c, UISlider *f, s32 valueDiff)
     if(newValue >= f->maxValue) { newValue = f->maxValue; }
     
     s32 range = (f->maxValue - f->minValue);
+    f->currValue = newValue;
     f->currPos = (f64)(newValue - f->minValue) / (f64)range;
     
     return;
@@ -5357,7 +5352,8 @@ void ls_uiSliderChangeValueBy(UIContext *c, UISlider *f, s32 valueDiff)
 
 s32 ls_uiSliderGetValue(UIContext *c, UISlider *f)
 {
-    return ((f->maxValue - f->minValue) * f->currPos) + f->minValue;
+    return f->currValue;
+    //return ((f->maxValue - f->minValue) * f->currPos) + f->minValue;
 }
 
 //TODO: The things are rendered in a logical order, but that makes the function's flow very annoying
@@ -5372,8 +5368,6 @@ b32 ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h
     {
         //NOTE: hotness needs to be logically re-checked every frame, else it always stays on.
         slider->isHot = FALSE;
-        
-        slider->currValue = ((slider->maxValue - slider->minValue) * slider->currPos) + slider->minValue;
         s32 slidePos = w*slider->currPos;
         
         if(MouseInRect(xPos + slidePos-5, yPos, 10, h) && !(c->mouseCapture != 0 && c->mouseCapture != (u64 *)slider))
@@ -5392,9 +5386,12 @@ b32 ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h
         
         f64 fractionMove = (f64)deltaX / (f64)w;
         
-        slider->currPos -= fractionMove;
-        
-        slider->currPos = ls_clamp(slider->currPos, 1.0, 0.0);
+        if(fractionMove != 0.0)
+        {
+            slider->currPos  -= fractionMove;
+            slider->currPos   = ls_clamp(slider->currPos, 1.0, 0.0);
+            slider->currValue = ((slider->maxValue - slider->minValue) * slider->currPos) + slider->minValue;
+        }
         
         hasAnsweredToInput = TRUE;
     }
@@ -5733,6 +5730,7 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
     }
 }
 
+//TODO: On my laptop the color wheel appears with a fucked up single tone color. Why?
 void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32 value,
                          UIRect threadRect, UIRect scissor)
 {
@@ -5969,12 +5967,14 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                 case UI_RC_LABEL8:
                 {
                     //TODO: I don't like this.
-                    ls_uiGlyphString_8(c, font, xPos, yPos, threadRect, scissor, curr->label8, textColor);
+                    s32 yBaseOff = h - font->pixelHeight;
+                    ls_uiGlyphString_8(c, font, xPos, yPos + yBaseOff, threadRect, scissor, curr->label8, textColor);
                 } break;
                 
                 case UI_RC_LABEL32:
                 {
-                    ls_uiGlyphString(c, font, xPos, yPos, threadRect, scissor, curr->label32, textColor);
+                    s32 yBaseOff = h - font->pixelHeight;
+                    ls_uiGlyphString(c, font, xPos, yPos + yBaseOff, threadRect, scissor, curr->label32, textColor);
                 } break;
                 
                 case UI_RC_LABEL_LAYOUT:
@@ -6067,7 +6067,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         if(button->name.data)
                         {
                             s32 strHeight = font->pixelHeight;
-                            s32 strWidth  = ls_uiGlyphStringLen(c, font, button->name);
+                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name).w;
                             s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
                             s32 yOff      = strHeight*0.25; //TODO: @FontDescent
                             
@@ -6080,7 +6080,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         if(button->name.data)
                         {
                             s32 strHeight = font->pixelHeight;
-                            s32 strWidth  = ls_uiGlyphStringLen(c, font, button->name);
+                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name).w;
                             s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
                             s32 yOff      = strHeight*0.25; //TODO: @FontDescent
                             
@@ -6095,7 +6095,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         if(button->name.data)
                         {
                             s32 strHeight = font->pixelHeight;
-                            s32 strWidth  = ls_uiGlyphStringLen(c, font, button->name);
+                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name).w;
                             s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
                             s32 yOff      = strHeight*0.25; //TODO: @FontDescent
                             
@@ -6171,11 +6171,13 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         ls_uiFillRect(c, xPos+slidePos+1, yPos+1, rColorW, h-2,
                                       threadRect, scissor, slider->rColor);
                         
-                        utf32 val = ls_utf32FromInt(slider->currValue);
+                        u32 valBuf[32] = {};
+                        utf32 val = { valBuf, 0, 32};
+                        ls_utf32FromInt_t(&val, slider->currValue);
                         
                         s32 strHeight = font->pixelHeight;
                         
-                        u32 textLen = ls_uiGlyphStringLen(c, font, val);
+                        u32 textLen = ls_uiGlyphStringRect(c, font, val).w;
                         s32 strXPos = xPos + slidePos - textLen - 2;
                         Color textBkgC = slider->lColor;
                         
@@ -6185,8 +6187,6 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         u8 alpha = 0x00 + (slider->isHeld*0xFF);
                         valueColor = SetAlpha(valueColor, alpha);
                         ls_uiGlyphString(c, font, strXPos, yPos + h - strHeight, threadRect, scissor, val, valueColor);
-                        
-                        ls_utf32Free(&val);
                         
                         if(slider->isHot)
                         {
@@ -6216,8 +6216,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, rectColor, borderColor);
                     
                     s32 strHeight = font->pixelHeight;
-                    
-                    s32 strWidth  = ls_uiGlyphStringLen(c, font, slider->text);
+                    s32 strWidth  = ls_uiGlyphStringRect(c, font, slider->text).w;
                     s32 xOff      = (w - strWidth) / 2;
                     s32 yOff      = (h - strHeight) + 3; //TODO: @FontDescent
                     
@@ -6243,7 +6242,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         
                         s32 subX = xPos + (subIdx*menu->itemWidth);
                         
-                        s32 strWidth = ls_uiGlyphStringLen(c, font, sub->name);
+                        s32 strWidth = ls_uiGlyphStringRect(c, font, sub->name).w;
                         s32 xOff = (subW - strWidth) / 2;
                         s32 yOff = 5;
                         
@@ -6262,7 +6261,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                             {
                                 UIMenuItem *item = sub->items + itemIdx;
                                 
-                                strWidth = ls_uiGlyphStringLen(c, font, item->name);
+                                strWidth = ls_uiGlyphStringRect(c, font, item->name).w;
                                 xOff = (subW - strWidth) / 2;
                                 
                                 if(item->isVisible) {
@@ -6292,7 +6291,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         s32 realIndex = itemIdx + menu->subMenus.count;
                         s32 itemX = xPos + (realIndex*menu->itemWidth);
                         
-                        s32 strWidth = ls_uiGlyphStringLen(c, font, item->name);
+                        s32 strWidth = ls_uiGlyphStringRect(c, font, item->name).w;
                         s32 xOff = (subW - strWidth) / 2;
                         s32 yOff = 5;
                         
