@@ -677,7 +677,7 @@ b32          ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32
 
 UISlider     ls_uiSliderInit(char32_t *name, s32 maxVal, s32 minVal, f64 currPos, SliderStyle s, Color l, Color r);
 void         ls_uiSliderChangeValueBy(UIContext *c, UISlider *f, s32 valueDiff);
-s32          ls_uiSliderGetValue(UIContext *c, UISlider *f);
+s32          ls_uiSliderCalculateValueFromPosition(UIContext *c, UISlider *f);
 b32          ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h);
 
 UIButton     ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 height);
@@ -4426,7 +4426,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
     if(LeftClickIn(xPos, yPos, w, h) && ls_uiHasCapture(c, 0)) {
         c->currentFocus = (u64 *)box;
         c->focusWasSetThisFrame = TRUE;
-        box->isCaretOn = TRUE; 
+        box->isCaretOn = TRUE;
     }
     
     //TODOHACKHACK
@@ -5350,10 +5350,9 @@ void ls_uiSliderChangeValueBy(UIContext *c, UISlider *f, s32 valueDiff)
     return;
 }
 
-s32 ls_uiSliderGetValue(UIContext *c, UISlider *f)
+s32 ls_uiSliderCalculateValueFromPosition(UIContext *c, UISlider *f)
 {
-    return f->currValue;
-    //return ((f->maxValue - f->minValue) * f->currPos) + f->minValue;
+    return ((f->maxValue - f->minValue) * f->currPos) + f->minValue;
 }
 
 //TODO: The things are rendered in a logical order, but that makes the function's flow very annoying
