@@ -503,8 +503,10 @@ void *windows_memAlloc(size_t size)
         LogMsg(Ar->id == Memory.currArenaId, "The arena ID doesn't match the Memory currentArenaID.\n");
         Assert(Ar->id == Memory.currArenaId);
         
-        AssertMsgF(Ar->used + size <= Ar->capacity,
-                   "Arena is out of space (cap: %d, size: %d, req: %d).\n", Ar->capacity, Ar->used, size);
+        LogMsg(Ar->used + size <= Ar->capacity, "Arena is out of space\n");
+        Assert(Ar->used + size <= Ar->capacity);
+        
+        //AssertMsgF(Ar->used + size <= Ar->capacity, "Arena is out of space (cap: %d, size: %d, req: %d).\n", Ar->capacity, Ar->used, size);
         
         u8 *ResultPtr = (u8 *)Ar->data + Ar->used;
         Ar->used += size;
