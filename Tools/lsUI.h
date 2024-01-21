@@ -135,7 +135,6 @@ u8 GetAlpha(Color v)
 //NOTE: Color RGBA stuff
 //-------------------------
 
-
 union UIRect
 {
     struct { s32 minX, minY, maxX, maxY; };
@@ -197,11 +196,33 @@ struct UIBitmap
 
 struct UIContext;
 
-enum UIButtonStyle { UIBUTTON_CLASSIC, UIBUTTON_LINK, UIBUTTON_TEXT_NOBORDER, UIBUTTON_NO_TEXT, UIBUTTON_BMP };
+//NOTE: Base Struct for all UI elements
+//      The reason it's made as a define is so that the entire anonymous (it has no name) struct definition 
+//      Will be copy-pasted inside each Widget's body. This way each widget can access all element of the
+//      Base struct without having to refer to it by name (like if it was a substruct).
+//
+//      C-style inheritance without access_control, constructors, dynamic_dispatch etc. Just PODs.
 
-typedef b32(*ButtonProc)(UIContext *c, void *userData);
+typedef b32(*UICallback)(UIContext *c, void *userData);
+#define UIWidget_Base struct { \
+/*NOTE: Generic Callbacks. All UIElements will use one or both of these.*/                    \
+/*      Technically there's some wasted space here, but it shouldn't be a problem for now.*/  \
+UICallback callback1;                                                                         \
+void *callback1Data;                                                                          \
+UICallback callback2;                                                                         \
+void *callback2Data;                                                                          \
+/*NOTE: This will be called whenever the element looses focus*/                               \
+UICallback OnFocusLost;                                                                       \
+void *onFocusLostData;                                                                        \
+}                                                                                                 \
+
+
+enum UIButtonStyle { UIBUTTON_CLASSIC, UIBUTTON_LINK, UIBUTTON_TEXT_NOBORDER, UIBUTTON_NO_TEXT, UIBUTTON_BMP };
 struct UIButton
 {
+    //NOTE: callback1 -> onClick; callback2 -> onHold
+    UIWidget_Base;
+    
     //TODO: With the current design I have to select the font in 2 different places.
     //      The best solution is probably to just hold a pointer to the font to be used in the 
     //      Button itself (And all other text widgets as well...)
@@ -213,18 +234,14 @@ struct UIButton
     
     b32 isHot;
     b32 isHeld;
-    
-    ButtonProc onClick;
-    ButtonProc onHold;
-    
-    void *data; //TODO: Separate onClick / onHold user data
 };
 
 enum UICheckStyle { UICHECK_BMP };
-
-typedef b32(*CheckProc)(UIContext *c, void *userData);
 struct UICheck
 {
+    //NOTE: callback1 -> onClick; callback2 -> UNUSED
+    UIWidget_Base;
+    
     UICheckStyle style;
     
     b32 isActive;
@@ -235,14 +252,13 @@ struct UICheck
     
     u8 *bmpAdditive;
     s32 addW, addH;
-    
-    CheckProc onChange;
-    void *data;
 };
 
-typedef b32(*TextBoxProc)(UIContext *, void *userData);
 struct UITextBox
 {
+    //NOTE: callback1 -> preInput; callback2 -> postInput
+    UIWidget_Base;
+    
     utf32 text;
     u32 maxLen; // maxLen == 0 means it is ignored. No max Len.
     
@@ -265,11 +281,6 @@ struct UITextBox
     s32 selectBeginIdx;
     s32 selectEndIdx;
     b32 isSelecting;
-    
-    TextBoxProc preInput;
-    TextBoxProc postInput;
-    
-    void *data; //TODO: Separate preInput / postInput user data
 };
 
 enum UIArrowSide { UIA_LEFT, UIA_RIGHT, UIA_UP, UIA_DOWN };
@@ -281,9 +292,11 @@ struct UIListBoxItem
     Color textColor;
 };
 
-typedef void(*ListBoxProc)(UIContext *, void *);
 struct UIListBox
 {
+    //NOTE: callback1 -> onSelect; callback2 -> UNUSED
+    UIWidget_Base;
+    
     Array<UIListBoxItem> list;
     s32 selectedIndex;
     
@@ -292,9 +305,6 @@ struct UIListBox
     b32 isOpen;
     
     Color arrowBkg;
-    
-    ListBoxProc onSelect;
-    void *data;
 };
 
 
@@ -302,6 +312,9 @@ enum SliderStyle { SL_LINE, SL_BOX };
 
 struct UISlider
 {
+    //NOTE: callback1 -> UNUSED; callback2 -> UNUSED
+    UIWidget_Base;
+    
     b32 isHot;
     b32 isHeld;
     
@@ -320,6 +333,9 @@ struct UISlider
 
 struct UIColorPicker
 {
+    //NOTE: callback1 -> onClick; callback2 -> UNUSED
+    UIWidget_Base;
+    
     s32 valueRectX;
     s32 valueRectY;
     s32 valueRectW;
@@ -340,12 +356,13 @@ struct UIColorPicker
 
 struct UIMenuItem
 {
+    //NOTE: callback1 -> onClick; callback2 -> UNUSED
+    UIWidget_Base;
+    
     utf32 name;
     
     b32 isVisible;
     b32 isHot;
-    ButtonProc onClick;
-    void       *userData;
 };
 
 struct UISubMenu
@@ -620,26 +637,26 @@ void         ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor,
 void         ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
 void         ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer);
 
-UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, ButtonProc onClick, ButtonProc onHold, void *data);
-UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, ButtonProc onClick,
-                             ButtonProc onHold, void *userData);
+UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, UICallback onClick, UICallback onHold, void *data);
+UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, UICallback onClick,
+                             UICallback onHold, void *userData);
 UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, 
-                             ButtonProc onClick, ButtonProc onHold, void *data);
+                             UICallback onClick, UICallback onHold, void *data);
 UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text,
-                             ButtonProc onClick, ButtonProc onHold, void *data);
+                             UICallback onClick, UICallback onHold, void *data);
 void         ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 t,
-                             ButtonProc onClick, ButtonProc onHold, void *data);
+                             UICallback onClick, UICallback onHold, void *data);
 void         ls_uiButtonInit(UIContext *c, UIButton *, UIButtonStyle, const char32_t *t,
-                             ButtonProc onClick, ButtonProc onHold, void *data);
+                             UICallback onClick, UICallback onHold, void *data);
 
 b32          ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgColor, s32 zLayer);
 b32          ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer);
 
 
 UICheck      ls_uiCheckInit(UIContext *c, UICheckStyle s,
-                            u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, CheckProc onChange, void *data);
+                            u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, UICallback onChange, void *data);
 UICheck      ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32 h,
-                            u8 *bmpAdditive, s32 addW, s32 addH, CheckProc onChange, void *data);
+                            u8 *bmpAdditive, s32 addW, s32 addH, UICallback onChange, void *data);
 
 void         ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
                               Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
@@ -667,7 +684,7 @@ UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect 
 void         ls_uiTextBoxClear(UIContext *c, UITextBox *box);
 void         ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s);
 void         ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s);
-void         ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen, b32 singleLine, b32 readOnly, TextBoxProc preInput, TextBoxProc postInput);
+void         ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen, b32 singleLine, b32 readOnly, UICallback preInput, UICallback postInput);
 b32          ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
 
 u32          ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, char *s);
@@ -680,12 +697,12 @@ void         ls_uiSliderChangeValueBy(UIContext *c, UISlider *f, s32 valueDiff);
 s32          ls_uiSliderCalculateValueFromPosition(UIContext *c, UISlider *f);
 b32          ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h);
 
-UIButton     ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 height);
+UIButton     ls_uiMenuButton(UICallback onClick, u8 *bitmapData, s32 width, s32 height);
 UISubMenu  * ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub);
 UISubMenu  * ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name);
-UIMenuItem * ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, ButtonProc onClick, void *userData);
-UIMenuItem * ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, ButtonProc onClick, void *userData);
-UIMenuItem * ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, ButtonProc onClick, void *data);
+UIMenuItem * ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, UICallback onClick, void *userData);
+UIMenuItem * ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, UICallback onClick, void *userData);
+UIMenuItem * ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, UICallback onClick, void *data);
 b32          ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer);
 
 void         ls_uiTexturedRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, void *data, s32 dataW, s32 dataH, s32 zLayer);
@@ -3957,16 +3974,20 @@ s32 ls_uiSelectFontByFontSize(UIContext *c, UIFontSize fontSize)
     c->currFont = &c->fonts[fontSize]; return c->currFont->pixelHeight;
 }
 
-UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, ButtonProc onClick, ButtonProc onHold = NULL, void *userData = NULL)
+UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, UICallback onClick, UICallback onHold = NULL, void *userData = NULL)
 {
     AssertMsg(c, "UI Context is null\n");
     
-    UIButton Result = {s, {}, 0, 0, 0, FALSE, FALSE, onClick, onHold, userData};
+    UIButton Result = {
+        {onClick, userData, onHold, userData, NULL, NULL}, 
+        s, {}, 0, 0, 0, FALSE, FALSE 
+    };
+    
     return Result;
 }
 
-UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, ButtonProc onClick,
-                         ButtonProc onHold = NULL, void *userData = NULL)
+UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, UICallback onClick,
+                         UICallback onHold = NULL, void *userData = NULL)
 {
     AssertMsg(c, "UI Context is null\n");
     AssertMsg(c->currFont, "Font is not selected\n");
@@ -3976,12 +3997,16 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, Bu
     s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
     s32 width = ls_uiGlyphStringRect(c, c->currFont, name).w + 16; //Add margin on each side
     
-    UIButton Result = {s, name, 0, width, height, FALSE, FALSE, onClick, onHold, userData};
+    UIButton Result = {
+        {onClick, userData, onHold, userData, NULL, NULL}, 
+        s, name, 0, width, height, FALSE, FALSE
+    };
+    
     return Result;
 }
 
-UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, ButtonProc onClick,
-                         ButtonProc onHold = NULL, void *userData = NULL)
+UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, UICallback onClick,
+                         UICallback onHold = NULL, void *userData = NULL)
 {
     AssertMsg(c, "UI Context is null\n");
     AssertMsg(c->currFont, "Font is not selected\n");
@@ -3989,21 +4014,26 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, ButtonProc o
     s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
     s32 width = ls_uiGlyphStringRect(c, c->currFont, text).w + 16; //Add margin on each side 
     
-    UIButton Result = {s, text, 0, width, height, FALSE, FALSE, onClick, onHold, userData};
+    UIButton Result = {
+        {onClick, userData, onHold, userData, NULL, NULL}, 
+        s, text, 0, width, height, FALSE, FALSE
+    };
+    
     return Result;
 }
 
-void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 text, ButtonProc onClick,
-                     ButtonProc onHold = NULL, void *userData = NULL)
+void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 text, UICallback onClick,
+                     UICallback onHold = NULL, void *userData = NULL)
 {
     AssertMsg(c, "UI Context is null\n");
     AssertMsg(c->currFont, "Font is not selected\n");
     
-    b->style   = s;
-    b->name    = text;
-    b->onClick = onClick;
-    b->onHold  = onHold;
-    b->data    = userData;
+    b->style         = s;
+    b->name          = text;
+    b->callback1     = onClick;
+    b->callback2     = onHold;
+    b->callback1Data = userData;
+    b->callback2Data = userData;
     
     s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
     s32 width = ls_uiGlyphStringRect(c, c->currFont, text).w + 16; //Add margin on each side
@@ -4012,8 +4042,8 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 text, But
     b->h = height;
 }
 
-void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t *t, ButtonProc onClick,
-                     ButtonProc onHold = NULL, void *data = NULL)
+void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t *t, UICallback onClick,
+                     UICallback onHold = NULL, void *data = NULL)
 {
     AssertMsg(c, "UI Context is null\n");
     AssertMsg(c->currFont, "Font is not selected\n");
@@ -4021,10 +4051,11 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t 
     b->style   = s;
     
     //TODO: Should this be a ls_utf32Constant() ??? I've been passed a constant literal...
-    b->name    = ls_utf32FromUTF32(t);
-    b->onClick = onClick;
-    b->onHold  = onHold;
-    b->data    = data;
+    b->name          = ls_utf32FromUTF32(t);
+    b->callback1     = onClick;
+    b->callback2     = onHold;
+    b->callback1Data = data;
+    b->callback2Data = data;
     
     s32 height = c->currFont->pixelHeight + 2; //TODO: This margin doesn't work for multiple pixel height
     s32 width = ls_uiGlyphStringRect(c, c->currFont, b->name).w + 16; //Add margin on each side
@@ -4060,14 +4091,17 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgCol
         
         if(LeftClick)// && noCapture)
         {
-            if(button->onClick) { inputUse |= button->onClick(c, button->data); }
+            //NOTE: button->onClick
+            if(button->callback1) { inputUse |= button->callback1(c, button->callback1Data); }
         }
         
         if(LeftHold)//  && noCapture)
         {
             button->isHeld = TRUE;
             bkgColor       = c->pressedColor;
-            if(button->onHold) { inputUse |= button->onHold(c, button->data); }
+            
+            //NOTE: button->onHold
+            if(button->callback2) { inputUse |= button->callback2(c, button->callback2Data); }
         }
     }
     
@@ -4081,7 +4115,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgCol
     return inputUse;
 }
 
-
+//TODO: Why do I have an almost copy-paste of this function above? Compact them...
 b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer = 0)
 {
     Input *UserInput = &c->UserInput;
@@ -4104,14 +4138,17 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
         
         if(LeftClick)// && noCapture)
         {
-            if(button->onClick) { inputUse |= button->onClick(c, button->data); }
+            //NOTE: button->onClick
+            if(button->callback1) { inputUse |= button->callback1(c, button->callback1Data); }
         }
         
         if(LeftHold)//  && noCapture)
         {
             button->isHeld = TRUE;
             bkgColor       = c->pressedColor;
-            if(button->onHold) { inputUse |= button->onHold(c, button->data); }
+            
+            //NOTE: button->onHold
+            if(button->callback2) { inputUse |= button->callback2(c, button->callback2Data); }
         }
     }
     
@@ -4126,7 +4163,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
 }
 
 UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s,
-                       u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, CheckProc onChange, void *data)
+                       u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, UICallback onChange, void *data)
 {
     UICheck result = {};
     
@@ -4136,14 +4173,15 @@ UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s,
     result.bmpInactive = bmpInactive;
     result.w           = w;
     result.h           = h;
-    result.onChange    = onChange;
-    result.data        = data;
+    
+    result.callback1     = onChange;
+    result.callback1Data = data;
     
     return result;
 }
 
 UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32 h,
-                       u8 *bmpAdditive, s32 addW, s32 addH, CheckProc onChange, void *data)
+                       u8 *bmpAdditive, s32 addW, s32 addH, UICallback onChange, void *data)
 {
     UICheck result = {};
     
@@ -4155,8 +4193,9 @@ UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32
     result.bmpAdditive = bmpAdditive;
     result.addW        = addW;
     result.addH        = addH;
-    result.onChange    = onChange;
-    result.data        = data;
+    
+    result.callback1     = onChange;
+    result.callback1Data = data;
     
     return result;
 }
@@ -4171,7 +4210,9 @@ b32 ls_uiCheck(UIContext *c, UICheck *check, s32 x, s32 y, s32 zLayer = 0)
         if(LeftClick)
         {
             check->isActive = !check->isActive;
-            if(check->onChange) { inputUse |= check->onChange(c, check->data); }
+            
+            //NOTE: check->onChange
+            if(check->callback1) { inputUse |= check->callback1(c, check->callback1Data); }
         }
     }
     
@@ -4407,14 +4448,15 @@ void ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s)
     
 }
 
-void ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen = 0, b32 singleLine = TRUE, b32 readOnly = FALSE, TextBoxProc preInput = NULL, TextBoxProc postInput = NULL)
+void ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen = 0, b32 singleLine = TRUE, b32 readOnly = FALSE, UICallback preInput = NULL, UICallback postInput = NULL)
 {
     box->text         = ls_utf32Alloc(len);
     box->maxLen       = maxLen;
     box->isSingleLine = singleLine;
     box->isReadonly   = readOnly;
-    box->preInput     = preInput;
-    box->postInput    = postInput;
+    
+    box->callback1 = preInput;
+    box->callback2 = postInput;
 }
 
 //TODO: Text Alignment
@@ -4616,8 +4658,9 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
     
     if(ls_uiInFocus(c, box))
     {
-        if(box->preInput)
-        { inputUse |= box->preInput(c, box->data); }
+        //NOTE: box->preInput
+        if(box->callback1)
+        { inputUse |= box->callback1(c, box->callback1Data); }
         
         //NOTE: Unset Focus on "Enter" press when textBox is single line.
         if(HasPrintableKey() && (GetPrintableKey() == (char32_t)'\n') &&
@@ -4985,9 +5028,9 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
         box->dtCaret += c->dt;
         if(box->dtCaret >= 400) { box->dtCaret = 0; box->isCaretOn = !box->isCaretOn; }
         
-        
-        if(box->postInput && inputUse)
-        { box->postInput(c, box->data); }
+        //NOTE: box->postInput
+        if(box->callback2 && inputUse)
+        { box->callback2(c, box->callback2Data); }
     }
     
     RenderCommand command = {UI_RC_TEXTBOX, xPos, yPos, w, h };
@@ -5289,7 +5332,9 @@ b32 ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h
                         
                         list->selectedIndex = i; list->isOpen = FALSE;
                         inputUse = TRUE;
-                        if(list->onSelect) { list->onSelect(c, list->data); }
+                        
+                        //NOTE: list->onSelect
+                        if(list->callback1) { list->callback1(c, list->callback1Data); }
                     }
                     
                     //TODO: Lost the ability to hold because of mouse capture.
@@ -5404,14 +5449,14 @@ b32 ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h
     return hasAnsweredToInput;
 }
 
-UIButton ls_uiMenuButton(ButtonProc onClick, u8 *bitmapData, s32 width, s32 height)
+UIButton ls_uiMenuButton(UICallback onClick, u8 *bitmapData, s32 width, s32 height)
 {
-    UIButton result = {};
-    result.style    = UIBUTTON_BMP;
-    result.bmpData  = bitmapData;
-    result.w        = width;
-    result.h        = height;
-    result.onClick  = onClick;
+    UIButton result  = {};
+    result.style     = UIBUTTON_BMP;
+    result.bmpData   = bitmapData;
+    result.w         = width;
+    result.h         = height;
+    result.callback1 = onClick;
     return result;
 }
 
@@ -5425,35 +5470,34 @@ UISubMenu *ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name)
     return ls_arrayAppend(&menu->subMenus, newSub);
 }
 
-UIMenuItem *ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, ButtonProc onClick, void *userData)
+UIMenuItem *ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, UICallback onClick, void *userData)
 {
-    UIMenuItem newItem = {};
-    newItem.name       = ls_utf32FromUTF32(name);
-    newItem.isVisible  = TRUE;
-    newItem.onClick    = onClick;
-    newItem.userData   = userData;
+    UIMenuItem newItem    = {};
+    newItem.name          = ls_utf32FromUTF32(name);
+    newItem.isVisible     = TRUE;
+    newItem.callback1     = onClick;
+    newItem.callback1Data = userData;
     return ls_arrayAppend(&menu->items, newItem);
 }
 
-UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, ButtonProc onClick, void *userData)
+UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, UICallback onClick, void *userData)
 {
-    UIMenuItem newItem = {};
-    
-    newItem.name       = ls_utf32FromUTF32(name);
-    newItem.isVisible  = TRUE;
-    newItem.onClick    = onClick;
-    newItem.userData   = userData;
+    UIMenuItem newItem    = {};
+    newItem.name          = ls_utf32FromUTF32(name);
+    newItem.isVisible     = TRUE;
+    newItem.callback1     = onClick;
+    newItem.callback1Data = userData;
     return ls_arrayAppend(&sub->items, newItem);
 }
 
-UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, const char32_t *name, ButtonProc onClick, void *userData)
+UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, 
+                                const char32_t *name, UICallback onClick, void *userData)
 {
-    UIMenuItem newItem = {};
-    
-    newItem.name       = ls_utf32FromUTF32(name);
-    newItem.isVisible  = TRUE;
-    newItem.onClick    = onClick;
-    newItem.userData   = userData;
+    UIMenuItem newItem    = {};
+    newItem.name          = ls_utf32FromUTF32(name);
+    newItem.isVisible     = TRUE;
+    newItem.callback1     = onClick;
+    newItem.callback1Data = userData;
     return ls_arrayAppend(&menu->subMenus[subIdx].items, newItem);
 }
 
@@ -5516,7 +5560,9 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
                     if(LeftClick) {
                         //NOTETODO: mouseCapture vs focus????
                         c->mouseCapture = (u64 *)menu;
-                        if(currItem->onClick) { currItem->onClick(c, currItem->userData); }
+                        
+                        //NOTE: currItem->onClick
+                        if(currItem->callback1) { currItem->callback1(c, currItem->callback1Data); }
                         inputUse = TRUE;
                         
                         ls_uiFocusChange(c, 0);
@@ -5558,7 +5604,9 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
             {
                 ls_uiFocusChange(c, 0);
                 menu->isOpen = FALSE;
-                inputUse |= item->onClick(c, item->userData);
+                
+                //NOTE: item->onClick
+                if(item->callback1) { inputUse |= item->callback1(c, item->callback1Data); }
             }
         }
     }
