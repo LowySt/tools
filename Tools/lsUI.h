@@ -204,6 +204,18 @@ struct UIContext;
 //      C-style inheritance without access_control, constructors, dynamic_dispatch etc. Just PODs.
 
 typedef b32(*UICallback)(UIContext *c, void *userData);
+struct DummyUIWidgetBase { 
+    /*NOTE: Generic Callbacks. All UIElements will use one or both of these.*/                    
+    /*      Technically there's some wasted space here, but it shouldn't be a problem for now.*/  
+    UICallback callback1;                                                                         
+    void *callback1Data;                                                                          
+    UICallback callback2;                                                                         
+    void *callback2Data;                                                                          
+    /*NOTE: This will be called whenever the element looses focus*/                               
+    UICallback OnFocusLost;                                                                       
+    void *onFocusLostData;                                                                        
+};
+
 #define UIWidget_Base struct { \
 /*NOTE: Generic Callbacks. All UIElements will use one or both of these.*/                    \
 /*      Technically there's some wasted space here, but it shouldn't be a problem for now.*/  \
@@ -1408,8 +1420,15 @@ void ls_uiFrameBegin(UIContext *c)
     if(c->nextFrameFocusChange == TRUE)
     {
         c->currentFocus = c->nextFrameFocus;
-        c->lastFocus    = c->currentFocus;
         c->nextFrameFocusChange = FALSE;
+    }
+    
+    if(c->currentFocus != c->lastFocus)
+    {
+        DummyUIWidgetBase *base = (DummyUIWidgetBase *)c->lastFocus;
+        if(base->OnFocusLost) {
+            base->OnFocusLost(c, base->onFocusLostData);
+        }
     }
     
     c->hasReceivedInput = FALSE;
@@ -1458,8 +1477,15 @@ void ls_uiFrameBeginChild(UIContext *c)
     if(c->nextFrameFocusChange == TRUE)
     {
         c->currentFocus = c->nextFrameFocus;
-        c->lastFocus    = c->currentFocus;
         c->nextFrameFocusChange = FALSE;
+    }
+    
+    if(c->currentFocus != c->lastFocus)
+    {
+        DummyUIWidgetBase *base = (DummyUIWidgetBase *)c->lastFocus;
+        if(base->OnFocusLost) {
+            base->OnFocusLost(c, base->onFocusLostData);
+        }
     }
     
     c->hasReceivedInput = FALSE;
@@ -1482,6 +1508,13 @@ void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
     __debug_frameNumber += 1;
 #endif
     
+    Input *UserInput = &c->UserInput;
+    //NOTE: If user clicked somewhere, but nothing set the focus, then we should reset the focus
+    if(LeftClick && !c->focusWasSetThisFrame)
+    { 
+        ls_uiFocusChange(c, 0);
+    }
+    
     RegionTimerEnd(c->frameTime);
     u32 frameTimeMs = RegionTimerGet(c->frameTime);
     if(frameTimeMs < frameTimeTargetMs)
@@ -1498,6 +1531,11 @@ void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
 void ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs)
 {
     static u32 lastFrameTime = 0;
+    
+    Input *UserInput = &c->UserInput;
+    //NOTE: If user clicked somewhere, but nothing set the focus, then we should reset the focus
+    if(LeftClick && !c->focusWasSetThisFrame)
+    { ls_uiFocusChange(c, 0); }
     
     RegionTimerEnd(c->frameTime);
     u32 frameTimeMs = RegionTimerGet(c->frameTime);
