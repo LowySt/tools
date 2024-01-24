@@ -165,14 +165,22 @@ void ls_arrayRemove(Array<T> *a, s32 index)
 {
     AssertMsg(a, "Null Array<> pointer\n");
     AssertMsg(index >= 0, "Index is negative Array<>\n");
+    AssertMsg(a->count > 0, "Can't remove from an empty array<>!\n");
+    
+    if(a->count <= 0) { return; }
+    if(index == (a->count-1)) { a->count -= 1; return; }
     
     size_t dataSize = sizeof(T);
-    u32 numElements = a->count - index;
+    s32 numElements = (a->count-1) - index;
     
     AssertMsg(numElements >= 0, "Number of elements to move in Array<> remove is negative. Maybe bad Array<>?\n");
     AssertMsg(numElements <= a->cap, "Somehow the number of elements to move in Array<> remove is > array->cap?\n");
     
-    ls_memcpy(a->data + index + 1, a->data + index, numElements*dataSize);
+    //NOTETODO: Because this operation is by default on an overlapping memory region, we perform it
+    //          one at a time. When we implement a proper memmove or reverse memcpy, we'll change it.
+    for(s32 i = index + 1; i < a->count; i++)
+    { ls_memcpy(a->data + i, a->data + (i-1), dataSize); }
+    
     a->count -= 1;
 }
 
