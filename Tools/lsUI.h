@@ -630,6 +630,7 @@ void         ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll
 void         ls_uiEndScrollableRegion(UIContext *c);
 void         ls_uiResetScrollableRegion(UIContext *c);
 
+void         ls_uiFocusChangeSameFrame(UIContext *c, u64 *focus);
 void         ls_uiFocusChange(UIContext *c, u64 *focus);
 b32          ls_uiInFocus(UIContext *c, void *p);
 b32          ls_uiHasCapture(UIContext *c, void *p);
@@ -1415,15 +1416,20 @@ void ls_uiFrameBegin(UIContext *c)
     c->UserInput.Mouse.wasMiddlePressed = c->UserInput.Mouse.isMiddlePressed;
     c->UserInput.Mouse.isWheelRotated   = FALSE;
     
+    //NOTETODO: Is it possible to at the same time setting the focus this frame, and 
+    //          Having a pending request for a focus change, thus executing both this and the 
+    //          next if block?
+    if(!c->focusWasSetThisFrame) { c->lastFocus = c->currentFocus; }
+    
     c->focusWasSetThisFrame = FALSE;
-    c->lastFocus            = c->currentFocus;
     if(c->nextFrameFocusChange == TRUE)
     {
-        c->currentFocus = c->nextFrameFocus;
+        c->lastFocus            = c->currentFocus;
+        c->currentFocus         = c->nextFrameFocus;
         c->nextFrameFocusChange = FALSE;
     }
     
-    if(c->currentFocus != c->lastFocus)
+    if(c->lastFocus && c->currentFocus != c->lastFocus)
     {
         DummyUIWidgetBase *base = (DummyUIWidgetBase *)c->lastFocus;
         if(base->OnFocusLost) {
@@ -1472,15 +1478,20 @@ void ls_uiFrameBeginChild(UIContext *c)
     c->UserInput.Mouse.wasMiddlePressed = c->UserInput.Mouse.isMiddlePressed;
     c->UserInput.Mouse.isWheelRotated   = FALSE;
     
+    //NOTETODO: Is it possible to at the same time setting the focus this frame, and 
+    //          Having a pending request for a focus change, thus executing both this and the 
+    //          next if block?
+    if(!c->focusWasSetThisFrame) { c->lastFocus = c->currentFocus; }
+    
     c->focusWasSetThisFrame = FALSE;
-    c->lastFocus            = c->currentFocus;
     if(c->nextFrameFocusChange == TRUE)
     {
-        c->currentFocus = c->nextFrameFocus;
+        c->lastFocus            = c->currentFocus;
+        c->currentFocus         = c->nextFrameFocus;
         c->nextFrameFocusChange = FALSE;
     }
     
-    if(c->currentFocus != c->lastFocus)
+    if(c->lastFocus && c->currentFocus != c->lastFocus)
     {
         DummyUIWidgetBase *base = (DummyUIWidgetBase *)c->lastFocus;
         if(base->OnFocusLost) {
@@ -1554,6 +1565,13 @@ void ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs)
 
 inline void ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f)
 { c->onDestroy = f; }
+
+void ls_uiFocusChangeSameFrame(UIContext *c, u64 *focus)
+{
+    c->lastFocus            = c->currentFocus;
+    c->currentFocus         = focus;
+    c->focusWasSetThisFrame = TRUE;
+}
 
 void ls_uiFocusChange(UIContext *c, u64 *focus)
 {
@@ -4119,7 +4137,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgCol
     
     if(button->style == UIBUTTON_TEXT_NOBORDER) { bkgColor = c->backgroundColor; }
     
-    if(MouseInRect(xPos, yPos, button->w, button->h))// && ls_uiInFocus(cxt, 0))
+    if(MouseInRect(xPos, yPos, button->w, button->h-1))// && ls_uiInFocus(cxt, 0))
     { 
         button->isHot = TRUE;
         bkgColor = c->highliteColor;
@@ -4166,7 +4184,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
     
     if(button->style == UIBUTTON_TEXT_NOBORDER) { bkgColor = c->backgroundColor; }
     
-    if(MouseInRect(xPos, yPos, button->w, button->h))// && ls_uiInFocus(cxt, 0))
+    if(MouseInRect(xPos, yPos, button->w, button->h-1))// && ls_uiInFocus(cxt, 0))
     { 
         button->isHot = TRUE;
         bkgColor = c->highliteColor;
@@ -4503,9 +4521,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
     Input *UserInput = &c->UserInput;
     b32 inputUse = FALSE;
     
-    if(LeftClickIn(xPos, yPos, w, h) && ls_uiHasCapture(c, 0)) {
-        c->currentFocus = (u64 *)box;
-        c->focusWasSetThisFrame = TRUE;
+    if(LeftClickIn(xPos, yPos, w, h-1) && ls_uiHasCapture(c, 0)) {
+        ls_uiFocusChangeSameFrame(c, (u64 *)box);
         box->isCaretOn = TRUE;
     }
     
@@ -5330,8 +5347,7 @@ b32 ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h
     const s32 arrowBoxWidth = 24;
     if(LeftClickIn(xPos+w, yPos, arrowBoxWidth, h) && ls_uiHasCapture(c, 0))
     {
-        c->currentFocus = (u64 *)list;
-        c->focusWasSetThisFrame = TRUE;
+        ls_uiFocusChangeSameFrame(c, (u64 *)list);
         
         if(list->isOpen) { list->isOpen = FALSE; }
         //else { list->isOpening = TRUE; } //NOTE:TODO: This is because Claudio wanted instant list open. 
@@ -5615,8 +5631,7 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
         {
             sub->isHot = TRUE;
             if(LeftClick) {
-                c->currentFocus = (u64 *)menu;
-                c->focusWasSetThisFrame = TRUE;
+                ls_uiFocusChangeSameFrame(c, (u64 *)menu);
                 
                 menu->isOpen  = TRUE;
                 menu->openIdx = i;
@@ -5871,9 +5886,8 @@ b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 w, s
     Input *UserInput = &c->UserInput;
     
     if(LeftClickIn(x, y, w, h) && ls_uiHasCapture(c, 0)) {
-        c->currentFocus = (u64 *)picker;
+        ls_uiFocusChangeSameFrame(c, (u64 *)picker);
         c->mouseCapture = (u64 *)picker;
-        c->focusWasSetThisFrame = TRUE;
     }
     
     s32 xMargin = w*0.1f;
