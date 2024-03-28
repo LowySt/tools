@@ -266,10 +266,19 @@ struct UICheck
     s32 addW, addH;
 };
 
+enum UITextBoxAlignment : u8
+{
+    UI_TB_ALIGN_LEFT = 0,
+    UI_TB_ALIGN_RIGHT,
+    UI_TB_ALIGN_CENTER
+};
+
 struct UITextBox
 {
     //NOTE: callback1 -> preInput; callback2 -> postInput
     UIWidget_Base;
+    
+    UITextBoxAlignment align;
     
     utf32 text;
     u32 maxLen; // maxLen == 0 means it is ignored. No max Len.
@@ -643,6 +652,8 @@ Color        ls_uiAlphaBlend(Color source, Color dest, u8 alpha);
 Color        ls_uiAlphaBlend(Color source, Color dest);
 Color        ls_uiRGBAtoARGB(Color c);
 Color        ls_uiARGBtoRGBA(Color c);
+
+UIRect       ls_uiGlyphStringRect(UIContext *c, UIFont *font, utf32 text);
 
 void         ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
 
@@ -3646,6 +3657,142 @@ s32 ls_uiGetKernAdvance(UIFont *font, s32 codepoint1, s32 codepoint2)
     return kernAdvance;
 }
 
+void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, 
+                                    UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
+{
+    AssertMsg(c, "Context is null\n");
+    AssertMsg(box, "TextBox is null\n");
+    AssertMsg(c->currFont, "Current Font is null\n");
+    
+    s32 cIdx = box->caretIndex-box->currLineBeginIdx;
+    
+    //NOTETODO Hacky shit.
+    const s32 lineHeight = font->pixelHeight*1.1f;
+    
+    //NOTETODO: Hacky shit.
+    const u32 horzOff = font->pixelHeight*0.40f;
+    const u32 strMaxX = xPos + (w - 2*horzOff);
+    
+    //NOTETODO: Hacky shit.
+    const u32 vertOff = 8;
+    const u32 strMaxH = (h-(vertOff*2));
+    const u32 vertGlyphOff = 3;
+    
+    s32 xOffset = box->viewBeginIdx;
+    s32 yOffset = 0;
+    
+    s32 maxLines = strMaxH / lineHeight;
+    
+    //TODO: SIMD this?
+    s32 i = 0;
+    if(box->caretLineIdx > maxLines) { 
+        yOffset = box->caretLineIdx - maxLines;
+        
+        //NOTE: Advance the string vertically to the nth line
+        while(yOffset)
+        {
+            u32 code = box->text.data[i];
+            AssertMsgF(code <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
+            
+            if(code == (char32_t)'\n') { yOffset -= 1; }
+            i += 1;
+        }
+    }
+    
+    s32 adjustedCaretLine = box->caretLineIdx - yOffset;
+    
+    s32 currXPos = xPos;
+    s32 currYPos = yPos;
+    u32 code    = 0;
+    
+    utf32 realString = { box->text.data + i, box->text.len - i, box->text.size - i };
+    uview lineView = ls_uviewCreate(realString);
+    utf32 firstLine = ls_uviewNextLine(lineView).s;
+    
+    switch(box->align)
+    {
+        case UI_TB_ALIGN_LEFT: {
+            currXPos = xPos;
+        } break;
+        
+        case UI_TB_ALIGN_RIGHT: {
+            currXPos = xPos+w-horzOff - ls_uiGlyphStringRect(c, font, firstLine).w;
+        } break;
+        
+        case UI_TB_ALIGN_CENTER: {
+            currXPos = xPos+w-horzOff - (ls_uiGlyphStringRect(c, font, firstLine).w / 2);
+        } break;
+        
+        default: { AssertMsg(FALSE, "Unhandled TextBox Alignement\n"); } break;
+    }
+    
+    for(u32 lineIdx = 0; lineIdx < (box->lineCount+1-yOffset); lineIdx++)
+    {
+        lineView = ls_uviewNextLine(lineView);
+        utf32 line = lineView.s;
+        
+        i += xOffset;
+        u32 lIdx = xOffset;
+        s32 caretX = currXPos-3;
+        for(; lIdx < line.len; lIdx++, i++)
+        {
+            if((lineIdx == box->caretLineIdx) && (cIdx == lIdx)) { caretX = currXPos-3; }
+            if(currXPos > strMaxX)
+            {
+                if((lineIdx == box->caretLineIdx) && (cIdx == lIdx+1)) { caretX = currXPos-3; }
+                i += line.len - lIdx; break;
+            }
+            
+            code = line.data[lIdx];
+            AssertMsgF(code <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
+            
+            Color actualColor = textColor;
+            UIGlyph *currGlyph = &font->glyph[code];
+            
+            //TODO: Pretty inefficient to keep redrawing the background all the time.
+            if(box->isSelecting && (box->selectBeginLine <= lineIdx) && (box->selectEndLine >= lineIdx)
+               && (box->selectBeginIdx <= i) && (box->selectEndIdx > i))
+            { 
+                actualColor = invTextColor;
+                ls_uiFillRect(c, currXPos, currYPos, currGlyph->xAdv, lineHeight-vertGlyphOff, 
+                              threadRect, scissor, c->invWidgetColor);
+            }
+            
+            ls_uiGlyph(c, currXPos, currYPos+vertGlyphOff, threadRect, scissor, currGlyph, actualColor);
+            
+            s32 kernAdvance = 0;
+            if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
+            currXPos += (currGlyph->xAdv + kernAdvance);
+            
+        }
+        
+        if(((lineIdx == box->caretLineIdx) && cIdx == line.len)) { caretX = currXPos-3; }
+        
+        if(box->isCaretOn && (c->currentFocus == (u64 *)box) && (lineIdx == box->caretLineIdx))
+        {
+            UIGlyph *currGlyph = &font->glyph[(char32_t)'|'];
+            ls_uiGlyph(c, caretX, currYPos+vertGlyphOff, threadRect, scissor, currGlyph, textColor);
+        }
+        
+        currYPos -= lineHeight;
+        switch(box->align)
+        {
+            case UI_TB_ALIGN_LEFT: {
+                currXPos = xPos;
+            } break;
+            
+            case UI_TB_ALIGN_RIGHT: {
+                currXPos = xPos+w-horzOff - ls_uiGlyphStringRect(c, font, firstLine).w;
+            } break;
+            
+            case UI_TB_ALIGN_CENTER: {
+                currXPos = xPos+w-horzOff - (ls_uiGlyphStringRect(c, font, firstLine).w / 2);
+            } break;
+            
+            default: { AssertMsg(FALSE, "Unhandled TextBox Alignement\n"); } break;
+        }
+    }
+}
 
 void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, 
                              UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
@@ -4510,9 +4657,10 @@ void ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen = 0, b32
     box->maxLen       = maxLen;
     box->isSingleLine = singleLine;
     box->isReadonly   = readOnly;
+    box->align        = UI_TB_ALIGN_LEFT;
     
-    box->callback1 = preInput;
-    box->callback2 = postInput;
+    box->callback1    = preInput;
+    box->callback2    = postInput;
 }
 
 //TODO: Text Alignment
@@ -6096,8 +6244,15 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     s32 strX = xPos + horzOff;
                     s32 strY = yPos + h - strPixelHeight;
                     
-                    //NOTETODO: For now we double draw for selected strings. We can improve with 3-segment drawing.
-                    ls_uiRenderStringOnRect(c, box, strX, strY, w, h, threadRect, scissor, textColor, c->invTextColor);
+                    if(box->align == UI_TB_ALIGN_RIGHT || box->align == UI_TB_ALIGN_CENTER)
+                    {
+                        ls_uiRenderAlignedStringOnRect(c, font, box, strX, strY, w, h, threadRect, scissor, textColor, c->invTextColor);
+                    }
+                    else
+                    {
+                        //NOTETODO: For now we double draw for selected strings. We can improve with 3-segment drawing.
+                        ls_uiRenderStringOnRect(c, box, strX, strY, w, h, threadRect, scissor, textColor, c->invTextColor);
+                    }
                     
                 } break;
                 
