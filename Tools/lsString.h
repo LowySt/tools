@@ -153,6 +153,7 @@ void  ls_utf8FreeArr(utf8 *s, s32 arrSize);
 b32   ls_utf8AreEqual(utf8 a, utf8 b);
 void  ls_utf8Set(utf8 *toSet, utf8 source);
 
+b32   ls_utf8IsValid(u8 *src, s32 byteLen);
 s32   ls_utf8Len(u8 *src, s32 byteLen);
 
 utf8  ls_utf8FromAscii(char *s);
@@ -268,7 +269,8 @@ utf32  ls_utf32CopySubstr(utf32 s, u32 beginIdx, u32 _endIdx = (u32)-1);
 
 //OperateOn
 void   ls_utf32Reverse(utf32 *s);
-void   ls_utf32RmSubstr(utf32 *s, u32 beginIdx, u32 endIdx);  //TODO: Make indices signed as well.
+void   ls_utf32RmSubstr(utf32 *s, u32 beginIdx, u32 endIdx);  //TODO: Call this RmRange. Make indices signed
+b32    ls_utf32RmSubstr(utf32 *s, utf32 toRm);
 void   ls_utf32RmIdx(utf32 *s, u32 idx);
 void   ls_utf32TrimRight(utf32 *s, u32 numChars);
 
@@ -1613,6 +1615,26 @@ b32 ls_utf8AreEqual(utf8 a, utf8 b)
     return ls_memcmp(a.data, b.data, a.byteLen*sizeof(u8));
 }
 
+b32 ls_utf8IsValid(u8 *src, s32 byteLen)
+{
+    AssertMsg(src, "Null source pointer\n");
+    AssertMsgF(byteLen > 0, "Non-Positive byteLen: %d\n", byteLen);
+    
+    u8 *At = (u8 *)src;
+    while(byteLen > 0)
+    {
+        if(*At <= 0x7F)      { byteLen -= 1; At  += 1; }
+        else if(*At <= 0xDF) { byteLen -= 2; At  += 2; }
+        else if(*At <= 0xEF) { byteLen -= 3; At  += 3; }
+        else if(*At <= 0xF7) { byteLen -= 4; At  += 4; }
+        else { return FALSE; }
+        
+        if(byteLen < 0) { return FALSE; }
+    }
+    
+    return TRUE;
+}
+
 s32 ls_utf8Len(u8 *src, s32 byteLen)
 {
     AssertMsg(src, "Null source pointer\n");
@@ -2924,6 +2946,7 @@ void ls_utf32Reverse(utf32 *s)
     }
 }
 
+//TODO: Call this RmRange
 void ls_utf32RmSubstr(utf32 *s, u32 beginIdx, u32 endIdx)
 {
     AssertMsg(s, "Source pointer is null\n");
@@ -2950,6 +2973,37 @@ void ls_utf32RmSubstr(utf32 *s, u32 beginIdx, u32 endIdx)
     
     return;
 }
+
+b32 ls_utf32RmSubstr(utf32 *s, utf32 toRm)
+{
+    AssertMsg(s, "Source pointer is null\n");
+    AssertMsgF(s->size > 0, "Trying to remove substring of a Non-Positive sized string: %d\n", s->size);
+    
+    if(toRm.len > s->len) { return FALSE; }
+    if(toRm.len == 0) { return FALSE; }
+    
+    s32 foundIdx = ls_utf32LeftFind(*s, toRm);
+    if(foundIdx == -1) { return FALSE; }
+    
+    ls_utf32RmSubstr(s, foundIdx, foundIdx + (toRm.len-1));
+    return TRUE;
+}
+
+b32 ls_utf32RmSubstrInList(utf32 *s, utf32 *toRm, s32 count)
+{
+    AssertMsg(s, "Source pointer is null\n");
+    AssertMsgF(s->size > 0, "Trying to remove substring of a Non-Positive sized string: %d\n", s->size);
+    AssertMsg(toRm, "To Remove Array pointer is null\n");
+    AssertMsgF(count > 0 && count < 10000000, "Count has an invalid or strangely large value: %d\n", count);
+    
+    b32 hasRemoved = FALSE;
+    
+    for(s32 i = 0; i < count; i++)
+    { hasRemoved |= ls_utf32RmSubstr(s, toRm[i]); }
+    
+    return hasRemoved;
+}
+
 
 void ls_utf32RmIdx(utf32 *s, u32 idx)
 { ls_utf32RmSubstr(s, idx, idx); }
