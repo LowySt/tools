@@ -4,3 +4,4 @@
 *.pdb
 *.4coder
 Tools/test/
+Libraries/raylib/
