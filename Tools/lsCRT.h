@@ -173,7 +173,8 @@ char   *ls_ftoa(f64 x);
 //NOTE: On stack
 u32    ls_itoa_t(s64 x, char *buff, u32 buffMax);
 u32    ls_utoa_t(u64 value, char *buff, u32 buffMax);
-u32    ls_utoax_t(u64 value, char *buff, u32 buffMax);
+u32    ls_utoax_t(u64 value, char *buff, s32 buffMax, s32 numBytes = 8, b32 spaced = FALSE);
+u32    ls_utoab_t(u64 value, char *buff, s32 buffMax, s32 numBytes = 8, b32 spaced = FALSE);
 u32    ls_ftoa_t(f64 x, char *buff, u32 buffMax);
 
 char   *ls_strstr(char *a, char *b);
@@ -479,36 +480,142 @@ u32 ls_utoa_t(u64 value, char *buff, u32 buffMax)
     return i;
 }
 
-u32 ls_utoax_t(u64 value, char *buff, u32 buffMax)
+u32 ls_utoax_t(u64 value, char *buff, s32 buffMax, s32 numBytes, b32 spaced)
 {
+    AssertMsgF(buffMax > 0, "BuffMax is non-positive: %d\n", buffMax);
+    AssertMsg(numBytes >= 1 && numBytes <= 8, "Invalid byte count for integer hex to string conversion\n");
+    
     char *Result = buff;
     
-    if(buffMax < 5) { return 0; }
+    //NOTE: Every Byte is represented by 2 Hex Digits
+    //      Then there's the preceding "0x"
+    s32 numCharsInBuff = (numBytes*2) + 2;
     
-    u64 orig = value;
-    if(value == 0) { Result[0] = '0'; Result[1] = 'x'; Result[2] = '0'; Result[3] = '0'; Result[4] = '\0'; return 4; }
+    //NOTE: Add a space after every byte
+    if(spaced && numBytes > 2) { numCharsInBuff += (numBytes-1) / 2; }
+    
+    //NOTE: Account for null terminator!
+    if(buffMax < numCharsInBuff+1) { return 0; }
+    
+    if(value == 0)
+    {
+        s32 digitCount = 0;
+        Result[0] = '0'; Result[1] = 'x';
+        for(s32 i = 2; i < numCharsInBuff; i++)
+        { 
+            Result[i] = '0';
+            
+            digitCount += 1;
+            if(spaced && i > 2 && digitCount % 4 == 0) 
+            { Result[i+1] = ' '; i += 1; }
+        }
+        
+        Result[numCharsInBuff] = '\0';
+        
+        return numCharsInBuff;
+    }
     
     s32 i = 0;
+    s32 digitCount = 0;
     while (value != 0)
     {
-        if(i == buffMax) { return i; }
+        AssertMsg(i < buffMax, "Shouldn't happen. Have check at the beginning!\n");
         
         s32 unit = (value & 0x0F);
         if(unit < 10) { Result[i++] = unit + '0'; }
         else          { Result[i++] = unit - 10 + 'A'; }
         value = value >> 4;
+        
+        digitCount += 1;
+        if(spaced && i < numCharsInBuff-2 && digitCount % 4 == 0)
+        { Result[i++] = ' '; }
     }
     
-    //TODO: Append a 0 if you don't complete a byte always?
-    if(orig < 16) { Result[i] = '0'; i += 1; }
+    //NOTE: If it's requested to display a specific number of bytes, we set to zero those bytes that
+    //      are empty. This also fills a zero when the value is smaller than 16.
+    while(i < numCharsInBuff-2) { 
+        Result[i] = '0'; i += 1;
+        digitCount += 1;
+        if(spaced && i < numCharsInBuff-2 && digitCount % 4 == 0) { Result[i] = ' '; i += 1; }
+    }
     
-    if(i == buffMax) { return i; }
-    Result[i] = 'x';
-    i += 1;
-    if(i == buffMax) { return i; }
-    Result[i] = '0';
-    i += 1;
-    if(i == buffMax) { return i; }
+    Result[i] = 'x'; i += 1;
+    Result[i] = '0'; i += 1;
+    
+    Result[i] = '\0';
+    
+    //Flip string, it's in reverse.
+    for (int t = 0; t < i / 2; t++)
+    {
+        Result[t] ^= Result[i - t - 1];
+        Result[i - t - 1] ^= Result[t];
+        Result[t] ^= Result[i - t - 1];
+    }
+    
+    return i;
+}
+
+u32 ls_utoab_t(u64 value, char *buff, s32 buffMax, s32 numBytes, b32 spaced)
+{
+    AssertMsgF(buffMax > 0, "BuffMax is non-positive: %d\n", buffMax);
+    AssertMsg(numBytes >= 1 && numBytes <= 8, "Invalid byte count for integer hex to string conversion\n");
+    
+    char *Result = buff;
+    
+    //NOTE: Every Byte is represented by 8 Binary Digits
+    //      Then there's the preceding "0b"
+    s32 numCharsInBuff = (numBytes*8) + 2;
+    
+    //NOTE: Add a space after every nibble
+    if(spaced) { numCharsInBuff += (numBytes*2)-1; }
+    
+    //NOTE: Account for null terminator!
+    if(buffMax < numCharsInBuff+1) { return 0; }
+    
+    if(value == 0)
+    {
+        s32 digitCount = 0;
+        Result[0] = '0'; Result[1] = 'b';
+        for(s32 i = 2; i < numCharsInBuff; i++)
+        { 
+            Result[i] = '0';
+            
+            digitCount += 1;
+            if(spaced && i > 2 && digitCount % 4 == 0) 
+            { Result[i+1] = ' '; i += 1; }
+        }
+        
+        Result[numCharsInBuff] = '\0';
+        
+        return numCharsInBuff;
+    }
+    
+    s32 digitCount = 0;
+    s32 i = 0;
+    while (value != 0)
+    {
+        AssertMsg(i < buffMax, "Shouldn't happen. Have check at the beginning!\n");
+        
+        s32 bit = (value & 0x1);
+        Result[i++] = bit + '0';
+        value = value >> 1;
+        
+        digitCount += 1;
+        if(spaced && i < numCharsInBuff-2 && digitCount % 4 == 0)
+        { Result[i++] = ' '; }
+    }
+    
+    //NOTE: If it's requested to display a specific number of bytes, we set to zero those bytes that
+    //      are empty. This also fills a zero when the value is smaller than 16.
+    while(i < numCharsInBuff-2) { 
+        Result[i] = '0'; i += 1;
+        digitCount += 1;
+        if(spaced && i < numCharsInBuff-2 && digitCount % 4 == 0) { Result[i] = ' '; i += 1; }
+    }
+    
+    Result[i] = 'b'; i += 1;
+    Result[i] = '0'; i += 1;
+    
     Result[i] = '\0';
     
     //Flip string, it's in reverse.

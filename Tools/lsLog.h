@@ -56,7 +56,7 @@ s32 ls_vlogFormatS32(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *ar
 {
     s32 intValue = va_arg(*argList, s32);
     
-    const s32 buffSize = 64;
+    const s32 buffSize = 128;
     char intBuff[buffSize] = {};
     s32 sLen = 0;
     
@@ -66,13 +66,11 @@ s32 ls_vlogFormatS32(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *ar
     }
     else
     {
-        //TODO: More modifiers?
         switch(mods[0])
         {
-            case 'x':
-            {
-                sLen = ls_utoax_t((u16)intValue, intBuff, buffSize);
-            } break;
+            case 'x': { sLen = ls_utoax_t((u32)intValue, intBuff, buffSize, 4, TRUE); } break;
+            
+            case 'b': { sLen = ls_utoab_t((u32)intValue, intBuff, buffSize, 4, TRUE); } break;
             
             default:
             {
@@ -416,6 +414,13 @@ s32 ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList, b32 
             if(*(p+1) == 'x')
             {
                 mods[numMods] = 'x';
+                p += 1;
+                numMods += 1;
+            }
+            
+            if(*(p+1) == 'b')
+            {
+                mods[numMods] = 'b';
                 p += 1;
                 numMods += 1;
             }
