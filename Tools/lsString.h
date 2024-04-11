@@ -328,7 +328,8 @@ void   ls_utf32AppendNCStr(utf32 *s1, char *c, s32 len);
 void   ls_utf32AppendBuffer(utf32 *s1, u32 *buff, s32 buffLen);
 void   ls_utf32AppendInt(utf32 *s, s64 val);
 
-void   ls_utf32Replace(utf32 *s, const char32_t *pattern, const char32_t *replacement);
+b32    ls_utf32Replace(utf32 *s, const char32_t *pattern, const char32_t *replacement);
+b32    ls_utf32Replace(utf32 *s, utf32 patStr, utf32 replStr);
 
 // Convert
 s32    ls_utf32ToAscii_t(utf32 s, char *buff, s32 buffMaxLen);
@@ -3860,7 +3861,7 @@ void ls_utf32AppendBuffer(utf32 *s1, u32 *buff, s32 buffLen)
 }
 
 
-void ls_utf32Replace(utf32 *s, const char32_t *pattern, const char32_t *replacement)
+b32 ls_utf32Replace(utf32 *s, const char32_t *pattern, const char32_t *replacement)
 {
     AssertMsg(s, "Base utf32 ptr is null\n");
     AssertMsg(s->data, "Base utf32 data is null\n");
@@ -3871,14 +3872,36 @@ void ls_utf32Replace(utf32 *s, const char32_t *pattern, const char32_t *replacem
     utf32 patStr  = ls_utf32Constant(pattern);
     utf32 replStr = ls_utf32Constant(replacement);
     
+    b32 hasReplaced = FALSE; 
     s32 findIdx = -1;
     while((findIdx = ls_utf32LeftFind(*s, patStr)) != -1)
     {
         ls_utf32RmSubstr(s, findIdx, findIdx+patStr.len-1);
         ls_utf32InsertSubstr(s, replStr, findIdx);
+        hasReplaced = TRUE;
     }
     
-    return;
+    return hasReplaced;
+}
+
+b32 ls_utf32Replace(utf32 *s, utf32 patStr, utf32 replStr)
+{
+    AssertMsg(s, "Base utf32 ptr is null\n");
+    AssertMsg(s->data, "Base utf32 data is null\n");
+    AssertMsgF(s->size > 0, "Trying to write to a Non-Positive sized string: %d\n", s->size);
+    AssertMsg(patStr.data, "Pattern ptr is null\n");
+    AssertMsg(replStr.data, "Replacement ptr is null\n");
+    
+    b32 hasReplaced = FALSE; 
+    s32 findIdx = -1;
+    while((findIdx = ls_utf32LeftFind(*s, patStr)) != -1)
+    {
+        ls_utf32RmSubstr(s, findIdx, findIdx+patStr.len-1);
+        ls_utf32InsertSubstr(s, replStr, findIdx);
+        hasReplaced = TRUE;
+    }
+    
+    return hasReplaced;
 }
 
 //      Merge       //
