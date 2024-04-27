@@ -248,11 +248,40 @@ struct StaticArray
 };
 
 template<typename T, int N>
+void ls_staticArrayFromPtr(StaticArray<T, N> *a, T *buf, s32 sizeInBytes)
+{
+    AssertNonNull(buf);
+    
+    s32 count = sizeInBytes / sizeof(T);
+    AssertMsg(count <= N, "Too Large Buffer when filling StaticArray<>\n");
+    
+    ls_memcpy(buf, a->data, sizeInBytes);
+    a->count = count;
+}
+
+template<typename T, int N>
 void ls_staticArrayClear(StaticArray<T, N> *a)  { AssertMsg(a, "Null StaticArray<> pointer\n"); a->count = 0; }
 
 template<typename T, int N>
 b32 ls_staticArrayIsFull(StaticArray<T, N> a)
 { return (a.count == N); }
+
+template<typename T, int N>
+b32 ls_staticArrayAreEqual(StaticArray<T, N> lhs, StaticArray<T, N> rhs)
+{ 
+    if(lhs.count != rhs.count) { return FALSE; }
+    
+    return ls_memcmp(lhs.data, rhs.data, lhs.count*sizeof(T));
+}
+
+template<typename T, int N>
+void ls_staticArrayCopy(StaticArray<T, N> src, StaticArray<T, N> *dest)
+{
+    AssertNonNull(dest);
+    
+    ls_memcpy(src.data, dest->data, sizeof(T)*src.count);
+    dest->count = src.count;
+}
 
 template<typename T, int N>
 T *ls_staticArrayAppend(StaticArray<T, N> *a, T val)
