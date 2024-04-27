@@ -273,6 +273,7 @@ void   ls_utf32RmSubstr(utf32 *s, u32 beginIdx, u32 endIdx);  //TODO: Call this 
 b32    ls_utf32RmSubstr(utf32 *s, utf32 toRm);
 void   ls_utf32RmIdx(utf32 *s, u32 idx);
 void   ls_utf32TrimRight(utf32 *s, u32 numChars);
+void   ls_utf32TrimWhitespaceRight(utf32 *s);
 
 void   ls_utf32InsertSubstr(utf32 *s, utf32 toInsert, u32 insertIdx);
 void   ls_utf32InsertSubstr(utf32 *s, const char32_t *toInsert, s32 insertIdx);
@@ -3022,6 +3023,26 @@ void ls_utf32TrimRight(utf32 *s, u32 numChars)
     if(s->len - numChars < 0) { return; }
     
     s->len -= numChars; 
+}
+
+void ls_utf32TrimWhitespaceRight(utf32 *s)
+{
+    AssertMsg(s, "Null utf32 pointer passed\n");
+    AssertMsg(s->data, "Null source string data\n");
+    AssertMsgF(s->size > 0, "Trying to trim a Non-Positive sized string: %d\n", s->size);
+    AssertMsg(s->len > 0, "Trying to trim an empty utf32\n");
+    
+    if(s->data == NULL) { return; }
+    
+    s32 toRemove = 0;
+    s32 i = s->len-1;
+    while(i >= 0 && ls_UTF32IsWhitespace(s->data[i]))
+    {
+        toRemove += 1;
+        i -= 1;
+    }
+    
+    s->len -= toRemove;
 }
 
 void ls_utf32InsertSubstr(utf32 *s, utf32 toInsert, u32 insertIdx)
