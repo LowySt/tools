@@ -197,7 +197,7 @@ struct UIBitmap
 struct UIContext;
 
 //NOTE: Base Struct for all UI elements
-//      The reason it's made as a define is so that the entire anonymous (it has no name) struct definition 
+//      The reason it's made as a define is so that the entire anonymous struct definition 
 //      Will be copy-pasted inside each Widget's body. This way each widget can access all element of the
 //      Base struct without having to refer to it by name (like if it was a substruct).
 //
@@ -4664,6 +4664,11 @@ void ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen = 0, b32
 }
 
 //TODO: Text Alignment
+//TODO: NonLethal display (like all maxLen numerical displays) is asymmetrical in the value range
+//      it can represent.
+//
+//      I.E.  A maxLen = 4 textBox can represent: [-999, 9999]
+//            Instead of the more correct:        [-999, 999]
 b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer = 0)
 {
     Input *UserInput = &c->UserInput;
