@@ -16,85 +16,116 @@ struct buffer
     u64 cursor;
 };
 
-extern "C"
-{
-    //TODO: My names are stupid. Byte is okay, but Word, DWord and QWord are stupid.
-    //      Should be all renamed to (name)8, (name)16, (name)32, etc...
-    buffer ls_bufferInit(u64 bufferSize);
-    buffer ls_bufferViewIntoPtr(void *arr, u64 arrSize);
-    buffer ls_bufferFromPtrArray(void *arr, u64 arrSize);
-    buffer ls_bufferInitFromFile(string path);
-    
-    void   ls_bufferClear(buffer *buff);
-    void   ls_bufferDestroy(buffer *buff);
-    void   ls_bufferSeekBegin(buffer *buff);
-    
-    void   ls_bufferZeroPad(buffer *buff, u32 numBytes);
-    void   ls_bufferReadSkip(buffer *buff, u32 numBytes);
-    
-    void   ls_bufferChangeByte(buffer *buff, u8 v);
-    void   ls_bufferChangeWord(buffer *buff, u16 v);
-    void   ls_bufferChangeDWord(buffer *buff, u32 v);
-    void   ls_bufferChangeQWord(buffer *buff, u64 v);
-    
-    void   ls_bufferAddByte(buffer *buff, u8 v);
-    void   ls_bufferAddWord(buffer *buff, u16 v);
-    void   ls_bufferAddDWord(buffer *buff, u32 v);
-    void   ls_bufferAddQWord(buffer *buff, u64 v);
-    void   ls_bufferAddFloat(buffer *buff, f32 v);
-    void   ls_bufferAddDouble(buffer *buff, f64 v);
-    
-    //NOTE: AddData includes serializes the length, AddDataClean does NOT.
-    void   ls_bufferAddData8(buffer *buff, void *data, u8 len);
-    void   ls_bufferAddData32(buffer *buff, void *data, u32 len);
-    void   ls_bufferAddDataClean(buffer *buff, void *data, u32 len);
-    
-    u8     ls_bufferPeekByte(buffer *buff);
-    u16    ls_bufferPeekWord(buffer *buff);
-    u32    ls_bufferPeekDWord(buffer *buff);
-    u64    ls_bufferPeekQWord(buffer *buff);
-    f32    ls_bufferPeekFloat(buffer *buff);
-    f64    ls_bufferPeekDouble(buffer *buff);
-    
-    u32    ls_bufferPeekData8(buffer *buff, void **dataOut);
-    u32    ls_bufferPeekData16(buffer *buff, void **dataOut);
-    u32    ls_bufferPeekData32(buffer *buff, void **dataOut);
-    void   ls_bufferPeekDataClean(buffer *buff, void **dataOut, u32 numBytes);
-    
-    u8     ls_bufferReadByte(buffer *buff);
-    u16    ls_bufferReadWord(buffer *buff);
-    u32    ls_bufferReadDWord(buffer *buff);
-    u64    ls_bufferReadQWord(buffer *buff);
-    f32    ls_bufferReadFloat(buffer *buff);
-    f64    ls_bufferReadDouble(buffer *buff);
-    
-    u32    ls_bufferReadData8(buffer *buff, void *out);
-    u32    ls_bufferReadData32(buffer *buff, void *out);
-    void   ls_bufferReadDataClean(buffer *buff, void *out, u32 numBytes);
-    
-    u8     ls_bufferPullByte(buffer *buff);
-    u16    ls_bufferPullWord(buffer *buff);
-    u32    ls_bufferPullDWord(buffer *buff);
-    u64    ls_bufferPullQWord(buffer *buff);
-    f32    ls_bufferPullFloat(buffer *buff);
-    f64    ls_bufferPullDouble(buffer *buff);
-    
-    //TODONOTE: To be able to pull strings we need to change the implementation of AddString
-    //      to add the string len both before and after the string data, so that the len can be known
-    //      whether you're reading forward or backward. Remeber also to change ReadString to skip the
-    //      2nd len bytes.
-    
+//TODO: My names are stupid. Byte is okay, but Word, DWord and QWord are stupid.
+//      Should be all renamed to (name)8, (name)16, (name)32, etc...
+buffer ls_bufferInit(u64 bufferSize);
+buffer ls_bufferViewIntoPtr(void *arr, u64 arrSize);
+buffer ls_bufferFromPtrArray(void *arr, u64 arrSize);
+buffer ls_bufferInitFromFile(string path);
+
+void   ls_bufferClear(buffer *buff);
+void   ls_bufferDestroy(buffer *buff);
+void   ls_bufferSeekBegin(buffer *buff);
+
+void   ls_bufferZeroPad(buffer *buff, u32 numBytes);
+void   ls_bufferReadSkip(buffer *buff, u32 numBytes);
+
+void   ls_bufferChangeByte(buffer *buff, u8 v);
+void   ls_bufferChangeWord(buffer *buff, u16 v);
+void   ls_bufferChangeDWord(buffer *buff, u32 v);
+void   ls_bufferChangeQWord(buffer *buff, u64 v);
+
+void   ls_bufferAddByte(buffer *buff, u8 v);
+void   ls_bufferAddWord(buffer *buff, u16 v);
+void   ls_bufferAddDWord(buffer *buff, u32 v);
+void   ls_bufferAddQWord(buffer *buff, u64 v);
+void   ls_bufferAddFloat(buffer *buff, f32 v);
+void   ls_bufferAddDouble(buffer *buff, f64 v);
+
+//NOTE: AddData includes serializes the length, AddDataClean does NOT.
+void   ls_bufferAddData8(buffer *buff, void *data, u8 len);
+void   ls_bufferAddData32(buffer *buff, void *data, u32 len);
+void   ls_bufferAddDataClean(buffer *buff, void *data, u32 len);
+
+u8     ls_bufferPeekByte(buffer *buff);
+u16    ls_bufferPeekWord(buffer *buff);
+u32    ls_bufferPeekDWord(buffer *buff);
+u64    ls_bufferPeekQWord(buffer *buff);
+f32    ls_bufferPeekFloat(buffer *buff);
+f64    ls_bufferPeekDouble(buffer *buff);
+
+u32    ls_bufferPeekData8(buffer *buff, void **dataOut);
+u32    ls_bufferPeekData16(buffer *buff, void **dataOut);
+u32    ls_bufferPeekData32(buffer *buff, void **dataOut);
+void   ls_bufferPeekDataClean(buffer *buff, void **dataOut, u32 numBytes);
+
+u8     ls_bufferReadByte(buffer *buff);
+u16    ls_bufferReadWord(buffer *buff);
+u32    ls_bufferReadDWord(buffer *buff);
+u64    ls_bufferReadQWord(buffer *buff);
+f32    ls_bufferReadFloat(buffer *buff);
+f64    ls_bufferReadDouble(buffer *buff);
+
+u32    ls_bufferReadData8(buffer *buff, void *out);
+u32    ls_bufferReadData32(buffer *buff, void *out);
+void   ls_bufferReadDataClean(buffer *buff, void *out, u32 numBytes);
+
+u8     ls_bufferPullByte(buffer *buff);
+u16    ls_bufferPullWord(buffer *buff);
+u32    ls_bufferPullDWord(buffer *buff);
+u64    ls_bufferPullQWord(buffer *buff);
+f32    ls_bufferPullFloat(buffer *buff);
+f64    ls_bufferPullDouble(buffer *buff);
+
+//TODONOTE: To be able to pull strings we need to change the implementation of AddString
+//      to add the string len both before and after the string data, so that the len can be known
+//      whether you're reading forward or backward. Remeber also to change ReadString to skip the
+//      2nd len bytes.
+
 #ifdef LS_STRING_H
-    void   ls_bufferAddString(buffer *buff, string v);
-    void   ls_bufferAddStringClean(buffer *buff, string v);
-    void   ls_bufferAddUTF32(buffer *buff, utf32 v);
-    
-    string ls_bufferReadString(buffer *buff);
-    utf32  ls_bufferReadUTF32(buffer *buff);
-    void   ls_bufferReadIntoUTF32(buffer *buff, utf32 *s);
+void   ls_bufferAddString(buffer *buff, string v);
+void   ls_bufferAddStringClean(buffer *buff, string v);
+void   ls_bufferAddUTF32(buffer *buff, utf32 v);
+
+string ls_bufferReadString(buffer *buff);
+utf32  ls_bufferReadUTF32(buffer *buff);
+void   ls_bufferReadIntoUTF32(buffer *buff, utf32 *s);
 #endif
+
+
+#ifdef LS_ARRAY_H
+
+template<typename T, int N>
+void ls_bufferAddStaticArray(buffer *buff, StaticArray<T, N> a)
+{
+    AssertNonNull(buff);
     
-};
+    //NOTE: First we serialize the template parameters to be able to assert, 
+    //      when deserializing, that the correct data type is being used.
+    ls_bufferAddDWord(buff, sizeof(T));
+    ls_bufferAddDWord(buff, N);
+    
+    ls_bufferAddDWord(buff, a.count);
+    ls_bufferAddDataClean(buff, a.data, sizeof(T)*a.count);
+}
+
+template<typename T, int N>
+void ls_bufferReadStaticArray(buffer *buff, StaticArray<T, N> *a)
+{
+    AssertNonNull(buff);
+    AssertNonNull(a);
+    
+    s32 sizeOfT = ls_bufferReadDWord(buff);
+    AssertMsg(sizeOfT == sizeof(T), "Incorrect StaticArray<> passed to function. sizeof(T) doesn't match\n");
+    
+    s32 staticN = ls_bufferReadDWord(buff);
+    AssertMsg(staticN == N, "Incorrect StaticArray<> passed to function. N template param doesn't match\n");
+    
+    a->count = ls_bufferReadDWord(buff);
+    ls_bufferReadDataClean(buff, a->data, sizeof(T)*a->count);
+}
+
+#endif
 
 #endif //LS_BUFFER_H
 
@@ -688,8 +719,6 @@ void ls_bufferAddUTF32(buffer *buff, utf32 v)
     ls_memcpy(v.data, At, lenInBytes);
     buff->cursor += lenInBytes;
 }
-
-
 
 string ls_bufferReadString(buffer *buff)
 {
