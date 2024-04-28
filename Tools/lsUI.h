@@ -246,6 +246,10 @@ struct UIButton
     
     b32 isHot;
     b32 isHeld;
+    
+    //NOTE: When this is set, the button is drawn greyed out, and
+    //      the user can't interact with it.
+    b32 isInactive;
 };
 
 enum UICheckStyle { UICHECK_BMP };
@@ -2954,29 +2958,46 @@ void ls_uiResetScrollableRegion(UIContext *c)
     //TODO: scroll->maxX?
 }
 
-//TODO: Fix for premultiplied alpha?
 Color ls_uiDarkenRGB(Color c, f32 percentage)
 {
-    u8 *c8 = (u8 *)&c;
+    //NOTE: Ensure the percentage is within valid bounds
+    if (percentage < 0.0)
+    { percentage = 0.0; }
+    else if (percentage > 1.0)
+    { percentage = 1.0; }
     
-    u8 highest = 0;
-    if(c8[0] > highest) { highest = c8[0]; }
-    if(c8[1] > highest) { highest = c8[1]; }
-    if(c8[2] > highest) { highest = c8[2]; }
+    /*TODO: I can't currently apply gamma correction, since I don't have a good log(a) and pow(f32, f32)
+ *       implementation, which are required to properly handle the inv gamma
+    //NOTE: Apply Gamma Correction (perceptual weighting)
+    f32 gamma    = 2.2; //NOTE: Typical gamma value for Display Devices
+    f32 invGamma = 1.0 / gamma;
+    */
     
-    if(highest == 0)  { return c; }
+    //NOTE Convert Premultiplied Color to Linear Color
+    f64 invAlpha = (f64)c.a / 255.0;
+    f64 rLinear  = ((f64)c.r / invAlpha);
+    f64 gLinear  = ((f64)c.g / invAlpha);
+    f64 bLinear  = ((f64)c.b / invAlpha);
     
-    u8 reduction = (255.0f*percentage);
-    if(highest < reduction) { reduction = highest; }
+    //NOTE: Darken the Linear Color
+    rLinear *= (1.0 - percentage);
+    gLinear *= (1.0 - percentage);
+    bLinear *= (1.0 - percentage);
     
-    f32 realFactor = (f32)(highest - reduction) / highest;
+    c.r = (u8)(rLinear * invAlpha);
+    c.g = (u8)(gLinear * invAlpha);
+    c.b = (u8)(bLinear * invAlpha);
     
-    c8[0] -= c8[0] * realFactor;
-    c8[1] -= c8[1] * realFactor;
-    c8[2] -= c8[2] * realFactor;
+    /*TODO: Gamma Correction when log(a) and pow(f32, f32) are implemented and good.
+    //NOTE: Convert back to premultiplied RGBA, and apply inverse gamma.
+    *r = (int)(pow(rLinear, invGamma) * alpha);
+    *g = (int)(pow(gLinear, invGamma) * alpha);
+    *b = (int)(pow(bLinear, invGamma) * alpha);
+*/
     
     return c;
 }
+
 
 //TODO: Fix for premultiplied alpha?
 Color ls_uiLightenRGB(Color c, f32 percentage)
@@ -4284,6 +4305,21 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgCol
     
     if(button->style == UIBUTTON_TEXT_NOBORDER) { bkgColor = c->backgroundColor; }
     
+    if(button->isInactive == TRUE)
+    {
+        textColor = ls_uiDarkenRGB(textColor, 0.50f);
+        bkgColor  = ls_uiDarkenRGB(bkgColor, 0.50f);
+        
+        RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->w, button->h };
+        command.button        = button;
+        command.bkgColor      = bkgColor;
+        command.borderColor   = borderColor;
+        command.textColor     = textColor;
+        ls_uiPushRenderCommand(c, command, zLayer);
+        
+        return FALSE;
+    }
+    
     if(MouseInRect(xPos, yPos, button->w, button->h-1))// && ls_uiInFocus(cxt, 0))
     { 
         button->isHot = TRUE;
@@ -4330,6 +4366,21 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
     Color borderColor = c->borderColor;
     
     if(button->style == UIBUTTON_TEXT_NOBORDER) { bkgColor = c->backgroundColor; }
+    
+    if(button->isInactive == TRUE)
+    {
+        textColor = ls_uiDarkenRGB(textColor, 0.50f);
+        bkgColor  = ls_uiDarkenRGB(bkgColor, 0.50f);
+        
+        RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->w, button->h };
+        command.button        = button;
+        command.bkgColor      = bkgColor;
+        command.borderColor   = borderColor;
+        command.textColor     = textColor;
+        ls_uiPushRenderCommand(c, command, zLayer);
+        
+        return FALSE;
+    }
     
     if(MouseInRect(xPos, yPos, button->w, button->h-1))// && ls_uiInFocus(cxt, 0))
     { 
