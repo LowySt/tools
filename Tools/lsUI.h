@@ -1359,7 +1359,7 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
 #endif
     
     uiContext->renderFunc      = cb;
-    uiContext->backgroundColor = RGBg(0x38);
+    uiContext->backgroundColor = RGB(34, 40, 49);
     uiContext->borderColor     = RGBg(0x22);
     uiContext->menuBarColor    = RGBg(0x20);
     uiContext->highliteColor   = RGBg(0x65);
