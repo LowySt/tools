@@ -20,6 +20,9 @@
 #include "lsStack.h"
 #include "lsString.h"
 
+#include "lsArena.h"
+#include "lsArray.h"
+
 #include "lsInput.h"
 
 #define KeySet(k)       (UserInput->Keyboard.currentState.k = 1)
@@ -322,7 +325,7 @@ struct UIListBox
     //NOTE: callback1 -> onSelect; callback2 -> UNUSED
     UIWidget_Base;
     
-    Array<UIListBoxItem> list;
+    FixedArray<UIListBoxItem> list;
     s32 selectedIndex;
     
     u32 dtOpen;
@@ -561,6 +564,10 @@ struct UIContext
     
     UIFont *currFont;
     
+    //TODO: By putting the style in the context, each widget does NOT have to
+    //      have it, thus making each widget's struct smaller. But it's also a pain for the user
+    //      to program and less easily customizable by widget (where you may want specific parts of
+    //      the widget to be styled different!)
     Color backgroundColor;
     Color borderColor;
     Color menuBarColor;
@@ -617,6 +624,10 @@ struct UIContext
     
     b32 hasReceivedInput;
     
+    Arena frameArena;
+    Arena contextArena;
+    Arena widgetArena;
+    
     onDestroyFunc onDestroy;
 };
 
@@ -629,9 +640,12 @@ struct ___threadCtx
 
 //NOTE: Functions
 
-HWND         ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c);
-HWND         ls_uiCreateWindow(UIContext *c);
-UIContext *  ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height, RenderCallback cb);
+HWND         ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, const char *name);
+HWND         ls_uiCreateWindow(UIContext *c, const char *name);
+UIContext *  ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height,
+                                     s32 contextArenaSize, s32 frameArenaSize, s32 widgetArenaSize, RenderCallback cb);
+UIContext *  ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
+                                     Arena contextArena, Arena frameArena, Arena widgetArena, RenderCallback cb);
 
 void         ls_uiFrameBegin(UIContext *c);
 void         ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs);
@@ -715,12 +729,15 @@ void         ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s);
 void         ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen, b32 singleLine, b32 readOnly, UICallback preInput, UICallback postInput);
 b32          ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
 
-u32          ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, char *s);
+UIListBox    ls_uiListBoxInit(UIContext *c, s32 maxItemCount);
+//NOTE: This does NOT allocate memory for the string
 u32          ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, utf32 s);
+//NOTE: This does NOT free the memory of the string
 void         ls_uiListBoxRemoveEntry(UIContext *c, UIListBox *list, u32 index);
 b32          ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer);
 
-UISlider     ls_uiSliderInit(char32_t *name, s32 maxVal, s32 minVal, f64 currPos, SliderStyle s, Color l, Color r);
+UISlider     ls_uiSliderInit(UIContext *c, char32_t *name, s32 maxVal, s32 minVal, 
+                             f64 currPos, SliderStyle s, Color l, Color r);
 void         ls_uiSliderChangeValueBy(UIContext *c, UISlider *f, s32 valueDiff);
 s32          ls_uiSliderCalculateValueFromPosition(UIContext *c, UISlider *f);
 b32          ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h);
@@ -754,9 +771,7 @@ static u64 __debug_frameNumber = 0;
 
 void ls_uiDebugLog(UIContext *c, s32 x, s32 y, const char *fmt, ...)
 {
-    //TODO: Setup an automated arena system for the UI. For right now
-    //      We are gonna hook into the program. Which is bad!
-    ls_arenaUse(frameArena);
+    Arena prev = ls_arenaUse(c->frameArena);
     
     va_list argList;
     va_start(argList, fmt);
@@ -773,7 +788,7 @@ void ls_uiDebugLog(UIContext *c, s32 x, s32 y, const char *fmt, ...)
     ls_uiLabel(c, label, x, y, RGBg(255), 2);
     ls_uiLabel(c, label, x-1, y, RGBg(0), 2);
     
-    ls_arenaUse(globalArena);
+    ls_arenaUse(prev);
 }
 
 #endif
@@ -1319,9 +1334,16 @@ void __ui_default_windows_render_callback(UIContext *c)
     
 }
 
-UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height, RenderCallback cb = __ui_default_windows_render_callback)
+UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
+                                   Arena contextArena, Arena frameArena, Arena widgetArena,
+                                   RenderCallback cb = __ui_default_windows_render_callback)
 {
+    ls_arenaUse(contextArena);
+    
     UIContext *uiContext       = (UIContext *)ls_alloc(sizeof(UIContext));
+    uiContext->contextArena    = contextArena;
+    uiContext->frameArena      = frameArena;
+    uiContext->widgetArena     = widgetArena;
     uiContext->drawBuffer      = backBuffer;
     
     uiContext->backbufferW     = width;
@@ -1416,6 +1438,8 @@ void ls_uiFrameBegin(UIContext *c)
 {
     static b32 isStartup = TRUE;
     
+    ls_arenaUse(c->frameArena);
+    
     RegionTimerBegin(c->frameTime);
     
     c->UserInput.Keyboard.prevState = c->UserInput.Keyboard.currentState;
@@ -1474,9 +1498,21 @@ void ls_uiFrameBegin(UIContext *c)
     if(isStartup) { ShowWindow(c->Window, SW_SHOW); isStartup = FALSE; c->hasReceivedInput = TRUE; }
 }
 
+UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
+                                   s32 contextArenaSize, s32 frameArenaSize, s32 widgetArenaSize,
+                                   RenderCallback cb = __ui_default_windows_render_callback)
+{
+    Arena contextArena = ls_arenaCreate(contextArenaSize);
+    Arena frameArena = ls_arenaCreate(frameArenaSize);
+    Arena widgetArena = ls_arenaCreate(widgetArenaSize);
+    return ls_uiInitDefaultContext(backBuffer, width, height, contextArena, frameArena, widgetArena, cb);
+}
+
 void ls_uiFrameBeginChild(UIContext *c)
 {
     static b32 isStartup = TRUE;
+    
+    ls_arenaUse(c->frameArena);
     
     RegionTimerBegin(c->frameTime);
     
@@ -1528,6 +1564,8 @@ void ls_uiFrameBeginChild(UIContext *c)
 
 void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
 {
+    ls_arenaClear(c->frameArena);
+    
     static u32 lastFrameTime = 0;
     
 #ifdef _DEBUG
@@ -1556,6 +1594,8 @@ void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
 
 void ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs)
 {
+    ls_arenaClear(c->frameArena);
+    
     static u32 lastFrameTime = 0;
     
     Input *UserInput = &c->UserInput;
@@ -1574,8 +1614,6 @@ void ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs)
     RegionTimerEnd(c->frameTime);
     c->dt = RegionTimerGet(c->frameTime);
     lastFrameTime = c->dt;
-    
-    return;
 }
 
 inline void ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f)
@@ -4213,6 +4251,8 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, UICallback onClick, UICa
 UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, UICallback onClick,
                          UICallback onHold = NULL, void *userData = NULL)
 {
+    Arena prev = ls_arenaUse(c->widgetArena);
+    
     AssertMsg(c, "UI Context is null\n");
     AssertMsg(c->currFont, "Font is not selected\n");
     
@@ -4226,6 +4266,7 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, UI
         s, name, 0, width, height, FALSE, FALSE
     };
     
+    ls_arenaUse(prev);
     return Result;
 }
 
@@ -4269,6 +4310,8 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 text, UIC
 void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t *t, UICallback onClick,
                      UICallback onHold = NULL, void *data = NULL)
 {
+    Arena prev = ls_arenaUse(c->widgetArena);
+    
     AssertMsg(c, "UI Context is null\n");
     AssertMsg(c->currFont, "Font is not selected\n");
     
@@ -4286,6 +4329,8 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t 
     
     b->w = width;
     b->h = height;
+    
+    ls_arenaUse(prev);
 }
 
 //TODO:Menus use buttons, but also claim Focus, which means I can't use the global focus trick to avoid input
@@ -4672,6 +4717,8 @@ UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect 
 
 void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
 {
+    Arena prev = ls_arenaUse(c->widgetArena);
+    
     AssertMsg(c, "Context pointer was null");
     
     ls_utf32Clear(&box->text);
@@ -4688,22 +4735,28 @@ void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
     box->selectEndIdx     = 0;
     box->isSelecting      = FALSE;
     box->viewBeginIdx     = 0;
+    
+    ls_arenaUse(prev);
 }
 
 //TODO: Now that viewEndIdx is deprecated these functions are a lot less usefuk
 void ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s)
 {
+    Arena prev = ls_arenaUse(c->widgetArena);
     ls_utf32FromUTF32_t(&box->text, s);
+    ls_arenaUse(prev);
 }
 
 void ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s)
 {
+    Arena prev = ls_arenaUse(c->widgetArena);
     ls_utf32Set(&box->text, s);
-    
+    ls_arenaUse(prev);
 }
 
 void ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen = 0, b32 singleLine = TRUE, b32 readOnly = FALSE, UICallback preInput = NULL, UICallback postInput = NULL)
 {
+    Arena prev = ls_arenaUse(c->widgetArena);
     box->text         = ls_utf32Alloc(len);
     box->maxLen       = maxLen;
     box->isSingleLine = singleLine;
@@ -4712,6 +4765,7 @@ void ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen = 0, b32
     
     box->callback1    = preInput;
     box->callback2    = postInput;
+    ls_arenaUse(prev);
 }
 
 //TODO: Text Alignment
@@ -4722,6 +4776,8 @@ void ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen = 0, b32
 //            Instead of the more correct:        [-999, 999]
 b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer = 0)
 {
+    Arena prev = ls_arenaUse(c->widgetArena);
+    
     Input *UserInput = &c->UserInput;
     b32 inputUse = FALSE;
     
@@ -5298,6 +5354,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
     command.textColor     = c->textColor;
     ls_uiPushRenderCommand(c, command, zLayer);
     
+    ls_arenaUse(prev);
     return inputUse;
 }
 
@@ -5512,35 +5569,35 @@ void _ls_uiLPane(UIContext *c, UILPane *pane, s32 xPos, s32 yPos, s32 w, s32 h)
 }
 #endif
 
-//NOTETODO: ListBox manages the data of the entry itself, even when a unistring is already passed.
-//          This feels strange, and probably error-prone.
-
-//TODO @MemoryLeak @Leak I really think ListBox shouldn't manage memory. Fix This.
-inline u32 ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, char *s)
-{ 
-    utf32 text = ls_utf32FromAscii(s);
-    UIListBoxItem item = { text, c->widgetColor, c->textColor };
-    
-    return ls_arrayAppendIndex(&list->list, item);
-}
-
-//TODO @MemoryLeak @Leak
-inline u32 ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, utf32 s)
+UIListBox ls_uiListBoxInit(UIContext *c, FixedArray<UIListBoxItem> container)
 {
-    utf32 copy = ls_utf32Copy(s);
-    UIListBoxItem item = { copy, c->widgetColor, c->textColor };
-    return ls_arrayAppendIndex(&list->list, item);
+    UIListBox lb = {};
+    lb.list = container;
+    return lb;
 }
 
-inline void ls_uiListBoxRemoveEntry(UIContext *c, UIListBox *list, u32 index)
-{ 
-    //NOTETODO: Is this good????
-    if(list->selectedIndex == index) { list->selectedIndex = 0; }
+inline u32 ls_uiListBoxAddEntry(UIContext *c, UIListBox *lb, utf32 s)
+{
+    AssertNonNull(c);
+    AssertNonNull(lb);
+    AssertNonNull(lb->list.data);
     
-    UIListBoxItem val = list->list[index];
-    ls_utf32Free(&val.name);
-    //list->list.remove(index);
-    return ls_arrayRemove(&list->list, index);
+    UIListBoxItem item = { s, c->widgetColor, c->textColor };
+    return ls_fixedArrayAppendIndex(&lb->list, item);
+}
+
+//NOTE: This does NOT free the memory of the string
+inline void ls_uiListBoxRemoveEntry(UIContext *c, UIListBox *lb, u32 index)
+{ 
+    AssertNonNull(c);
+    AssertNonNull(lb);
+    AssertNonNull(lb->list.data);
+    
+    //NOTETODO: Is this good????
+    if(lb->selectedIndex == index) { lb->selectedIndex = 0; }
+    
+    UIListBoxItem val = lb->list[index];
+    ls_fixedArrayRemove(&lb->list, index);
 }
 
 b32 ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer = 0)
@@ -5622,8 +5679,11 @@ b32 ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h
     return inputUse;
 }
 
-UISlider ls_uiSliderInit(char32_t *name, s32 maxVal, s32 minVal, f64 currPos, SliderStyle s, Color l, Color r)
+UISlider ls_uiSliderInit(UIContext *c, char32_t *name, s32 maxVal, s32 minVal, f64 currPos, 
+                         SliderStyle s, Color l, Color r)
 {
+    Arena prev = ls_arenaUse(c->widgetArena);
+    
     UISlider Result = {};
     
     if(name) { Result.text = ls_utf32FromUTF32((const char32_t *)name); }
@@ -5636,6 +5696,7 @@ UISlider ls_uiSliderInit(char32_t *name, s32 maxVal, s32 minVal, f64 currPos, Sl
     Result.lColor   = l;
     Result.rColor   = r;
     
+    ls_arenaUse(prev);
     return Result;
 }
 
@@ -5719,44 +5780,68 @@ UIButton ls_uiMenuButton(UICallback onClick, u8 *bitmapData, s32 width, s32 heig
 }
 
 inline UISubMenu *ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub)
-{ return ls_arrayAppend(&menu->subMenus, sub); }
+{
+    Arena prev = ls_arenaUse(c->widgetArena);
+    UISubMenu *result = ls_arrayAppend(&menu->subMenus, sub);
+    ls_arenaUse(prev);
+    return result;
+}
 
 UISubMenu *ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name)
 { 
+    Arena prev = ls_arenaUse(c->widgetArena);
     UISubMenu newSub = {};
     newSub.name = ls_utf32FromUTF32(name);
-    return ls_arrayAppend(&menu->subMenus, newSub);
+    UISubMenu *result = ls_arrayAppend(&menu->subMenus, newSub);
+    ls_arenaUse(prev);
+    return result;
 }
 
 UIMenuItem *ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, UICallback onClick, void *userData)
 {
+    Arena prev = ls_arenaUse(c->widgetArena);
+    
     UIMenuItem newItem    = {};
     newItem.name          = ls_utf32FromUTF32(name);
     newItem.isVisible     = TRUE;
     newItem.callback1     = onClick;
     newItem.callback1Data = userData;
-    return ls_arrayAppend(&menu->items, newItem);
+    UIMenuItem *result = ls_arrayAppend(&menu->items, newItem);
+    
+    ls_arenaUse(prev);
+    return result;
 }
 
-UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, UICallback onClick, void *userData)
+UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UISubMenu *sub, const char32_t *name, 
+                                UICallback onClick, void *userData)
 {
+    Arena prev = ls_arenaUse(c->widgetArena);
+    
     UIMenuItem newItem    = {};
     newItem.name          = ls_utf32FromUTF32(name);
     newItem.isVisible     = TRUE;
     newItem.callback1     = onClick;
     newItem.callback1Data = userData;
-    return ls_arrayAppend(&sub->items, newItem);
+    UIMenuItem *result = ls_arrayAppend(&sub->items, newItem);
+    
+    ls_arenaUse(prev);
+    return result;
 }
 
 UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx, 
                                 const char32_t *name, UICallback onClick, void *userData)
 {
+    Arena prev = ls_arenaUse(c->widgetArena);
+    
     UIMenuItem newItem    = {};
     newItem.name          = ls_utf32FromUTF32(name);
     newItem.isVisible     = TRUE;
     newItem.callback1     = onClick;
     newItem.callback1Data = userData;
-    return ls_arrayAppend(&menu->subMenus[subIdx].items, newItem);
+    UIMenuItem *result = ls_arrayAppend(&menu->subMenus[subIdx].items, newItem);
+    
+    ls_arenaUse(prev);
+    return result;
 }
 
 b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 2)
