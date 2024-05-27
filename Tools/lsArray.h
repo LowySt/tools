@@ -492,6 +492,20 @@ b32 ls_fixedArrayIsFull(FixedArray<T> a)
 { return (a.count == a.cap); }
 
 template<typename T>
+void ls_fixedArrayCopy_t(FixedArray<T> *src, FixedArray<T> *dst)
+{
+    AssertNonNull(src);
+    AssertNonNull(src->data);
+    AssertNonNull(dst);
+    AssertNonNull(dst->data);
+    AssertMsg(src->cap == dst->cap, "Copying between fixedArrays with different caps is not supported.\n");
+    
+    dst->count = src->count;
+    ls_memcpy(src->data, dst->data, sizeof(T)*src->count);
+    return;
+}
+
+template<typename T>
 T *ls_fixedArrayAppend(FixedArray<T> *a, T val)
 {
     AssertMsg(a, "Null FixedArray<> pointer\n");
@@ -523,7 +537,7 @@ s32 ls_fixedArrayAppendIndex(FixedArray<T> *a, T val)
 {
     AssertMsg(a, "Null FixedArray<> pointer\n");
     
-    if(a->count == a.cap) { AssertMsg(FALSE, "Trying to append to full FixedArray<>"); return -1; }
+    if(a->count == a->cap) { AssertMsg(FALSE, "Trying to append to full FixedArray<>"); return -1; }
     
     a->data[a->count] = val;
     a->count         += 1;
@@ -577,16 +591,22 @@ template<typename T>
 void ls_fixedArrayRemove(FixedArray<T> *a, s32 index)
 {
     AssertMsg(a, "Null FixedArray<> pointer\n");
-    AssertMsgF(index < a.count, "Index %d is out of bounds (%d) in FixedArray<>\n", index, a.count);
+    AssertMsgF(index < a->count, "Index %d is out of bounds (%d) in FixedArray<>\n", index, a->count);
     AssertMsg(index >= 0, "Index is negative FixedArray<>\n");
     
-    size_t dataSize = sizeof(T);
-    u32 numElements = a->count - index;
+    if(a->count <= 0) { return; }
+    if(index == (a->count-1)) { a->count -= 1; return; }
     
+    u32 numElements = (a->count-1) - index;
     AssertMsg(numElements >= 0, "Number of elements to move in FixedArray<> remove is negative. Maybe bad FixedArray<>?\n");
     AssertMsg(numElements <= a->cap, "Somehow the number of elements to move in FixedArray<> remove is > cap?\n");
     
-    ls_memcpy(a->data + index + 1, a->data + index, numElements*dataSize);
+    //NOTETODO: Because this operation is by default on an overlapping memory region, we perform it
+    //          one at a time. When we implement a proper memmove or reverse memcpy, we'll change it.
+    size_t dataSize = sizeof(T);
+    for(s32 i = index + 1; i < a->count; i++)
+    { ls_memcpy(a->data + i, a->data + (i-1), dataSize); }
+    
     a->count -= 1;
 }
 
