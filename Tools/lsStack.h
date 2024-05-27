@@ -39,7 +39,6 @@ extern "C"
     
     
     void   ls_stackClear(stack *s);
-    
 };
 
 
