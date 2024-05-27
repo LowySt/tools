@@ -21,6 +21,7 @@ struct LogRegisteredType
 void ls_logDefaultTypesRegister();
 void ls_vlogRegister(const char *typeName, LogFormatTypeProc proc);
 void ls_vlogRegister(const char *typeName, LogFormatTypeModProc proc);
+s32  ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList, b32 newline);
 s32  ls_log(const char *format, ...);
 s32  ls_slog(char *dst, s32 dstMaxLen, const char *format, ...);
 
