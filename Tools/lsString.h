@@ -2565,6 +2565,8 @@ s32 ls_utf32FirstEqual(utf32 a, utf32 *set, s32 count)
 
 void ls_utf32Set(utf32 *toSet, utf32 source)
 {
+    if(source.data == NULL) { return; }
+    
     AssertMsg(toSet, "String to be set pointer is null\n");
     AssertMsgF(toSet->size >= 0, "Trying to write to a Non-Positive sized string: %d\n", toSet->size);
     
@@ -2876,7 +2878,7 @@ void ls_utf32Copy_t(utf32 s, utf32 *out)
 {
     AssertMsg(out, "Output string pointer is null\n");
     AssertMsg(out->data, "Output string data is un-allocated\n");
-    AssertMsg(out->size > s.len, "Output string is too small to fit original\n");
+    AssertMsg(out->size >= s.len, "Output string is too small to fit original\n");
     
     ls_memcpy(s.data, out->data, s.len*4);
     out->len = s.len;
