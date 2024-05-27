@@ -37,6 +37,7 @@ void __internal_AssertMsgF(const char *funcHeader, const char *msgFormat, ...);
 #define AssertMsgF(condition, msg, ...) ((void)0)
 #define AssertMsg(condition, msg)       ((void)0)
 #define Assert(condition)               ((void)0)
+#define AssertNonNull(condition)        ((void)0)
 #define LogMsg(condition, msg)          ((void)0)
 #define LogMsgF(condition, msg, ...)    ((void)0)
 
