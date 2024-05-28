@@ -142,6 +142,7 @@ union UIRect
 {
     struct { s32 minX, minY, maxX, maxY; };
     struct { s32 x,    y,    w,    h; };
+    struct { f32 leftX, botY, rightX, topY; };
 };
 
 struct UILayoutRect
@@ -528,7 +529,7 @@ struct RenderCommand
 #endif
 };
 
-
+#ifndef LS_UI_OPENGL_BACKEND
 const u32 UI_Z_LAYERS = 4;
 
 struct RenderGroup
@@ -536,6 +537,7 @@ struct RenderGroup
     stack RenderCommands[UI_Z_LAYERS];
     volatile b32 isDone;
 };
+#endif
 
 struct UIContext;
 typedef void (*RenderCallback)(UIContext *);
@@ -593,15 +595,17 @@ struct UIContext
     
     u64 *mouseCapture;
     
+#ifndef LS_UI_OPENGL_BACKEND
     RenderGroup renderGroups[RENDER_GROUP_COUNT];
     UIRect      renderUIRects[THREAD_COUNT];
+    
+    CONDITION_VARIABLE startRender;
+    CRITICAL_SECTION crit;
+#endif
     
     HDC  WindowDC;
     HDC  BackBufferDC;
     HBITMAP DibSection;
-    
-    CONDITION_VARIABLE startRender;
-    CRITICAL_SECTION crit;
     
 #if _DEBUG //NOTE: Tag to debug specific render commands
     b32 isTagged;
@@ -663,6 +667,8 @@ b32          ls_uiInFocus(UIContext *c, void *p);
 b32          ls_uiHasCapture(UIContext *c, void *p);
 void         ls_uiSelectFontByPixelHeight(UIContext *cxt, u32 pixelHeight);
 s32          ls_uiSelectFontByFontSize(UIContext *cxt, UIFontSize fontSize);
+
+UIRect       ls_uiScreenCoordsToUnitSquare(UIContext *c, s32 x, s32 y, s32 w, s32 h);
 
 Color        ls_uiDarkenRGB(Color c, f32 percentage);
 Color        ls_uiLightenRGB(Color c, f32 percentage);
@@ -793,6 +799,7 @@ void ls_uiDebugLog(UIContext *c, s32 x, s32 y, const char *fmt, ...)
 
 #endif
 
+#ifndef LS_UI_OPENGL_BACKEND
 void __ls_ui_fillRenderThreadUIRects(UIContext *c)
 {
     //TODO: Probably do -1 on the height/width directly here??
@@ -832,7 +839,7 @@ void __ls_ui_fillRenderThreadUIRects(UIContext *c)
     
     return;
 }
-
+#endif
 
 LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 {
@@ -859,6 +866,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             c = (UIContext *)CreateStruct->lpCreateParams;
             SetWindowLongPtrA(h, GWLP_USERDATA, (LONG_PTR)c);
             c->hasReceivedInput = TRUE;
+            
         } break;
         
         case WM_ACTIVATE:
@@ -942,9 +950,10 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             }
             else { LogMsg(FALSE, "GetCursorPos failed after resize."); }
             
+#ifndef LS_UI_OPENGL_BACKEND
             //NOTE: Reset the Render UIRect for every Thread.
             __ls_ui_fillRenderThreadUIRects(c);
-            
+#endif
         } break;
         
         case WM_PAINT:
@@ -1243,6 +1252,42 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     HCURSOR DefaultArrow = LoadCursorA(NULL, IDC_ARROW);
     SetCursor(DefaultArrow);
     
+#ifdef LS_UI_OPENGL_BACKEND
+    PIXELFORMATDESCRIPTOR pfd = {
+        sizeof(PIXELFORMATDESCRIPTOR),
+        1,
+        PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    // Flags
+        PFD_TYPE_RGBA,        // The kind of framebuffer. RGBA or palette.
+        32,                   // Colordepth of the framebuffer.
+        0, 0, 0, 0, 0, 0,
+        0,
+        0,
+        0,
+        0, 0, 0, 0,
+        24,                   // Number of bits for the depthbuffer
+        8,                    // Number of bits for the stencilbuffer
+        0,                    // Number of Aux buffers in the framebuffer.
+        PFD_MAIN_PLANE,
+        0,
+        0, 0, 0
+    };
+    
+    c->WindowDC = GetDC(WindowHandle);
+    s32 windowsChosenFormat = ChoosePixelFormat(c->WindowDC, &pfd);
+    SetPixelFormat(c->WindowDC, windowsChosenFormat, &pfd);
+    
+    HGLRC wglRenderingContext = wglCreateContext(c->WindowDC);
+    if(wglRenderingContext == NULL)
+    {
+        ls_log("Error Code: {s32}", GetLastError());
+    }
+    AssertNonNull(wglRenderingContext);
+    wglMakeCurrent(c->WindowDC, wglRenderingContext);
+    //ls_glLoadFunc(c->WindowDC);
+    ls_log("OpenGL Version: {char*}", (char *)glGetString(GL_VERSION));
+    
+#else
+    
     BITMAPINFO BackBufferInfo = {};
     BackBufferInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     BackBufferInfo.bmiHeader.biWidth = c->backbufferW;
@@ -1256,6 +1301,7 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     c->DibSection         = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
                                              DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
     SelectObject(c->BackBufferDC, c->DibSection);
+#endif
     
     c->windowPosX = (s16)spaceX;
     c->windowPosY = (s16)spaceY;
@@ -1288,7 +1334,7 @@ HWND ls_uiCreateWindow(UIContext *c, const char *name)
     return c->Window;
 }
 
-
+#ifndef LS_UI_OPENGL_BACKEND
 void ls_uiRender__(UIContext *c, u32 threadID);
 DWORD ls_uiRenderThreadProc(void *param)
 {
@@ -1310,10 +1356,13 @@ DWORD ls_uiRenderThreadProc(void *param)
     
     return 0;
 }
-
+#endif
 
 void __ui_default_windows_render_callback(UIContext *c)
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    SwapBuffers(c->WindowDC);
+#else
 #if 1
     InvalidateRect(c->Window, NULL, TRUE);
 #else
@@ -1332,6 +1381,7 @@ void __ui_default_windows_render_callback(UIContext *c)
     }
 #endif
     
+#endif //LS_UI_OPENGL_BACKEND
 }
 
 UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
@@ -1374,6 +1424,7 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
     uiContext->scissor         = UIRect { 0, 0, 999999, 999999 };
     uiContext->frameTime       = {};
     
+#ifndef LS_UI_OPENGL_BACKEND
     //TODO: Make number of zLayers and zLayer Storage more customizable!
     if(THREAD_COUNT != 0)
     {
@@ -1411,6 +1462,7 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
     
     //NOTE: Set the Render UIRect for every Thread.
     __ls_ui_fillRenderThreadUIRects(uiContext);
+#endif
     
     //------------------------------------------------------
     //NOTE: This shit is necessary to request millisecond-precision sleeps.
@@ -1432,6 +1484,16 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
     //      It should be called at the end of the usage. but we use it always.
     //res = timeEndPeriod(tc.wPeriodMin);
     return uiContext;
+}
+
+UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
+                                   s32 contextArenaSize, s32 frameArenaSize, s32 widgetArenaSize,
+                                   RenderCallback cb = __ui_default_windows_render_callback)
+{
+    Arena contextArena = ls_arenaCreate(contextArenaSize);
+    Arena frameArena = ls_arenaCreate(frameArenaSize);
+    Arena widgetArena = ls_arenaCreate(widgetArenaSize);
+    return ls_uiInitDefaultContext(backBuffer, width, height, contextArena, frameArena, widgetArena, cb);
 }
 
 void ls_uiFrameBegin(UIContext *c)
@@ -1496,16 +1558,16 @@ void ls_uiFrameBegin(UIContext *c)
     //NOTE: Window starts hidden, and then is shown after the first frame, 
     //      to avoid flashing because initially the frame buffer is all white.
     if(isStartup) { ShowWindow(c->Window, SW_SHOW); isStartup = FALSE; c->hasReceivedInput = TRUE; }
-}
-
-UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
-                                   s32 contextArenaSize, s32 frameArenaSize, s32 widgetArenaSize,
-                                   RenderCallback cb = __ui_default_windows_render_callback)
-{
-    Arena contextArena = ls_arenaCreate(contextArenaSize);
-    Arena frameArena = ls_arenaCreate(frameArenaSize);
-    Arena widgetArena = ls_arenaCreate(widgetArenaSize);
-    return ls_uiInitDefaultContext(backBuffer, width, height, contextArena, frameArena, widgetArena, cb);
+    
+    
+#ifdef LS_UI_OPENGL_BACKEND
+    f64 rLinear  = ((f64)c->backgroundColor.r / 255.0);
+    f64 gLinear  = ((f64)c->backgroundColor.g / 255.0);
+    f64 bLinear  = ((f64)c->backgroundColor.b / 255.0);
+    
+    glClearColor(rLinear, gLinear, bLinear, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+#endif
 }
 
 void ls_uiFrameBeginChild(UIContext *c)
@@ -1644,6 +1706,7 @@ b32 ls_uiHasCapture(UIContext *c, void *p)
     return FALSE;
 }
 
+#ifndef LS_UI_OPENGL_BACKEND
 b32 ls_uiRectIsInside(UIRect r1, UIRect check)
 {
     if((r1.x >= check.x) && ((r1.x + r1.w) <= (check.x + check.w)))
@@ -2924,6 +2987,39 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     
     AssertMsg(FALSE, "Should never reach this case!\n");
 }
+#else
+//NOTE: With the OpenGL backend there's no point in deferring the command execution
+void ls_uiBorderedRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
+                       UIRect threadRect, UIRect scissor, Color widgetColor, Color borderColor);
+void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
+{
+    AssertMsg(command.type != UI_RC_INVALID,  "Uninitialized Render Command?\n");
+    
+    s32 xPos                = command.rect.x;
+    s32 yPos                = command.rect.y;
+    s32 w                   = command.rect.w;
+    s32 h                   = command.rect.h;
+    
+    UIRect threadRect       = command.threadRect;
+    UIRect scissor          = command.scissor;
+    Color bkgColor          = command.bkgColor;
+    Color borderColor       = command.borderColor;
+    Color textColor         = command.textColor;
+    
+    UIFont *font            = command.selectedFont;
+    
+    switch(command.type)
+    {
+        case UI_RC_RECT:
+        {
+            ls_uiBorderedRect(c, xPos, yPos, w, h, {}, {}, bkgColor, borderColor);
+        } break;
+    }
+    
+    return;
+}
+
+#endif
 
 void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
 { 
@@ -2994,6 +3090,16 @@ void ls_uiResetScrollableRegion(UIContext *c)
     c->scroll->deltaY = 0;
     c->scroll->minY   = 0;
     //TODO: scroll->maxX?
+}
+
+UIRect ls_uiScreenCoordsToUnitSquare(UIContext *c, s32 x, s32 y, s32 w, s32 h)
+{
+    UIRect result = {};
+    result.leftX  = (2.0f*(f32)x / (f32)c->width)-1.0f;
+    result.botY   = (2.0f*(f32)y / (f32)c->height)-1.0f;
+    result.rightX = (2.0f*(f32)(x+w) / (f32)c->width)-1.0f;
+    result.topY   = (2.0f*(f32)(y+h) / (f32)c->height)-1.0f;
+    return result;
 }
 
 Color ls_uiDarkenRGB(Color c, f32 percentage)
@@ -3218,6 +3324,20 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
 void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
                    UIRect threadRect, UIRect scissor, Color col)
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    
+    UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, xPos, yPos, w, h);
+    
+    glColor3ub(col.r, col.g, col.b);
+    glBegin(GL_TRIANGLES);
+    glVertex2f(normRect.leftX,  normRect.topY);
+    glVertex2f(normRect.leftX,  normRect.botY);
+    glVertex2f(normRect.rightX, normRect.topY);
+    glVertex2f(normRect.rightX, normRect.topY);
+    glVertex2f(normRect.leftX,  normRect.botY);
+    glVertex2f(normRect.rightX, normRect.botY);
+    glEnd();
+#else
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
     s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
     s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
@@ -3324,6 +3444,7 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
             }
         }
     }
+#endif //LS_UI_OPENGL_BACKEND
 }
 
 void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
@@ -6240,9 +6361,9 @@ b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 w, s
 
 void ls_uiRender(UIContext *c)
 {
+#ifndef LS_UI_OPENGL_BACKEND
     AssertMsg(c->drawBuffer != NULL, "Trying to Call ls_uiRender on a Fake UIContext "
               "which doesn't have a draw buffer allocated!\n");
-    
     if(THREAD_COUNT == 0)
     {
         ls_uiRender__(c, 0);
@@ -6268,10 +6389,12 @@ void ls_uiRender(UIContext *c)
     {
         c->renderGroups[i].isDone = FALSE;
     }
+#endif
     
     c->renderFunc(c);
 }
 
+#ifndef LS_UI_OPENGL_BACKEND
 void ls_uiRender__(UIContext *c, u32 threadID)
 {
     //NOTE: First clear the background
@@ -6837,6 +6960,6 @@ void ls_uiRender__(UIContext *c, u32 threadID)
     
     return;
 }
-
+#endif //LS_UI_OPENGL_BACKEND
 
 #endif //LS_UI_IMPLEMENTATION
