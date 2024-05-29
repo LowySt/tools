@@ -3347,6 +3347,9 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     
     UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, xPos, yPos, w, h);
     
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
     glColor4ub(col.r, col.g, col.b, col.a);
     glBegin(GL_TRIANGLES);
     glVertex2f(normRect.leftX,  normRect.topY);
@@ -3356,6 +3359,8 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     glVertex2f(normRect.leftX,  normRect.botY);
     glVertex2f(normRect.rightX, normRect.botY);
     glEnd();
+    
+    glDisable(GL_BLEND);
 #else
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
     s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
