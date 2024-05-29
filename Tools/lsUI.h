@@ -196,6 +196,10 @@ struct UIBitmap
     void *data;
     s32   w;
     s32   h;
+    
+#ifdef LS_UI_OPENGL_BACKEND
+    GLuint texID;
+#endif
 };
 
 struct UIContext;
@@ -3272,6 +3276,20 @@ Color ls_uiHSVtoRGB(u32 h, f32 s, f32 v)
 
 void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color col)
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    
+    UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, startX, startY, w, h);
+    
+    glColor3ub(col.r, col.g, col.b);
+    glBegin(GL_TRIANGLES);
+    glVertex2f(normRect.leftX,  normRect.topY);
+    glVertex2f(normRect.leftX,  normRect.botY);
+    glVertex2f(normRect.rightX, normRect.topY);
+    glVertex2f(normRect.rightX, normRect.topY);
+    glVertex2f(normRect.leftX,  normRect.botY);
+    glVertex2f(normRect.rightX, normRect.botY);
+    glEnd();
+#else
     s32 diffWidth = (w % 4);
     s32 simdWidth = w - diffWidth;
     
@@ -3319,6 +3337,7 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
             }
         }
     }
+#endif
 }
 
 void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
@@ -3328,7 +3347,7 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     
     UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, xPos, yPos, w, h);
     
-    glColor3ub(col.r, col.g, col.b);
+    glColor4ub(col.r, col.g, col.b, col.a);
     glBegin(GL_TRIANGLES);
     glVertex2f(normRect.leftX,  normRect.topY);
     glVertex2f(normRect.leftX,  normRect.botY);
@@ -3450,6 +3469,9 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
 void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
                      UIRect threadRect, UIRect scissor, Color col)
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    TODO;
+#else
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
     s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
     s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
@@ -3485,12 +3507,16 @@ void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
             }
         }
     }
+#endif
 }
 
 //TODO: Change with better rasterizer
 void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness,
                  UIRect threadRect, UIRect scissor, Color col)
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    TODO;
+#else
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
     s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
     s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
@@ -3527,6 +3553,7 @@ void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickne
             }
         }
     }
+#endif
 }
 
 inline
@@ -3633,25 +3660,29 @@ void ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Colo
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
-void ls_uiBackground(UIContext *c)
-{
-    AssertMsg((c->height % 4) == 0, "Window Height not divisible by 4 (SIMD)\n");
-    AssertMsg((c->width % 4) == 0, "Window Width not divisible by 4 (SIMD)\n");
-    
-    __m128i color = _mm_set1_epi32 ((int)c->backgroundColor.value);
-    
-    u32 numIterations = (c->width*c->height) / 4;
-    for(u32 i = 0; i < numIterations; i++)
-    {
-        u32 idx = i*sizeof(s32)*4;
-        
-        __m128i *At = (__m128i *)(c->drawBuffer + idx);
-        _mm_storeu_si128(At, color);
-    }
-}
-
 void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *bmp)
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    UIRect norm = ls_uiScreenCoordsToUnitSquare(c, dst.x, dst.y, dst.w, dst.h);
+    
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, bmp->texID);
+    //TODO: We will care about these kinda stuff in the near future
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
+    
+    glBegin(GL_TRIANGLES);
+    glTexCoord2f(0.0, 1.0); glVertex2f(norm.leftX,  norm.topY);
+    glTexCoord2f(0.0, 0.0); glVertex2f(norm.leftX,  norm.botY);
+    glTexCoord2f(1.0, 1.0); glVertex2f(norm.rightX, norm.topY);
+    glTexCoord2f(1.0, 1.0); glVertex2f(norm.rightX, norm.topY);
+    glTexCoord2f(0.0, 0.0); glVertex2f(norm.leftX,  norm.botY);
+    glTexCoord2f(1.0, 0.0); glVertex2f(norm.rightX, norm.botY);
+    glEnd();
+    glDisable(GL_TEXTURE_2D);
+    
+#else
     s32 minX = threadRect.minX;
     s32 minY = threadRect.minY;
     s32 maxX = threadRect.maxX;
@@ -3731,6 +3762,7 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
     {
         TODO;
     }
+#endif
 }
 
 void ls_uiBitmap(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, u32 *data)
