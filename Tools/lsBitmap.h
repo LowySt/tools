@@ -6,6 +6,18 @@
 #include "lsMath.h"
 #include "lsBuffer.h"
 
+enum BitmapPixelFormat
+{
+    BPF_INVALID,
+    
+    BPF_ARGB,
+    BPF_RGBA,
+    BPF_ABGR,
+    BPF_BGRA,
+    
+    BPF_COUNT,
+};
+
 struct Bitmap
 {
     void *data;
@@ -15,6 +27,7 @@ struct Bitmap
     
     u32 headerSize;
     u32 compression;
+    BitmapPixelFormat format;
     u32 pixelBufferSize;
     
     u64 fileSize; //TODO: What's the point??
@@ -52,11 +65,27 @@ Bitmap ls_bitmapLoad(string Path)
     
     u32 PixelBufferSize = *((u32 *)((char *)bitmapFile + 34));
     
+    BitmapPixelFormat format = BPF_INVALID;
+    u32 redMask   = *((u32 *)((char *)bitmapFile + 54));
+    u32 greenMask = *((u32 *)((char *)bitmapFile + 58));
+    u32 blueMask  = *((u32 *)((char *)bitmapFile + 62));
+    u32 alphaMask = *((u32 *)((char *)bitmapFile + 66));
+    
+    if(redMask == 0xFF000000 && greenMask == 0x00FF0000 && blueMask == 0x0000FF00 && alphaMask == 0x000000FF)
+    { format = BPF_RGBA; }
+    else if(alphaMask == 0xFF000000 && redMask == 0x00FF0000 && greenMask == 0x0000FF00 && blueMask == 0x000000FF)
+    { format = BPF_ARGB; }
+    else if(alphaMask == 0xFF000000 && blueMask == 0x00FF0000 && greenMask == 0x0000FF00 && redMask == 0x000000FF)
+    { format = BPF_ABGR; }
+    else if(blueMask == 0xFF000000 && greenMask == 0x00FF0000 && redMask == 0x0000FF00 && alphaMask == 0x000000FF)
+    { format = BPF_BGRA; }
+    
     bitmap.data            = ((char *)bitmapFile + PixelOffset);
     bitmap.width           = Width;
     bitmap.height          = Height;
     bitmap.headerSize      = HeaderSize;
     bitmap.compression     = Compression;
+    bitmap.format          = format;
     bitmap.pixelBufferSize = PixelBufferSize;
     bitmap.fileSize        = bitmapFileSize;
     bitmap.isTopToBottom   = isWindowyfied;
@@ -64,7 +93,7 @@ Bitmap ls_bitmapLoad(string Path)
     return bitmap;
 }
 
-Bitmap ls_bitmapLoad(string Path, u8 rMask, u8 gMask, u8 bMask, u8 aMask)
+Bitmap ls_bitmapLoad(string Path, BitmapPixelFormat desired)
 {
     Bitmap bmp = ls_bitmapLoad(Path);
     
@@ -96,9 +125,9 @@ Bitmap ls_bitmapLoad(string Path, u8 rMask, u8 gMask, u8 bMask, u8 aMask)
         return c;
     };
     
-    u32 *End    = (u32 *)(((u8 *)bmp.data) + bmp.pixelBufferSize);
+    u32 *End = (u32 *)(((u8 *)bmp.data) + bmp.pixelBufferSize);
     
-    if(rMask == 8 && gMask == 4 && bMask == 2 && aMask == 1)
+    if(bmp.format == BPF_RGBA && desired == BPF_ARGB)
     {
         for(u32 *At = (u32 *)bmp.data; At < End; At++)
         {

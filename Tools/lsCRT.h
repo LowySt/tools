@@ -27,7 +27,7 @@ void __internal_AssertMsgF(const char *funcHeader, const char *msgFormat, ...);
 
 #define AssertNonNull(ptr) AssertMsg(ptr, "Null "#ptr" pointer\n")
 
-#define TODO __internal_AssertMsg("[TODO] Not implemented yet\n", "")
+#define TODO __internal_AssertMsg(CAT3("[TODO]",__FUNCTION__," Not implemented yet\n"), "")
 
 #define UNREACHABLE AssertMsg(FALSE, "Unreachable\n")
 
