@@ -3665,13 +3665,16 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
 #ifdef LS_UI_OPENGL_BACKEND
     UIRect norm = ls_uiScreenCoordsToUnitSquare(c, dst.x, dst.y, dst.w, dst.h);
     
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, bmp->texID);
     //TODO: We will care about these kinda stuff in the near future
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     
-    glColor4f(1.0f, 1.0f, 1.0f, 0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     glBegin(GL_TRIANGLES);
     glTexCoord2f(0.0, 1.0); glVertex2f(norm.leftX,  norm.topY);
     glTexCoord2f(0.0, 0.0); glVertex2f(norm.leftX,  norm.botY);
@@ -3681,6 +3684,7 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
     glTexCoord2f(1.0, 0.0); glVertex2f(norm.rightX, norm.botY);
     glEnd();
     glDisable(GL_TEXTURE_2D);
+    glDisable(GL_BLEND);
     
 #else
     s32 minX = threadRect.minX;
