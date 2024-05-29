@@ -71,13 +71,15 @@ Bitmap ls_bitmapLoad(string Path)
     u32 blueMask  = *((u32 *)((char *)bitmapFile + 62));
     u32 alphaMask = *((u32 *)((char *)bitmapFile + 66));
     
-    if(redMask == 0xFF000000 && greenMask == 0x00FF0000 && blueMask == 0x0000FF00 && alphaMask == 0x000000FF)
+    //NOTE: All the constant values are `little endian converted to big endian` values.
+    //      Because I compile this with a big endian processor. But the fucking BMP spec uses big endian...
+    if(redMask == 0x000000FF && greenMask == 0x0000FF00 && blueMask == 0x00FF0000 && alphaMask == 0xFF000000)
     { format = BPF_RGBA; }
-    else if(alphaMask == 0xFF000000 && redMask == 0x00FF0000 && greenMask == 0x0000FF00 && blueMask == 0x000000FF)
+    else if(alphaMask == 0x000000FF && redMask == 0x0000FF00 && greenMask == 0x00FF0000 && blueMask == 0xFF000000)
     { format = BPF_ARGB; }
-    else if(alphaMask == 0xFF000000 && blueMask == 0x00FF0000 && greenMask == 0x0000FF00 && redMask == 0x000000FF)
+    else if(alphaMask == 0x000000FF && blueMask == 0x0000FF00 && greenMask == 0x00FF0000 && redMask == 0xFF000000)
     { format = BPF_ABGR; }
-    else if(blueMask == 0xFF000000 && greenMask == 0x00FF0000 && redMask == 0x0000FF00 && alphaMask == 0x000000FF)
+    else if(blueMask == 0x000000FF && greenMask == 0x0000FF00 && redMask == 0x00FF0000 && alphaMask == 0xFF000000)
     { format = BPF_BGRA; }
     
     bitmap.data            = ((char *)bitmapFile + PixelOffset);
@@ -97,29 +99,18 @@ Bitmap ls_bitmapLoad(string Path, BitmapPixelFormat desired)
 {
     Bitmap bmp = ls_bitmapLoad(Path);
     
-    auto bitmapARGBtoRGBA = [](u32 c) -> u32
-    {
-        u8 *c8 = (u8 *)&c;
-        
-        u8 A   = c8[3];
-        
-        c8[3]  = c8[2];
-        c8[2]  = c8[1];
-        c8[1]  = c8[0];
-        c8[0]  = A;
-        
-        return c;
-    };
-    
-    auto bitmapRGBAtoARGB = [](u32 c) -> u32
+    auto bitmapABGRtoRGBA = [](u32 c) -> u32
     {
         u8 *c8 = (u8 *)&c;
         
         u8 A = c8[0];
+        u8 B = c8[1];
+        u8 G = c8[2];
+        u8 R = c8[3];
         
-        c8[0] = c8[1];
-        c8[1] = c8[2];
-        c8[2] = c8[3];
+        c8[0] = R;
+        c8[1] = G;
+        c8[2] = B;
         c8[3] = A;
         
         return c;
@@ -127,12 +118,12 @@ Bitmap ls_bitmapLoad(string Path, BitmapPixelFormat desired)
     
     u32 *End = (u32 *)(((u8 *)bmp.data) + bmp.pixelBufferSize);
     
-    if(bmp.format == BPF_RGBA && desired == BPF_ARGB)
+    if(bmp.format == BPF_ABGR && desired == BPF_RGBA)
     {
         for(u32 *At = (u32 *)bmp.data; At < End; At++)
         {
             u32 currColor = *At;
-            u32 converted = bitmapRGBAtoARGB(currColor);
+            u32 converted = bitmapABGRtoRGBA(currColor);
             *At = converted;
         }
     }
