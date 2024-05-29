@@ -3671,7 +3671,7 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     
-    
+    glColor4f(1.0f, 1.0f, 1.0f, 0.0f);
     glBegin(GL_TRIANGLES);
     glTexCoord2f(0.0, 1.0); glVertex2f(norm.leftX,  norm.topY);
     glTexCoord2f(0.0, 0.0); glVertex2f(norm.leftX,  norm.botY);
