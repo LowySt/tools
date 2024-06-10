@@ -25,6 +25,8 @@
 
 #include "lsInput.h"
 
+#include <typeinfo>
+
 #define KeySet(k)       (UserInput->Keyboard.currentState.k = 1)
 #define KeyUnset(k)     (UserInput->Keyboard.currentState.k = 0)
 #define KeyPress(k)     (UserInput->Keyboard.currentState.k == 1 && UserInput->Keyboard.prevState.k == 0)
@@ -82,7 +84,7 @@ if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
 #define WheelRotatedIn(x, y, w, h) (WheelRotated && MouseInRect(x, y, w, h))
 
 
-const     u32 THREAD_COUNT       = 4;
+const     u32 THREAD_COUNT       = 8;
 constexpr u32 RENDER_GROUP_COUNT = THREAD_COUNT == 0 ? 1 : THREAD_COUNT;
 
 //-------------------------
@@ -138,6 +140,11 @@ u8 GetAlpha(Color v)
 //NOTE: Color RGBA stuff
 //-------------------------
 
+//TODO: The difference between how the command rect and the thread rect's members are used is confusing
+//      and error prone. One uses x,y,w,h. The other uses minX,minY,maxX,maxY. @ConfusingUnion
+//      Should probably have 2 different types:
+//      UIRect       should use (x,y,w,h)
+//      UIRectRange? should use (minX,minY,maxX,maxY) 
 union UIRect
 {
     struct { s32 minX, minY, maxX, maxY; };
@@ -154,7 +161,7 @@ struct UILayoutRect
 struct UIGlyph
 {
     u8 *data;
-    u32 size;
+    //u32 size;
     
     u32 width;
     u32 height;
@@ -177,11 +184,34 @@ enum UIFontSize
 //TODO: Add max descent of font to adjust text vertical position in text boxes.
 struct UIFont
 {
-    UIGlyph *glyph;
-    s32 **kernAdvanceTable; //NOTE: Needs to keep this in the heap cause it stack-overflows.
+    //NOTE: Either the font is loaded as a collection of glyph bitmaps at a specific size
+    //      Or it's loaded as a single large bitmap, the font atlas, which right now can only be in SDF format
+    union {
+        UIGlyph *glyph;
+        u8 *fontAtlasSDF;
+    };
     
     u32 pixelHeight;
     u32 maxCodepoint;
+    s32 ascent;
+    s32 descent;
+    s32 lineGap;
+    s32 cpCount;
+    
+    //NOTE: The kernAdvanceTable may be null!
+    s32 **kernAdvanceTable;
+    
+    //NOTETODO: Currently we determine if we're working with an atlas or a glyph array through this boolean
+    //          Tagged unions would be cool.
+    b32 isAtlas;
+    s32 atlasWidth;
+    s32 atlasHeight;
+    
+#ifdef LS_UI_OPENGL_BACKEND
+    //NOTE: As of right now OpenGL expects the font to be loaded as an SDFAtlas, uploaded to the gpu as a single
+    //      large bitmap, represented by this texture ID.
+    GLuint texID;
+#endif
 };
 
 struct UILPane
@@ -270,6 +300,7 @@ struct UICheck
     
     b32 isActive;
     
+    //TODO: UIBitmap
     u8 *bmpActive;
     u8 *bmpInactive;
     s32 w, h;
@@ -516,6 +547,7 @@ struct RenderCommand
     Color borderColor;
     
     UIFont *selectedFont;
+    s32     pixelHeight;
     
     //NOTE: If the command renders inside a scrollable region
     //      This are set to the rect of that region.
@@ -569,6 +601,7 @@ struct UIContext
     u32 numFonts;
     
     UIFont *currFont;
+    u32 currPixelHeight;
     
     //TODO: By putting the style in the context, each widget does NOT have to
     //      have it, thus making each widget's struct smaller. But it's also a pain for the user
@@ -656,7 +689,12 @@ UIContext *  ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
                                      Arena contextArena, Arena frameArena, Arena widgetArena, RenderCallback cb);
 
 void         ls_uiFrameBegin(UIContext *c);
+void         ls_uiFrameBeginChild(UIContext *c);
 void         ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs);
+void         ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs);
+
+void         ls_uiLoadPackedFontAtlas(UIContext *c, char *path);
+UIBitmap     ls_uiBitmapFromRGBAPixelData(UIContext *c, s32 w, s32 h, void *data);
 
 void         ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f);
 
@@ -669,8 +707,8 @@ void         ls_uiFocusChangeSameFrame(UIContext *c, u64 *focus);
 void         ls_uiFocusChange(UIContext *c, u64 *focus);
 b32          ls_uiInFocus(UIContext *c, void *p);
 b32          ls_uiHasCapture(UIContext *c, void *p);
-void         ls_uiSelectFontByPixelHeight(UIContext *cxt, u32 pixelHeight);
-s32          ls_uiSelectFontByFontSize(UIContext *cxt, UIFontSize fontSize);
+void         ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight);
+s32          ls_uiSelectFontByFontSize(UIContext *c, UIFontSize fontSize);
 
 UIRect       ls_uiScreenCoordsToUnitSquare(UIContext *c, s32 x, s32 y, s32 w, s32 h);
 
@@ -681,10 +719,9 @@ Color        ls_uiAlphaBlend(Color source, Color dest);
 Color        ls_uiRGBAtoARGB(Color c);
 Color        ls_uiARGBtoRGBA(Color c);
 
-UIRect       ls_uiGlyphStringRect(UIContext *c, UIFont *font, utf32 text);
+template<typename T> UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, T text, s32 pixelHeight);
 
 void         ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
-
 
 void         ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
 void         ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer);
@@ -715,28 +752,28 @@ void         ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
 void         ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 minWidth, s32 minHeight,
                               Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
 
-void         ls_uiLabel(UIContext *c, utf32 label, f32 xPos, f32 yPos, Color textColor, s32 zLayer);
+UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, UIRect deltaPos, Color textColor, s32 zLayer);
+UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, Color textColor, s32 zLayer);
+UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect layout, Color textColor, s32 zLayer);
+UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, s32 zLayer);
+UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect layout, s32 zLayer);
 
+void         ls_uiLabel(UIContext *c, utf32 label, f32 relX, f32 relY, Color textColor, s32 zLayer);
 void         ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
 void         ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
 void         ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
 void         ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
 
-UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, UIRect deltaPos, Color textColor, s32 zLayer);
-UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, Color textColor, s32 zLayer);
-UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect layout, Color textColor, s32 zLayer);
-
 void         ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer);
 void         ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer);
 void         ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer);
 void         ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer);
-UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, s32 zLayer);
-UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect layout, s32 zLayer);
 
 void         ls_uiTextBoxClear(UIContext *c, UITextBox *box);
 void         ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s);
 void         ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s);
-void         ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen, b32 singleLine, b32 readOnly, UICallback preInput, UICallback postInput);
+void         ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 initialCap, s32 maxLen, b32 singleLine, 
+                              b32 readOnly, UICallback preInput, UICallback postInput);
 b32          ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
 
 UIListBox    ls_uiListBoxInit(UIContext *c, s32 maxItemCount);
@@ -801,41 +838,65 @@ void ls_uiDebugLog(UIContext *c, s32 x, s32 y, const char *fmt, ...)
     ls_arenaUse(prev);
 }
 
+void ls_uiBorder(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor, Color col);
+template<typename T>
+void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32 yPos,
+                      UIRect threadRect, UIRect scissor, T text, Color textColor);
+void ls_uiDebugDrawInfo(UIContext *c)
+{
+#ifndef LS_UI_OPENGL_BACKEND
+    for(s32 i = 0; i < THREAD_COUNT; i++)
+    {
+        UIRect r = c->renderUIRects[i];
+        ls_uiBorder(c, r.minX, r.minY, r.maxX - r.minX, r.maxY - r.minY, 
+                    {0, 0, c->width, c->height}, {0,0,c->width,c->height}, 
+                    RGB(253, 0, 255));
+    }
 #endif
+    
+    u32 buff[64]    = {};
+    utf32 frameTime = { buff, 0, 64 };
+    ls_utf32FromInt_t(&frameTime, c->dt);
+    
+    ls_uiGlyphString(c, c->currFont, 16, (s32)(0.95f*c->width), (s32)(0.95f*c->height),
+                     {0, 0, c->width, c->height}, {0,0,c->width,c->height}, frameTime, c->textColor);
+}
+
+#endif //_DEBUG
 
 #ifndef LS_UI_OPENGL_BACKEND
 void __ls_ui_fillRenderThreadUIRects(UIContext *c)
 {
-    //TODO: Probably do -1 on the height/width directly here??
+    //NOTE: All Thread Rects are inclusive on the left/bot, exclusive on the right/top
     switch(THREAD_COUNT)
     {
         case 0:
-        case 1: { return; } break;
+        case 1: { c->renderUIRects[0] = {0, 0, c->width, c->height }; } break;
         
         case 2:
         {
-            c->renderUIRects[0] = {0, 0, (s32)(c->width / 2), (s32)c->height};
-            c->renderUIRects[1] = {(s32)(c->width / 2), 0, (s32)(c->width / 2), (s32)c->height};
+            c->renderUIRects[0] = {          0, 0, c->width/2, c->height };
+            c->renderUIRects[1] = { c->width/2, 0, c->width,   c->height };
         } break;
         
         case 4:
         {
-            c->renderUIRects[0] = {0, 0, (s32)(c->width / 2), (s32)(c->height/2)};
-            c->renderUIRects[1] = {(s32)(c->width / 2), 0, (s32)(c->width / 2), (s32)(c->height/2)};
-            c->renderUIRects[2] = {0, (s32)(c->height/2), (s32)(c->width / 2), (s32)(c->height/2)};
-            c->renderUIRects[3] = {(s32)(c->width / 2), (s32)(c->height/2), (s32)(c->width / 2),(s32)(c->height/2)};
+            c->renderUIRects[0] = {          0,           0, c->width/2, c->height/2 };
+            c->renderUIRects[1] = { c->width/2,           0, c->width,   c->height/2 };
+            c->renderUIRects[2] = {          0, c->height/2, c->width/2, c->height   };
+            c->renderUIRects[3] = { c->width/2, c->height/2, c->width,   c->height   };
         } break;
         
         case 8:
         {
-            c->renderUIRects[0] = {0, 0, (s32)(c->width / 4), (s32)(c->height/2)};
-            c->renderUIRects[1] = {(s32)(c->width / 4), 0, (s32)(c->width / 4), (s32)(c->height/2)};
-            c->renderUIRects[2] = {(s32)(c->width / 2), 0, (s32)(c->width / 4), (s32)(c->height/2)};
-            c->renderUIRects[3] = {(s32)(3*c->width / 4), 0, (s32)(c->width / 4), (s32)(c->height/2)};
-            c->renderUIRects[4] = {0, (s32)(c->height/2), (s32)(c->width / 4), (s32)(c->height/2)};
-            c->renderUIRects[5] = {(s32)(c->width / 4), (s32)(c->height/2), (s32)(c->width / 4),(s32)(c->height/2)};
-            c->renderUIRects[6] = {(s32)(c->width / 2), (s32)(c->height/2), (s32)(c->width / 4),(s32)(c->height/2)};
-            c->renderUIRects[7] = {(s32)(3*c->width / 4),(s32)(c->height/2),(s32)(c->width / 4),(s32)(c->height/2)};
+            c->renderUIRects[0] = {            0,           0,   c->width/4, c->height/2 };
+            c->renderUIRects[1] = {   c->width/4,           0,   c->width/2, c->height/2 };
+            c->renderUIRects[2] = {   c->width/2,           0, 3*c->width/4, c->height/2 };
+            c->renderUIRects[3] = { 3*c->width/4,           0,   c->width,   c->height/2 };
+            c->renderUIRects[4] = {            0, c->height/2,   c->width/4, c->height   };
+            c->renderUIRects[5] = {   c->width/4, c->height/2,   c->width/2, c->height   };
+            c->renderUIRects[6] = {   c->width/2, c->height/2, 3*c->width/4, c->height   };
+            c->renderUIRects[7] = { 3*c->width/4, c->height/2,   c->width,   c->height   };
         } break;
         
         default: { AssertMsg(FALSE, "Unhandled Thread Count"); } break;
@@ -1290,6 +1351,9 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     //ls_glLoadFunc(c->WindowDC);
     ls_log("OpenGL Version: {char*}", (char *)glGetString(GL_VERSION));
     
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
 #else
     
     BITMAPINFO BackBufferInfo = {};
@@ -1563,6 +1627,45 @@ void ls_uiFrameBegin(UIContext *c)
     //      to avoid flashing because initially the frame buffer is all white.
     if(isStartup) { ShowWindow(c->Window, SW_SHOW); isStartup = FALSE; c->hasReceivedInput = TRUE; }
     
+    Input *UserInput = &c->UserInput;
+    //NOTE: Right-Alt Drag, only when nothing is in focus
+    if(KeyHeld(keyMap::RAlt) && LeftClick && c->currentFocus == 0)
+    { 
+        c->isDragging = TRUE;
+        POINT currMouse = {};
+        GetCursorPos(&currMouse);
+        c->prevMousePosX = currMouse.x;
+        c->prevMousePosY = currMouse.y;
+    }
+    
+    //NOTE: Handle Dragging
+    if(c->isDragging && LeftHold)
+    { 
+        MouseInput *Mouse = &c->UserInput.Mouse;
+        
+        POINT currMouse = {};
+        GetCursorPos(&currMouse);
+        
+        POINT prevMouse = { c->prevMousePosX, c->prevMousePosY };
+        
+        SHORT newX = prevMouse.x - currMouse.x;
+        SHORT newY = prevMouse.y - currMouse.y;
+        
+        SHORT newWinX = c->windowPosX - newX;
+        SHORT newWinY = c->windowPosY - newY;
+        
+        c->windowPosX = newWinX;
+        c->windowPosY = newWinY;
+        
+        c->prevMousePosX  = currMouse.x;
+        c->prevMousePosY  = currMouse.y;
+        
+        SetWindowPos(c->Window, 0, newWinX, newWinY, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
+    }
+    
+    if(c->isDragging && LeftUp) { c->isDragging = FALSE; }
+    
+    if(LeftUp || RightUp || MiddleUp) { c->mouseCapture = 0; }
     
 #ifdef LS_UI_OPENGL_BACKEND
     f64 rLinear  = ((f64)c->backgroundColor.r / 255.0);
@@ -1626,6 +1729,46 @@ void ls_uiFrameBeginChild(UIContext *c)
     //      to make the order of function calls more obvious and less error prone!
     
     if(isStartup) { isStartup = FALSE; c->hasReceivedInput = TRUE; }
+    
+    Input *UserInput = &c->UserInput;
+    //NOTE: Right-Alt Drag, only when nothing is in focus
+    if(KeyHeld(keyMap::RAlt) && LeftClick && c->currentFocus == 0)
+    { 
+        c->isDragging = TRUE;
+        POINT currMouse = {};
+        GetCursorPos(&currMouse);
+        c->prevMousePosX = currMouse.x;
+        c->prevMousePosY = currMouse.y;
+    }
+    
+    //NOTE: Handle Dragging
+    if(c->isDragging && LeftHold)
+    { 
+        MouseInput *Mouse = &c->UserInput.Mouse;
+        
+        POINT currMouse = {};
+        GetCursorPos(&currMouse);
+        
+        POINT prevMouse = { c->prevMousePosX, c->prevMousePosY };
+        
+        SHORT newX = prevMouse.x - currMouse.x;
+        SHORT newY = prevMouse.y - currMouse.y;
+        
+        SHORT newWinX = c->windowPosX - newX;
+        SHORT newWinY = c->windowPosY - newY;
+        
+        c->windowPosX = newWinX;
+        c->windowPosY = newWinY;
+        
+        c->prevMousePosX  = currMouse.x;
+        c->prevMousePosY  = currMouse.y;
+        
+        SetWindowPos(c->Window, 0, newWinX, newWinY, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
+    }
+    
+    if(c->isDragging && LeftUp) { c->isDragging = FALSE; }
+    
+    if(LeftUp || RightUp || MiddleUp) { c->mouseCapture = 0; }
 }
 
 void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
@@ -1682,6 +1825,80 @@ void ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs)
     lastFrameTime = c->dt;
 }
 
+void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
+{
+    Arena prev = ls_arenaUse(c->contextArena);
+    
+    u8 *bitmapFile = NULL;
+    u64 bytesRead = ls_readFile(path, (char **)&bitmapFile, 0);
+    
+    b32 isWindowyfied = FALSE;
+    u32 PixelOffset = *((u32 *)((char *)bitmapFile + 10));
+    u32 HeaderSize = *((u32 *)((char *)bitmapFile + 14));
+    
+    s32 Width = *((s32 *)((char *)bitmapFile + 18));
+    s32 Height = *((s32 *)((char *)bitmapFile + 22));
+    if(Height < 0) { isWindowyfied = TRUE; Height = -Height; }
+    
+    u32 Compression = *((u32 *)((char *)bitmapFile + 30));
+    
+    u32 PixelBufferSize = *((u32 *)((char *)bitmapFile + 34));
+    
+    c->fonts = (UIFont *)ls_alloc(sizeof(UIFont)*1);
+    c->fonts[0].fontAtlasSDF = (u8 *)((char *)bitmapFile + PixelOffset);
+    c->fonts[0].atlasWidth  = Width;
+    c->fonts[0].atlasHeight = Height;
+    
+    s32 *metaInfo = ((s32*)(c->fonts->fontAtlasSDF + ((c->fonts->atlasWidth*c->fonts->atlasHeight) - sizeof(s32))));
+    c->fonts[0].ascent      = metaInfo[-5];
+    c->fonts[0].descent     = metaInfo[-4];
+    c->fonts[0].lineGap     = metaInfo[-3];
+    c->fonts[0].pixelHeight = metaInfo[-2];
+    c->fonts[0].cpCount     = metaInfo[-1];
+    
+    c->currFont                   = c->fonts;
+    c->currPixelHeight            = c->fonts[0].pixelHeight;
+    c->currFont->isAtlas          = TRUE;
+    c->currFont->kernAdvanceTable = NULL;
+    
+    //TODO: Actually make it proper!
+    c->currFont->maxCodepoint     = c->fonts[0].cpCount;
+    
+#ifdef LS_UI_OPENGL_BACKEND
+    glGenTextures(1, &c->fonts[0].texID);
+    glBindTexture(GL_TEXTURE_2D, c->fonts[0].texID);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_INTENSITY, Width, Height, 0, GL_RED, GL_UNSIGNED_BYTE, c->fonts[0].fontAtlasSDF);
+    
+    GLenum err = glGetError();
+    if(err != GL_NO_ERROR)
+    {
+        ls_log("OpenGL Error: {s32}", err);
+    }
+#endif
+    
+    ls_arenaUse(prev);
+    return;
+}
+
+UIBitmap ls_uiBitmapFromRGBAPixelData(UIContext *c, s32 w, s32 h, void *data)
+{
+    UIBitmap result = { data, w, h };
+    
+#ifdef LS_UI_OPENGL_BACKEND
+    glGenTextures(1, &result.texID);
+    glBindTexture(GL_TEXTURE_2D, result.texID);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    
+    GLenum err = glGetError();
+    if(err != GL_NO_ERROR)
+    {
+        ls_log("OpenGL Error When Loading Bitmap from RGBA Pixel Data: {s32}", err);
+    }
+#endif
+    
+    return result;
+}
+
 inline void ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f)
 { c->onDestroy = f; }
 
@@ -1709,1321 +1926,6 @@ b32 ls_uiHasCapture(UIContext *c, void *p)
     if(c->mouseCapture == (u64 *)p) { return TRUE; }
     return FALSE;
 }
-
-#ifndef LS_UI_OPENGL_BACKEND
-b32 ls_uiRectIsInside(UIRect r1, UIRect check)
-{
-    if((r1.x >= check.x) && ((r1.x + r1.w) <= (check.x + check.w)))
-    {
-        if((r1.y >= check.y) && ((r1.y + r1.h) <= (check.y + check.h)))
-        {
-            return TRUE;
-        }
-    }
-    
-    return FALSE;
-}
-
-b32 ls_uiRectIntersects(UIRect r1, UIRect check)
-{
-    s32 x0 = r1.x;
-    s32 x1 = r1.x + r1.w;
-    s32 y0 = r1.y;
-    s32 y1 = r1.y + r1.h;
-    
-    b32 cond = (x1 < check.x || y1 < check.y || x0 > (check.x + check.w) || y0 > (check.y + check.h));
-    return !cond;
-}
-
-#if _DEBUG
-static b32 __ui_shouldTag = FALSE;
-#endif
-
-void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
-{
-    AssertMsg(command.type != UI_RC_INVALID,  "Uninitialized Render Command?\n");
-    AssertMsg(zLayer < UI_Z_LAYERS, "zLayer is invalid. A function call did an oopsie\n");
-    
-#if _DEBUG
-    command.UID = RenderCommandUID++;
-#endif
-    
-    command.selectedFont = c->currFont;
-    command.scissor      = c->scissor;
-    
-    //NOTE: Normalize the scrolled coordinates, and replace them in the render command.
-    if(c->scroll && command.type != UI_RC_SCROLLBAR)
-    {
-        command.rect.x -= c->scroll->deltaX;
-        command.rect.y -= c->scroll->deltaY;
-        
-        command.layout.startY -= c->scroll->deltaY;
-        command.layout.startX -= c->scroll->deltaX;
-    }
-    
-    UIRect commandRect = command.rect;
-    
-    //NOTETODO: Stupid hack correction.
-    //          Because strings grow downward when creating a layout, and render commands expect objects
-    //          to grow upward, the base Y and height are basically flipped.
-    //          BUT ONLY FOR CHECKS AGAINST THREAD RECTS!
-    if(command.type == UI_RC_LABEL_LAYOUT)
-    {
-        s32 fontHeight = command.selectedFont->pixelHeight;
-        command.rect.y = command.rect.y + fontHeight;
-    }
-    
-    switch(THREAD_COUNT)
-    {
-        case 0:
-        case 1:
-        {
-            command.threadRect.minX = 0;
-            command.threadRect.minY = 0;
-            command.threadRect.maxX = c->width;
-            command.threadRect.maxY = c->height-1;
-            
-            stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-            AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-            ls_stackPush(renderStack, (void *)&command);
-            return;
-        } break;
-        
-        case 2:
-        {
-            if(ls_uiRectIsInside(commandRect, c->renderUIRects[0]))
-            {
-                command.threadRect       = c->renderUIRects[0];
-                command.threadRect.maxX -= 1;
-                command.threadRect.maxY -= 1;
-                
-                stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                return;
-            }
-            else if(ls_uiRectIsInside(commandRect, c->renderUIRects[1]))
-            {
-                command.threadRect       = c->renderUIRects[1];
-                command.threadRect.maxX  = c->width;
-                command.threadRect.maxY -= 1;
-                
-                stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                
-                ls_stackPush(renderStack, (void *)&command);
-                return;
-            }
-            else
-            {
-                //Half in one, half in another.
-                
-                RenderCommand section = command;
-                section.threadRect.minX = 0;
-                section.threadRect.minY = 0;
-                section.threadRect.maxX = (c->width / 2)-1;
-                section.threadRect.maxY = c->height-1;
-                
-                stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                
-                ls_stackPush(renderStack, (void *)&section);
-                
-                section.threadRect.minX = (c->width / 2);
-                section.threadRect.minY = 0;
-                section.threadRect.maxX = c->width;
-                section.threadRect.maxY = c->height-1;
-                
-                renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                
-                ls_stackPush(renderStack, (void *)&section);
-                
-                return;
-            }
-            
-        } break;
-        
-        case 4:
-        {
-            s32 mask = ls_uiRectIntersects(commandRect, c->renderUIRects[0]);
-            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[1]) << 1;
-            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[2]) << 2;
-            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[3]) << 3;
-            
-            //NOTE: Drawing outside of the window. No point in pushing a render command
-            if(mask == 0) { return; }
-            
-            switch(mask)
-            {
-                case 1:
-                {
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 2:
-                {
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 4:
-                {
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 8:
-                {
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 5:
-                {
-                    //Bottom Left
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //Top Left
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 10:
-                {
-                    //Bottom Right
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //Top Right
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 12:
-                {
-                    //Top Left
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //Top Right
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 3:
-                {
-                    //Bottom Left
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //Bottom Right
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 15:
-                {
-                    //Bottom Left
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //Bottom Right
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //Top Left
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //Top Right
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                default: { AssertMsg(FALSE, "Unhandled mask in 4 threads\n"); return; } break;
-            }
-        } break;
-        
-        case 8:
-        {
-            s32 mask = ls_uiRectIntersects(commandRect, c->renderUIRects[0]);
-            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[1]) << 1;
-            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[2]) << 2;
-            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[3]) << 3;
-            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[4]) << 4;
-            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[5]) << 5;
-            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[6]) << 6;
-            mask |= ls_uiRectIntersects(commandRect, c->renderUIRects[7]) << 7;
-            
-            //NOTE: Drawing outside of the window. No point in pushing a render command
-            if(mask == 0) { return; }
-            
-            switch(mask)
-            {
-                case 1:
-                {
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 2:
-                {
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 4:
-                {
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 8:
-                {
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 16:
-                {
-                    command.threadRect       = c->renderUIRects[4];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[4].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 32:
-                {
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 64:
-                {
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 128:
-                {
-                    command.threadRect       = c->renderUIRects[7];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[7].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 3:
-                {
-                    //BL
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCL
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 6:
-                {
-                    //BCL
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCR
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 12:
-                {
-                    //BCR
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BR
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 7:
-                {
-                    //BL
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCL
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCR
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 14:
-                {
-                    //BCL
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCR
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BR
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 15:
-                {
-                    //BL
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCL
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCR
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BR
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 48:
-                {
-                    //TL
-                    command.threadRect       = c->renderUIRects[4];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[4].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCL
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 96:
-                {
-                    //TCL
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCR
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 192:
-                {
-                    //TCR
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TR
-                    command.threadRect       = c->renderUIRects[7];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 112:
-                {
-                    //TL
-                    command.threadRect       = c->renderUIRects[4];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[4].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCL
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCR
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 224:
-                {
-                    //TCL
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCR
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TR
-                    command.threadRect       = c->renderUIRects[7];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 240:
-                {
-                    //TL
-                    command.threadRect       = c->renderUIRects[4];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    stack *renderStack = &c->renderGroups[4].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCL
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCR
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TR
-                    command.threadRect       = c->renderUIRects[7];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 17:
-                {
-                    //BL
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TL
-                    command.threadRect       = c->renderUIRects[4];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[4].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 34:
-                {
-                    //BCL
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCL
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 68:
-                {
-                    //BCR
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCR
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 136:
-                {
-                    //BR
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TR
-                    command.threadRect       = c->renderUIRects[7];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 51:
-                {
-                    //BL
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCL
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TL
-                    command.threadRect       = c->renderUIRects[4];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[4].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCL
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 102:
-                {
-                    //BCL
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCR
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCL
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCR
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 204:
-                {
-                    //BCR
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BR
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCR
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TR
-                    command.threadRect       = c->renderUIRects[7];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 119:
-                {
-                    //BL
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCL
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCR
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TL
-                    command.threadRect       = c->renderUIRects[4];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[4].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCL
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCR
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 238:
-                {
-                    //BCL
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCR
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BR
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCL
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCR
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TR
-                    command.threadRect       = c->renderUIRects[7];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                case 255:
-                {
-                    //BL
-                    command.threadRect       = c->renderUIRects[0];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCL
-                    command.threadRect       = c->renderUIRects[1];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[1].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 1\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BCR
-                    command.threadRect       = c->renderUIRects[2];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[2].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 2\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //BR
-                    command.threadRect       = c->renderUIRects[3];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY -= 1;
-                    
-                    renderStack = &c->renderGroups[3].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 3\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TL
-                    command.threadRect       = c->renderUIRects[4];
-                    command.threadRect.maxX -= 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[4].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 4\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCL
-                    command.threadRect       = c->renderUIRects[5];
-                    command.threadRect.maxX  = (s32)(c->width / 2) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[5].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 5\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TCR
-                    command.threadRect       = c->renderUIRects[6];
-                    command.threadRect.maxX  = (s32)(3*c->width / 4) - 1;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[6].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 6\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    
-                    //TR
-                    command.threadRect       = c->renderUIRects[7];
-                    command.threadRect.maxX  = c->width;
-                    command.threadRect.maxY  = c->height-1;
-                    
-                    renderStack = &c->renderGroups[7].RenderCommands[zLayer];
-                    AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 7\n");
-                    
-                    ls_stackPush(renderStack, (void *)&command);
-                    return;
-                } break;
-                
-                default: { AssertMsg(FALSE, "Unhandled mask in 8 threads\n"); return; } break;
-            }
-            
-        } break;
-        
-        default: { AssertMsg(FALSE, "Thread count not supported\n"); } return;
-    }
-    
-    AssertMsg(FALSE, "Should never reach this case!\n");
-}
-#else
-//NOTE: With the OpenGL backend there's no point in deferring the command execution
-void ls_uiBorderedRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
-                       UIRect threadRect, UIRect scissor, Color widgetColor, Color borderColor);
-void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
-{
-    AssertMsg(command.type != UI_RC_INVALID,  "Uninitialized Render Command?\n");
-    
-    s32 xPos                = command.rect.x;
-    s32 yPos                = command.rect.y;
-    s32 w                   = command.rect.w;
-    s32 h                   = command.rect.h;
-    
-    UIRect threadRect       = command.threadRect;
-    UIRect scissor          = command.scissor;
-    Color bkgColor          = command.bkgColor;
-    Color borderColor       = command.borderColor;
-    Color textColor         = command.textColor;
-    
-    UIFont *font            = command.selectedFont;
-    
-    switch(command.type)
-    {
-        case UI_RC_RECT:
-        {
-            ls_uiBorderedRect(c, xPos, yPos, w, h, {}, {}, bkgColor, borderColor);
-        } break;
-    }
-    
-    return;
-}
-
-#endif
 
 void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
 { 
@@ -3347,9 +2249,6 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     
     UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, xPos, yPos, w, h);
     
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
     glColor4ub(col.r, col.g, col.b, col.a);
     glBegin(GL_TRIANGLES);
     glVertex2f(normRect.leftX,  normRect.topY);
@@ -3360,7 +2259,6 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     glVertex2f(normRect.rightX, normRect.botY);
     glEnd();
     
-    glDisable(GL_BLEND);
 #else
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
     s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
@@ -3373,8 +2271,13 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     s32 startX = xPos;
     if(startX < minX) { w -= (minX-startX); startX = minX; }
     
+    /*Old Thread Rect being confused about inclusive and exclusive regions stuff
     if(startX+w > maxX) { w = maxX-startX+1; }
     if(startY+h > maxY) { h = maxY-startY+1; }
+    */
+    
+    if(startX+w > maxX) { w = maxX-startX; }
+    if(startY+h > maxY) { h = maxY-startY; }
     
     s32 diffWidth = (w % 4);
     s32 simdWidth = w - diffWidth;
@@ -3453,6 +2356,7 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     {
         for(s32 y = startY+simdHeight; y < startY+h; y++)
         {
+            AssertMsg(y <= maxY, "Should never happen. Height was precomputed\n");
             if(y > maxY) { break; }
             
             for(s32 x = startX; x < startX+simdWidth; x++)
@@ -3475,8 +2379,37 @@ void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
                      UIRect threadRect, UIRect scissor, Color col)
 {
 #ifdef LS_UI_OPENGL_BACKEND
-    TODO;
+    
+    const s32 triangleCount = 30;
+    
+    f32 normCx   = (2.0f*(f32)centerX / (f32)c->width)-1.0f;
+    f32 normCy   = (2.0f*(f32)centerY / (f32)c->height)-1.0f;
+    f32 normRadX = ((f32)radius / (f32)c->width);
+    f32 normRadY = ((f32)radius / (f32)c->height);
+    
+    //NOTE: We start at angle 0, and create triangles by moving one angle step at a time
+    f32 angleStep = TAU / triangleCount;
+    f32 p1X = normCx+normRadX;
+    f32 p1Y = normCy;
+    f32 p2X = normCx+normRadX * cos(angleStep);
+    f32 p2Y = normCy+normRadY * sin(angleStep);
+    
+    glColor4ub(col.r, col.g, col.b, col.a);
+    glBegin(GL_TRIANGLE_FAN);
+    
+    glVertex2f(normCx, normCy);
+    for(s32 i = 0; i < triangleCount+1; i++)
+    {
+        glVertex2f(p1X, p1Y);
+        p1X = normCx+normRadX * cos(i*angleStep);
+        p1Y = normCy+normRadY * sin(i*angleStep);
+    }
+    glVertex2f(normCx+normRadX, normCy);
+    
+    glEnd();
+    
 #else
+    
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
     s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
     s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
@@ -3512,6 +2445,7 @@ void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
             }
         }
     }
+    
 #endif
 }
 
@@ -3520,7 +2454,48 @@ void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickne
                  UIRect threadRect, UIRect scissor, Color col)
 {
 #ifdef LS_UI_OPENGL_BACKEND
-    TODO;
+    const s32 linesCount = 30;
+    
+    //NOTE: Make sure we don't overflow the drawing stupidly
+    AssertMsg(thickness <= radius, "Thickness overflows the radius\n");
+    if(thickness > radius) { thickness = radius; }
+    
+    f32 normCx   = (2.0f*(f32)centerX / (f32)c->width)-1.0f;
+    f32 normCy   = (2.0f*(f32)centerY / (f32)c->height)-1.0f;
+    f32 normRadX = ((f32)radius / (f32)c->width);
+    f32 normRadY = ((f32)radius / (f32)c->height);
+    
+    //NOTE: We start at angle 0, and create triangles by moving one angle step at a time
+    f32 angleStep = TAU / linesCount;
+    f32 p1X = normCx+normRadX;
+    f32 p1Y = normCy;
+    f32 p2X = normCx+normRadX * cos(angleStep);
+    f32 p2Y = normCy+normRadY * sin(angleStep);
+    
+    glColor4ub(col.r, col.g, col.b, col.a);
+    glBegin(GL_LINE_STRIP);
+    
+    for(s32 th = 0; th < thickness; th++)
+    {
+        glVertex2f(p1X, p1Y);
+        for(s32 i = 0; i < linesCount+1; i++)
+        {
+            glVertex2f(p2X, p2Y);
+            p2X = normCx+normRadX * cos((i+1)*angleStep);
+            p2Y = normCy+normRadY * sin((i+1)*angleStep);
+        }
+        glVertex2f(p1X, p1Y);
+        
+        radius -= 1;
+        normRadX = ((f32)radius / (f32)c->width);
+        normRadY = ((f32)radius / (f32)c->height);
+        p1X = normCx+normRadX;
+        p1Y = normCy;
+        p2X = normCx+normRadX * cos(angleStep);
+        p2Y = normCy+normRadY * sin(angleStep);
+    }
+    glEnd();
+    
 #else
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
     s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
@@ -3668,10 +2643,8 @@ void ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Colo
 void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *bmp)
 {
 #ifdef LS_UI_OPENGL_BACKEND
-    UIRect norm = ls_uiScreenCoordsToUnitSquare(c, dst.x, dst.y, dst.w, dst.h);
     
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    UIRect norm = ls_uiScreenCoordsToUnitSquare(c, dst.x, dst.y, dst.w, dst.h);
     
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, bmp->texID);
@@ -3681,17 +2654,19 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
     
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     glBegin(GL_TRIANGLES);
+    
     glTexCoord2f(0.0, 1.0); glVertex2f(norm.leftX,  norm.topY);
     glTexCoord2f(0.0, 0.0); glVertex2f(norm.leftX,  norm.botY);
     glTexCoord2f(1.0, 1.0); glVertex2f(norm.rightX, norm.topY);
     glTexCoord2f(1.0, 1.0); glVertex2f(norm.rightX, norm.topY);
     glTexCoord2f(0.0, 0.0); glVertex2f(norm.leftX,  norm.botY);
     glTexCoord2f(1.0, 0.0); glVertex2f(norm.rightX, norm.botY);
+    
     glEnd();
     glDisable(GL_TEXTURE_2D);
-    glDisable(GL_BLEND);
     
 #else
+    
     s32 minX = threadRect.minX;
     s32 minY = threadRect.minY;
     s32 maxX = threadRect.maxX;
@@ -3771,15 +2746,24 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
     {
         TODO;
     }
+    
 #endif
 }
 
-void ls_uiBitmap(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, u32 *data)
+void ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, UIRect threadRect)
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    ls_uiStretchBitmap(c, threadRect, {xPos, yPos, bmp.w, bmp.h}, &bmp);
+#else
+    
     s32 minX = threadRect.minX;
     s32 minY = threadRect.minY;
     s32 maxX = threadRect.maxX;
     s32 maxY = threadRect.maxY;
+    
+    u32 *data = (u32 *)bmp.data;
+    s32 w = bmp.w;
+    s32 h = bmp.h;
     
     s32 startY = yPos;
     s32 startEY = 0;
@@ -3814,8 +2798,11 @@ void ls_uiBitmap(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRe
             At[y*c->width + x] = blendedColor.value;
         }
     }
+    
+#endif
 }
 
+//TODO: I don't like that uiGlyph and SDFGlyph are separate functions...
 void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, UIRect threadRect, UIRect scissor, UIGlyph *glyph, Color textColor)
 {
     s32 minX = threadRect.minX;
@@ -3863,8 +2850,102 @@ void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, UIRect threadRect, UIRect scis
     }
 }
 
+void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride, f64 scaling, 
+                   UIRect threadRect, UIRect scissor, Color textColor)
+{
+    auto bl_interp = [stride](UIGlyph *glyph, f64 x, f64 y) -> f64 {
+        //NOTE: Calculate the Integer and Fractional parts of the coordinates
+        s32 x0 = (s32)x;
+        s32 x1 = (x0 + 1 < glyph->width) ? x0 + 1 : x0;
+        s32 y0 = (s32)y;
+        s32 y1 = (y0 + 1 < glyph->height) ? y0 + 1 : y0;
+        
+        f64 dx = x - x0;
+        f64 dy = y - y0;
+        
+        //NOTE: Get a 4x4 pixel square
+        f64 v00 = (f64)glyph->data[y0 * stride + x0] / 255.0;
+        f64 v01 = (f64)glyph->data[y1 * stride + x0] / 255.0;
+        f64 v10 = (f64)glyph->data[y0 * stride + x1] / 255.0;
+        f64 v11 = (f64)glyph->data[y1 * stride + x1] / 255.0;
+        
+        //NOTE: Bilinear Interpolation (It's just a lerp between two lerps. Hence Bi- Linear!)
+        f64 v0 = v00 * (1.0 - dy) + v01 * dy;
+        f64 v1 = v10 * (1.0 - dy) + v11 * dy;
+        f64 final = v0 * (1.0 - dx) + v1 * dx;
+        
+        return final;
+    };
+    
+    u32 *At = (u32 *)c->drawBuffer;
+    s32 startY = yPos-glyph->y1*scaling;
+    s32 startX = xPos+glyph->x0*scaling;
+    
+    const s32 todoOnEdgeValue = 160;
+    const f64 todoFractOnEdge = (f64)todoOnEdgeValue/255.0;
+    
+    //NOTE: Scaled dimensions for the glyph
+    s32 scaledHeight = glyph->height*scaling;
+    s32 scaledWidth  = glyph->width*scaling;
+    
+    s32 yOff = 0;
+    s32 xOff = 0;
+    
+    //NOTE: Output bounding box in the backbuffer based on the scaled dimensions
+    s32 maxY = scaledHeight;
+    if(startY + maxY > threadRect.maxY) { maxY -= (startY+maxY) - threadRect.maxY; }
+    s32 maxX = scaledWidth;
+    if(startX + maxX > threadRect.maxX) { maxX -= (startX+maxX) - threadRect.maxX; }
+    
+    s32 minY = threadRect.minY;
+    if(startY < minY) { yOff = minY - startY; maxY -= yOff; startY = minY; }
+    s32 minX = threadRect.minX;
+    if(startX < minX) { xOff = minX - startX; maxX -= xOff; startX = minX; }
+    
+    /*NOTE: This is not required, since the threadRects already clamp to the client area
+    if(startY + maxY > c->height) { maxY -= ((startY + maxY) - c->height); }
+    if(startX + maxX > c->width)  { maxX -= ((startX + maxX) - c->width); }
+    */
+    
+    for(s32 y = 0; y < maxY; ++y)
+    {
+        s32 backbufferY = startY + y;
+        
+        for(s32 x = 0; x < maxX; ++x)
+        {
+            s32 backbufferX = startX + x;
+            
+            //NOTE: map the output pixel position to the sdf glyph position
+            f64 sdfX = (x+xOff) / scaling;
+            f64 sdfY = ((scaledHeight - 1) - (y+yOff)) / scaling;
+            
+            //NOTE: Fetch the sdf value by doing bilinear interpolation on the sdf bitmap
+            f64 sdf_value = bl_interp(glyph, sdfX, sdfY);
+            
+            //NOTETODO: Shitty sdf filtering.
+            //f64 realAlpha = sdf_value < todoFractOnEdge ? 0.0 : 1.0;
+            f64 realAlpha = sdf_value < todoFractOnEdge ? sdf_value : 1.0;
+            Color actual = {
+                .b = (u8)(textColor.b*realAlpha),
+                .g = (u8)(textColor.g*realAlpha),
+                .r = (u8)(textColor.r*realAlpha),
+                .a = (u8)(textColor.a*realAlpha)
+            };
+            
+            Color base  = { .value = At[backbufferY*c->width + backbufferX] };
+            Color final = ls_uiAlphaBlend(actual, base);
+            At[backbufferY * c->width + backbufferX] = final.value;
+        }
+    }
+}
+
+
 s32 ls_uiGetKernAdvance(UIContext *c, s32 codepoint1, s32 codepoint2)
 {
+    AssertNonNull(c);
+    AssertNonNull(c->currFont);
+    AssertNonNull(c->currFont->kernAdvanceTable);
+    
     UIFont *font = c->currFont;
     s32 kernAdvance = font->kernAdvanceTable[codepoint1][codepoint2];
     
@@ -3873,6 +2954,9 @@ s32 ls_uiGetKernAdvance(UIContext *c, s32 codepoint1, s32 codepoint2)
 
 s32 ls_uiGetKernAdvance(UIFont *font, s32 codepoint1, s32 codepoint2)
 {
+    AssertNonNull(font);
+    AssertNonNull(font->kernAdvanceTable);
+    
     s32 kernAdvance = font->kernAdvanceTable[codepoint1][codepoint2];
     
     return kernAdvance;
@@ -3937,11 +3021,11 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
         } break;
         
         case UI_TB_ALIGN_RIGHT: {
-            currXPos = xPos+w-horzOff - ls_uiGlyphStringRect(c, font, firstLine).w;
+            currXPos = xPos+w-horzOff - ls_uiGlyphStringRect(c, font, firstLine, font->pixelHeight).w;
         } break;
         
         case UI_TB_ALIGN_CENTER: {
-            currXPos = xPos+w-horzOff - (ls_uiGlyphStringRect(c, font, firstLine).w / 2);
+            currXPos = xPos+w-horzOff - (ls_uiGlyphStringRect(c, font, firstLine, font->pixelHeight).w / 2);
         } break;
         
         default: { AssertMsg(FALSE, "Unhandled TextBox Alignement\n"); } break;
@@ -4003,11 +3087,11 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
             } break;
             
             case UI_TB_ALIGN_RIGHT: {
-                currXPos = xPos+w-horzOff - ls_uiGlyphStringRect(c, font, firstLine).w;
+                currXPos = xPos+w-horzOff - ls_uiGlyphStringRect(c, font, firstLine, font->pixelHeight).w;
             } break;
             
             case UI_TB_ALIGN_CENTER: {
-                currXPos = xPos+w-horzOff - (ls_uiGlyphStringRect(c, font, firstLine).w / 2);
+                currXPos = xPos+w-horzOff - (ls_uiGlyphStringRect(c, font, firstLine, font->pixelHeight).w / 2);
             } break;
             
             default: { AssertMsg(FALSE, "Unhandled TextBox Alignement\n"); } break;
@@ -4121,62 +3205,178 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
     
 }
 
-//TODO: Use font max descent to determine yOffsets globally
-//      Maybe instead make glyphstring only do 1 line at a time and push line responsibility outside?
-void ls_uiGlyphString(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
-                      UIRect threadRect, UIRect scissor, utf32 text, Color textColor)
+template<typename T>
+void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32 yPos,
+                      UIRect threadRect, UIRect scissor, T text, Color textColor)
 {
+    struct MapEntry
+    { //NOTE: I'm gonna assume this will be packed, being a multiple of 32 bits in size...
+        u32 codepoint;
+        s32 pixelX;
+        s32 pixelY;
+        s32 width;
+        s32 height;
+        s32 xOff;
+        s32 yOff;
+        s32 xAdv;
+        s32 leftSB;
+    };
+    
+    //NOTE: Look for the glyph pixel data in the map
+    auto getMapEntryFromAtlas = [](UIFont *font, u32 codepoint) -> MapEntry *{
+        s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
+        s32 glyphCount = font->cpCount;
+        MapEntry *map  = (MapEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
+        while(glyphCount-- && map->codepoint != codepoint) { map += 1; }
+        AssertMsg(map->codepoint == codepoint, "Glyph Codepoint is not present in Atlas");
+        return map;
+    };
+    
     AssertMsg(c, "Context is null\n");
     LogMsg(font, "Passed font is null\n");
     if(!font) { return; }
     
     s32 currXPos = xPos;
     s32 currYPos = yPos;
+    f64 scaling = (f64)pixelHeight / (f64)font->pixelHeight;
+    s32 lineSpace = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
+    
+#ifdef LS_UI_OPENGL_BACKEND
+    
+    AssertMsg(font->isAtlas == TRUE, "Using a glyph array with the OpenGL Backend is currently not supported\n");
+    
+    f32 colorRed   = (f32)textColor.r / 255.0f;
+    f32 colorGreen = (f32)textColor.g / 255.0f;
+    f32 colorBlue  = (f32)textColor.b / 255.0f;
+    
     for(u32 i = 0; i < text.len; i++)
     {
-        u32 indexInGlyphArray = text.data[i];
-        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
+        u32 codepoint = 0xFFFFFFFF;
+        if constexpr(typeid(T) == typeid(utf32))
+        { codepoint = text.data[i]; }
+        else if constexpr(typeid(T) == typeid(utf8))
+        { codepoint = ls_utf32CharFromUtf8(text, i); }
+        else
+        { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
+        AssertMsgF(codepoint <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
         
-        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
-        ls_uiGlyph(c, currXPos, currYPos, threadRect, scissor, currGlyph, textColor);
+        MapEntry *map = getMapEntryFromAtlas(font, codepoint);
         
-        s32 kernAdvance = 0;
-        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
+        f64 texelLeft  = (f64)map->pixelX / (f64)font->atlasWidth;
+        f64 texelRight = (f64)(map->pixelX+map->width) / (f64)font->atlasWidth;
+        f64 texelBot   = (f64)map->pixelY / (f64)font->atlasHeight;
+        f64 texelTop   = (f64)(map->pixelY+map->height) / (f64)font->atlasHeight;
         
-        currXPos += (currGlyph->xAdv + kernAdvance);
+        //TODOf32 limitAlpha = (f32)map->onEdgeValue / 255.0f;
+        f32 limitAlpha = 160.0f / 255.0f;
         
-        //NOTETODO VERY BAD!! need to determine
-        if(indexInGlyphArray == (u32)'\n') { currYPos -= font->pixelHeight; currXPos = xPos; }
+        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+        //   ----> https://github.com/nothings/stb/issues/450
+        // Proper vertical positioning of a glyph requires this y1 computation.
+        // Basically, (y1 - y0) == Height of the bounding box
+        // y1 represents the portion of the glyph below the baseline (usually positive)
+        // y0 represents the portion of the glyph above the baseline (usually negative)
+        // The font ascent represents the highest point from the baseline a glyph will draw (usually positive)
+        // The descent represent the lowest point from the baseline a glyph will draw (usually negative)
+        // The line gap is simply the distance between two separate lines (usually positive)
+        // Thus to compute the distance between 2 consecutive lines baselines you do:
+        //  linespace = ascent - descent + linegap
+        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+        s32 y1 = map->height*scaling + map->yOff*scaling;
+        s32 realY = currYPos - y1;
+        
+        UIRect norm = ls_uiScreenCoordsToUnitSquare(c, currXPos, realY, 
+                                                    map->width*scaling, map->height*scaling);
+        
+        //NOTE: Escape the whitespace drawing because for some reason the fonts render it as the null glyph?
+        if(ls_UTF32IsWhitespace(codepoint)) {
+            currXPos += map->xAdv*scaling;
+            if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
+            continue;
+        }
+        
+        glEnable(GL_ALPHA_TEST);
+        glAlphaFunc(GL_GREATER, limitAlpha);
+        
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, font->texID);
+        //TODO: We will care about these kinda stuff in the near future
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        
+        glColor4f(colorRed, colorGreen, colorBlue, 1.0f);
+        glBegin(GL_TRIANGLES);
+        
+        glTexCoord2f(texelLeft,  texelBot); glVertex2f(norm.leftX,  norm.topY);
+        glTexCoord2f(texelLeft,  texelTop); glVertex2f(norm.leftX,  norm.botY);
+        glTexCoord2f(texelRight, texelBot); glVertex2f(norm.rightX, norm.topY);
+        glTexCoord2f(texelRight, texelBot); glVertex2f(norm.rightX, norm.topY);
+        glTexCoord2f(texelLeft,  texelTop); glVertex2f(norm.leftX,  norm.botY);
+        glTexCoord2f(texelRight, texelTop); glVertex2f(norm.rightX, norm.botY);
+        
+        glEnd();
+        glDisable(GL_TEXTURE_2D);
+        glDisable(GL_ALPHA_TEST);
+        
+        currXPos += map->xAdv*scaling;
+        if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
     }
+#else
+    
+    for(u32 i = 0; i < text.len; i++)
+    {
+        u32 codepoint = 0xFFFFFFFF;
+        if constexpr(typeid(T) == typeid(utf32))
+        { codepoint = text.data[i]; }
+        else if constexpr(typeid(T) == typeid(utf8))
+        { codepoint = ls_utf32CharFromUtf8(text, i); }
+        else
+        { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
+        
+        AssertMsgF(codepoint <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
+        
+        //TODO: I don't like branching inside the loop for a constant result, 
+        //      the branch predictor should get it though...
+        if(font->isAtlas)
+        {
+            MapEntry *map = getMapEntryFromAtlas(font, codepoint);
+            UIGlyph currGlyph = { 
+                .data = &font->fontAtlasSDF[map->pixelY*font->atlasWidth + map->pixelX],
+                .width = (u32)map->width,
+                .height = (u32)map->height,
+                .x0 = map->xOff,
+                .y0 = map->yOff,
+                .y1 = map->height + map->yOff,
+                .xAdv = map->xAdv,
+                .yAdv = 0
+            };
+            
+            ls_uiSDFGlyph(c, &currGlyph, currXPos, currYPos, font->atlasWidth, scaling, 
+                          threadRect, scissor, textColor);
+            
+            currXPos += map->xAdv*scaling;
+            if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
+        }
+        else
+        {
+            UIGlyph *currGlyph = &font->glyph[codepoint];
+            ls_uiGlyph(c, currXPos, currYPos, threadRect, scissor, currGlyph, textColor);
+            
+            s32 kernAdvance = 0;
+            if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
+            
+            currXPos += (currGlyph->xAdv + kernAdvance);
+            //NOTETODO VERY BAD!! need to determine
+            if(codepoint == (u32)'\n') { currYPos -= font->pixelHeight; currXPos = xPos; }
+        }
+    }
+#endif
 }
 
-//TODO: Rename this GlyphString8!
-void ls_uiGlyphString_8(UIContext *c, UIFont *font, s32 xPos, s32 yPos,
-                        UIRect threadRect, UIRect scissor, utf8 text, Color textColor)
-{
-    AssertMsg(c, "Context is null\n");
-    LogMsg(font, "Passed font is null\n");
-    if(!font) { return; }
-    
-    s32 currXPos = xPos;
-    s32 currYPos = yPos;
-    for(u32 i = 0; i < text.len; i++)
-    {
-        u32 indexInGlyphArray = ls_utf32CharFromUtf8(text, i);
-        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
-        
-        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
-        ls_uiGlyph(c, currXPos, currYPos, threadRect, scissor, currGlyph, textColor);
-        
-        s32 kernAdvance = 0;
-        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
-        
-        currXPos += (currGlyph->xAdv + kernAdvance);
-        
-        //NOTETODO VERY BAD!! need to determine
-        if(indexInGlyphArray == (u32)'\n') { currYPos -= font->pixelHeight; currXPos = xPos; }
-    }
-}
 
 //TODO: Should I always pass a layout, and maybe only keep an helper when I want no layout, so the layout region
 //      would just be the entire window???
@@ -4218,78 +3418,92 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UILayoutRect layout,
     }
 }
 
-UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, utf32 text)
+//TODO: Should actually have totalWidth and totalHeight be floating point instead of ints
+//      Because of scaling, the intermediate values will probably be fractional, and flooring
+//        at the end should yield more accurate results, especially in long strings!
+template<typename T>
+UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, T text, s32 pixelHeight)
 {
+    struct MapEntry
+    { //NOTE: I'm gonna assume this will be packed, being a multiple of 32 bits in size...
+        u32 codepoint;
+        s32 pixelX;
+        s32 pixelY;
+        s32 width;
+        s32 height;
+        s32 xOff;
+        s32 yOff;
+        s32 xAdv;
+        s32 leftSB;
+    };
+    
+    //NOTE: Look for the glyph pixel data in the map
+    auto getMapEntryFromAtlas = [](UIFont *font, u32 codepoint) -> MapEntry *{
+        s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
+        s32 glyphCount = font->cpCount;
+        MapEntry *map  = (MapEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
+        while(glyphCount-- && map->codepoint != codepoint) { map += 1; }
+        AssertMsg(map->codepoint == codepoint, "Glyph Codepoint is not present in Atlas");
+        return map;
+    };
+    
     AssertMsg(c, "Context is null\n");
     LogMsg(font, "Passed font is null\n");
     if(!font) { return {}; }
     
     s32 maxWidth = 0;
-    
     s32 totalWidth  = 0;
-    s32 totalHeight = font->pixelHeight;
+    s32 totalHeight = pixelHeight;
+    
+    f64 scaling = (f64)pixelHeight / (f64)font->pixelHeight;
+    s32 lineSpace = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
+    
     for(u32 i = 0; i < text.len; i++)
     {
-        u32 indexInGlyphArray = text.data[i];
-        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
+        u32 codepoint = 0xFFFFFFFF;
+        if constexpr(typeid(T) == typeid(utf32))
+        { codepoint = text.data[i]; }
+        else if constexpr(typeid(T) == typeid(utf8))
+        { codepoint = ls_utf32CharFromUtf8(text, i); }
+        else
+        { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
         
-        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
+        AssertMsgF(codepoint <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
         
-        s32 kernAdvance = 0;
-        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
-        
-        if(indexInGlyphArray == (u32)'\n')
+        //TODO: I don't like branching inside the loop for a constant result, 
+        //      the branch predictor should get it though...
+        if(font->isAtlas)
         {
-            totalHeight += font->pixelHeight;
-            totalWidth   = 0;
-            continue;
+            MapEntry *map = getMapEntryFromAtlas(font, codepoint);
+            totalWidth += map->xAdv*scaling;
+            if(codepoint == (u32)'\n') { totalWidth = 0; totalHeight += lineSpace; }
+            if(totalWidth > maxWidth) { maxWidth = totalWidth; }
         }
-        
-        totalWidth += (currGlyph->xAdv + kernAdvance);
-        if(totalWidth > maxWidth) { maxWidth = totalWidth; }
+        else
+        {
+            UIGlyph *currGlyph = &font->glyph[codepoint];
+            
+            s32 kernAdvance = 0;
+            if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
+            
+            if(codepoint == (u32)'\n')
+            {
+                totalHeight += font->pixelHeight;
+                totalWidth   = 0;
+                continue;
+            }
+            
+            totalWidth += (currGlyph->xAdv + kernAdvance);
+            if(totalWidth > maxWidth) { maxWidth = totalWidth; }
+        }
     }
     
     UIRect result = {0, 0, maxWidth, totalHeight};
-    
     return result;
 }
 
-UIRect ls_uiGlyphStringRect_8(UIContext *c, UIFont *font, utf8 text)
-{
-    AssertMsg(c, "Context is null\n");
-    LogMsg(font, "Passed font is null\n");
-    if(!font) { return {}; }
-    
-    s32 maxWidth = 0;
-    
-    s32 totalWidth  = 0;
-    s32 totalHeight = font->pixelHeight;
-    for(u32 i = 0; i < text.len; i++)
-    {
-        u32 indexInGlyphArray = ls_utf32CharFromUtf8(text, i);
-        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
-        
-        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
-        
-        s32 kernAdvance = 0;
-        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
-        
-        if(indexInGlyphArray == (u32)'\n')
-        {
-            totalHeight += font->pixelHeight;
-            totalWidth   = 0;
-            continue;
-        }
-        
-        totalWidth += (currGlyph->xAdv + kernAdvance);
-        if(totalWidth > maxWidth) { maxWidth = totalWidth; }
-    }
-    
-    UIRect result = {0, 0, maxWidth, totalHeight};
-    
-    return result;
-}
-
+//TODO: This is only used in a lambda inside ls_uiTextBox()
+//      So, maybe either find a way to remove this, or just fit it inside ls_uiTextBox() instead!
 s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
 {
     AssertMsg(c, "Context is null\n");
@@ -4314,6 +3528,8 @@ s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
     return 0;
 }
 
+//TODO: This is only used in a lambda inside ls_uiTextBox()
+//      So, maybe either find a way to remove this, or just fit it inside ls_uiTextBox() instead!
 s32 ls_uiMonoGlyphMaxIndexDiff(UIContext *c, UIFont *font, s32 width)
 {
     AssertMsg(c, "Context is null\n");
@@ -4379,14 +3595,26 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, UILayoutRect layout, u
 void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
 {
     LogMsg(c->fonts, "No fonts were loaded\n");
+    AssertMsg(c->currFont, "The currFont was not selected!\n");
     if(!c->fonts) { return; }
     
-    //TODO: Hardcoded
-    b32 found = FALSE;
-    for(u32 i = 0; i < 4; i++)
-    { if(c->fonts[i].pixelHeight == pixelHeight) { found = TRUE; c->currFont = &c->fonts[i]; } }
+#ifdef LS_UI_OPENGL_BACKEND
+    c->currPixelHeight = pixelHeight;
+#else
+    if(c->currFont->isAtlas)
+    {
+        c->currPixelHeight = pixelHeight;
+        return;
+    }
+    else
+    {
+        //TODO: Hardcoded
+        for(u32 i = 0; i < 4; i++)
+        { if(c->fonts[i].pixelHeight == pixelHeight) { c->currFont = &c->fonts[i]; return; } }
+    }
     
-    AssertMsg(found, "Asked pixelHeight not available\n");
+    AssertMsg(FALSE, "Asked pixelHeight not available\n");
+#endif
 }
 
 inline
@@ -4394,8 +3622,11 @@ s32 ls_uiSelectFontByFontSize(UIContext *c, UIFontSize fontSize)
 { 
     LogMsg(c->fonts, "No fonts were loaded\n");
     if(!c->fonts) { return 0; }
-    
+#ifdef LS_UI_OPENGL_BACKEND
+    TODO;
+#else
     c->currFont = &c->fonts[fontSize]; return c->currFont->pixelHeight;
+#endif
 }
 
 UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, UICallback onClick, UICallback onHold = NULL, void *userData = NULL)
@@ -4418,10 +3649,20 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, UI
     AssertMsg(c, "UI Context is null\n");
     AssertMsg(c->currFont, "Font is not selected\n");
     
+    //TODO: Super mega shit for pixelHeight
     utf32 name = ls_utf32FromUTF32(text);
+    s32 pixelHeight = c->currFont->pixelHeight;
+    if(c->currFont->isAtlas) { pixelHeight = c->currPixelHeight; }
     
-    s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, name).w + 16; //Add margin on each side
+#ifndef LS_UI_OPENGL_BACKEND
+    s32 height = pixelHeight + 2; //Add Margin above and below text
+    //Add margin on each side
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, name, pixelHeight).w + 16;
+#else
+    s32 height = pixelHeight + 2; //Add Margin above and below text
+    //Add margin on each side
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, name, pixelHeight).w + 16;
+#endif
     
     UIButton Result = {
         {onClick, userData, onHold, userData, NULL, NULL}, 
@@ -4438,8 +3679,19 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, UICallback o
     AssertMsg(c, "UI Context is null\n");
     AssertMsg(c->currFont, "Font is not selected\n");
     
-    s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, text).w + 16; //Add margin on each side 
+    //TODO: Super mega shit for pixelHeight
+    s32 pixelHeight = c->currFont->pixelHeight;
+    if(c->currFont->isAtlas) { pixelHeight = c->currPixelHeight; }
+    
+#ifndef LS_UI_OPENGL_BACKEND
+    s32 height = pixelHeight + 2; //Add Margin above and below text
+    //Add margin on each side
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, text, pixelHeight).w + 16;
+#else
+    s32 height = c->currPixelHeight + 2; //Add Margin above and below text
+    //Add margin on each side
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, text, pixelHeight).w + 16;
+#endif
     
     UIButton Result = {
         {onClick, userData, onHold, userData, NULL, NULL}, 
@@ -4462,8 +3714,19 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 text, UIC
     b->callback1Data = userData;
     b->callback2Data = userData;
     
-    s32 height = c->currFont->pixelHeight + 2; //Add Margin above and below text
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, text).w + 16; //Add margin on each side
+    //TODO: Super mega shit for pixelHeight
+    s32 pixelHeight = c->currFont->pixelHeight;
+    if(c->currFont->isAtlas) { pixelHeight = c->currPixelHeight; }
+    
+#ifndef LS_UI_OPENGL_BACKEND
+    s32 height = pixelHeight + 2; //Add Margin above and below text
+    //Add margin on each side
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, text, pixelHeight).w + 16;
+#else
+    s32 height = c->currPixelHeight + 2; //Add Margin above and below text
+    //Add margin on each side
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, text, pixelHeight).w + 16;
+#endif
     
     b->w = width;
     b->h = height;
@@ -4486,8 +3749,19 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t 
     b->callback1Data = data;
     b->callback2Data = data;
     
-    s32 height = c->currFont->pixelHeight + 2; //TODO: This margin doesn't work for multiple pixel height
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, b->name).w + 16; //Add margin on each side
+    //TODO: Super mega shit for pixelHeight
+    s32 pixelHeight = c->currFont->pixelHeight;
+    if(c->currFont->isAtlas) { pixelHeight = c->currPixelHeight; }
+    
+#ifndef LS_UI_OPENGL_BACKEND
+    s32 height = pixelHeight + 2; //Add Margin above and below text
+    //Add margin on each side
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, b->name, pixelHeight).w + 16;
+#else
+    s32 height = c->currPixelHeight + 2; //Add Margin above and below text
+    //Add margin on each side
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, b->name, pixelHeight).w + 16;
+#endif
     
     b->w = width;
     b->h = height;
@@ -4689,7 +3963,7 @@ UIRect ls_uiLabelRect(UIContext *c, utf32 label, s32 xPos, s32 yPos)
     s32 marginX    = 0.3f*c->currFont->pixelHeight;
     s32 marginY    = 0.3f*c->currFont->pixelHeight;
     
-    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label);
+    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, c->currFont->pixelHeight);
     s32 rectWidth  = rect.w + 2*marginX;
     s32 rectHeight = rect.h + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
     
@@ -4702,7 +3976,7 @@ void ls_uiLabelInRect(UIContext *c, utf32 label, s32 xPos, s32 yPos,
     s32 marginX    = 0.3f*c->currFont->pixelHeight;
     s32 marginY    = 0.25f*c->currFont->pixelHeight;
     
-    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label);
+    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, c->currFont->pixelHeight);
     s32 rectWidth  = rect.w + 2*marginX;
     s32 rectHeight = rect.h + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
     
@@ -4717,7 +3991,7 @@ void ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
     s32 marginX    = 0.3f*c->currFont->pixelHeight;
     s32 marginY    = 0.25f*c->currFont->pixelHeight;
     
-    UIRect rect = ls_uiGlyphStringRect_8(c, c->currFont, label);
+    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, c->currFont->pixelHeight);
     s32 rectWidth  = rect.w + 2*marginX;
     s32 rectHeight = rect.h + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
     
@@ -4732,7 +4006,7 @@ void ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 minWidth
     s32 marginX    = 0.3f*c->currFont->pixelHeight;
     s32 marginY    = 0.25f*c->currFont->pixelHeight;
     
-    UIRect rect = ls_uiGlyphStringRect_8(c, c->currFont, label);
+    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, c->currFont->pixelHeight);
     s32 rectWidth  = rect.w + 2*marginX;
     s32 rectHeight = rect.h + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
     
@@ -4759,8 +4033,8 @@ void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, 
     
     if(label.len == 0) { return; }
     
-    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label);
-    s32 yBaseOff = rect.h - c->currFont->pixelHeight;
+    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, c->currPixelHeight);
+    s32 yBaseOff = rect.h - c->currPixelHeight;
     
     RenderCommand command = { UI_RC_LABEL32, xPos, yPos - yBaseOff, rect.w, rect.h };
     command.label32 = label;
@@ -4781,8 +4055,8 @@ void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s
     
     if(label.len == 0) { return; }
     
-    UIRect rect = ls_uiGlyphStringRect_8(c, c->currFont, label);
-    s32 yBaseOff = rect.h - c->currFont->pixelHeight;
+    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, c->currPixelHeight);
+    s32 yBaseOff = rect.h - c->currPixelHeight;
     
     RenderCommand command = { UI_RC_LABEL8, xPos, yPos - yBaseOff, rect.w, rect.h };
     command.label8 = label;
@@ -4916,10 +4190,11 @@ void ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s)
     ls_arenaUse(prev);
 }
 
-void ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 len, s32 maxLen = 0, b32 singleLine = TRUE, b32 readOnly = FALSE, UICallback preInput = NULL, UICallback postInput = NULL)
+void ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 initialCap, s32 maxLen = 0, b32 singleLine = TRUE,
+                      b32 readOnly = FALSE, UICallback preInput = NULL, UICallback postInput = NULL)
 {
     Arena prev = ls_arenaUse(c->widgetArena);
-    box->text         = ls_utf32Alloc(len);
+    box->text         = ls_utf32Alloc(initialCap);
     box->maxLen       = maxLen;
     box->isSingleLine = singleLine;
     box->isReadonly   = readOnly;
@@ -4955,7 +4230,10 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
     //TODO: Hardcoded values.
     const s32 horzOff      = 12;
     const s32 viewAddWidth = w - 2*horzOff;
-    const s32 maxIndexDiff = ls_uiMonoGlyphMaxIndexDiff(c, c->currFont, viewAddWidth);
+    
+    //TODO: This shit is kinda strange.
+    //const s32 maxIndexDiff = ls_uiMonoGlyphMaxIndexDiff(c, c->currFont, viewAddWidth);
+    const s32 maxIndexDiff = c->currPixelHeight;
     
     auto lineBeginIdx = [box](s32 index) -> u32 {
         if(index <= 0) { 
@@ -5523,6 +4801,81 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
 void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
                     UIRect threadRect, UIRect scissor, Color bkgColor, UIArrowSide s)
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    
+    s32 xPos = x-1;
+    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
+    
+    //TODO: Customize color?
+    Color col = c->borderColor;
+    
+    switch(s)
+    {
+        case UIA_DOWN:
+        {
+            s32 arrowWidth  = 0.50f*w;
+            s32 arrowHeight = 0.40f*h;
+            
+            s32 startX = x + (w - arrowWidth)/2 - 1;
+            s32 startY = (yPos + (h-arrowHeight)/2) - 1;
+            s32 midX = (startX + arrowWidth/2);
+            
+            UIRect norm = ls_uiScreenCoordsToUnitSquare(c, startX, startY, arrowWidth, arrowHeight);
+            f32 botX = (2.0f*(f32)midX / (f32)c->width)-1.0f;
+            
+            glColor4ub(col.r, col.g, col.b, col.a);
+            glBegin(GL_TRIANGLES);
+            glVertex2f(norm.leftX, norm.topY);
+            glVertex2f(norm.rightX, norm.topY);
+            glVertex2f(botX, norm.botY);
+            glEnd();
+            
+        } break;
+        
+        case UIA_RIGHT:
+        {
+            s32 arrowWidth  = 0.40f*w;
+            s32 arrowHeight = 0.50f*h;
+            
+            s32 startX = x + (w - arrowWidth)/2 + 1;
+            s32 startY = (yPos + (h-arrowHeight)/2);
+            s32 midY = (startY + arrowHeight/2);
+            
+            UIRect norm = ls_uiScreenCoordsToUnitSquare(c, startX, startY, arrowWidth, arrowHeight);
+            f32 rightY = (2.0f*(f32)midY / (f32)c->height)-1.0f;
+            
+            glColor4ub(col.r, col.g, col.b, col.a);
+            glBegin(GL_TRIANGLES);
+            glVertex2f(norm.leftX, norm.botY);
+            glVertex2f(norm.leftX, norm.topY);
+            glVertex2f(norm.rightX, rightY);
+            glEnd();
+            
+        } break;
+        
+        case UIA_LEFT:
+        {
+            s32 arrowWidth  = 0.40f*w;
+            s32 arrowHeight = 0.50f*h;
+            
+            s32 startX = x + (w - arrowWidth)/2 - 1;
+            s32 startY = (yPos + (h-arrowHeight)/2);
+            s32 midY = (startY + arrowHeight/2);
+            
+            UIRect norm = ls_uiScreenCoordsToUnitSquare(c, startX, startY, arrowWidth, arrowHeight);
+            f32 leftY = (2.0f*(f32)midY / (f32)c->height)-1.0f;
+            
+            glColor4ub(col.r, col.g, col.b, col.a);
+            glBegin(GL_TRIANGLES);
+            glVertex2f(norm.rightX, norm.botY);
+            glVertex2f(norm.rightX, norm.topY);
+            glVertex2f(norm.leftX, leftY);
+            glEnd();
+            
+        } break;
+    }
+#else
+    
     //TODO: Scissor???
     s32 minX = threadRect.minX;
     s32 minY = threadRect.minY;
@@ -5535,47 +4888,66 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
     
     ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
     
+    //TODO: Fix threadRect pre-calculated bounds checks on every arrow direction!
     if(s == UIA_DOWN)
     {
-        s32 arrowWidth = 8;
-        s32 hBearing = (w - arrowWidth)/2;
-        s32 xBase = xPos+hBearing;
-        s32 xEnd  = xBase + arrowWidth;
+        Color arrowColor = c->borderColor;
         
-        s32 arrowHeight = 4;
-        s32 vBearing = (h - arrowHeight)/2;
-        s32 yStart = (yPos + h - vBearing) - 1;
+        s32 arrowWidth = 0.50f*w;
+        s32 arrowHeight = 0.40f*h;
+        
+        f32 scaling = (f32)arrowHeight / (f32)arrowWidth;
+        f32 progressiveX = 0.0f;
+        
+        s32 xBase = xPos  + (w - arrowWidth)/2;
+        s32 xEnd  = xBase + arrowWidth;
+        s32 xMid  = xBase + arrowWidth/2;
+        
+        s32 yStart = (yPos + h - (h - arrowHeight)/2) - 1;
         s32 yEnd = yStart - arrowHeight;
         
-        if(yStart >= maxY) { yStart = maxY; }
-        if(xBase  < minX)  { xEnd -= (minX - xBase); xBase = minX; }
+        //TODO: This is still wrong with multithreaded
+        //TODO: Could this every invert base and end?
+        if(xBase < minX)   { xBase  = minX; }
+        if(xEnd >= maxX)   { xEnd   = maxX-1; }
+        if(yStart >= maxY) {
+            s32 yAdv = (yStart - maxY + 1);
+            f32 fractAdv = yAdv*scaling;
+            xBase += (s32)fractAdv; xEnd -= (s32)fractAdv;
+            progressiveX = fractAdv - (s32)fractAdv;
+            yStart = maxY-1;
+        }
+        if(yEnd < minY) { yEnd = minY; }
         
         for(s32 y = yStart; y >= yEnd; y--)
         {
-            if(y < minY) { break; }
-            
             for(s32 x = xBase; x < xEnd; x++)
             {
-                if(x >= maxX) { break; }
+                AssertMsg(x >= 0 && x < c->width,  "X out of range. Should have been guarded by thread UI Rects?\n");
+                AssertMsg(y >= 0 && y < c->height, "Y out of range. Should have been guarded by thread UI Rects?\n");
                 
-                if(x < 0 || x >= c->width)  continue;
-                if(y < 0 || y >= c->height) continue;
-                
+                //TODO: Setting fractional alpha on the rows where progressiveX advances a fractional amount
+                //      would allow better `sub-pixel like` blending. Just a tiny thing to make it look better
+                //      at small resolutions.
                 At[y*c->width + x] = c->borderColor.value;
             }
             
-            xBase += 1;
-            xEnd  -= 1;
+            progressiveX += scaling;
+            s32 intProgress = (s32)progressiveX;
+            xBase += intProgress;
+            xEnd  -= intProgress;
+            progressiveX -= intProgress;
         }
+        
     }
     else if(s == UIA_RIGHT)
     {
-        s32 arrowWidth  = 4;
+        s32 arrowWidth  = 0.40f*w;
         s32 hBearing    = (w - arrowWidth)/2;
         s32 xBase       = xPos + hBearing;
         s32 xEnd        = xBase+1;
         
-        s32 arrowHeight = 8;
+        s32 arrowHeight = 0.50f*h;
         s32 vBearing    = (h - arrowHeight)/2;
         s32 yStart1     = (yPos + h - vBearing) - 1;
         s32 yEnd1       = yStart1 - (arrowHeight/2);
@@ -5623,12 +4995,12 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
     }
     else if(s == UIA_LEFT)
     {
-        s32 arrowWidth  = 4;
+        s32 arrowWidth  = 0.40f*w;
         s32 hBearing    = (w - arrowWidth)/2;
         s32 xBase       = xPos + w - hBearing - 1;
         s32 xEnd        = xBase+1;
         
-        s32 arrowHeight = 8;
+        s32 arrowHeight = 0.50f*h;
         s32 vBearing    = (h - arrowHeight)/2;
         s32 yStart1     = (yPos + h - vBearing) - 1;
         s32 yEnd1       = yStart1 - (arrowHeight/2);
@@ -5674,6 +5046,8 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
             xBase += 1;
         }
     }
+    
+#endif
 }
 
 
@@ -5762,40 +5136,42 @@ inline void ls_uiListBoxRemoveEntry(UIContext *c, UIListBox *lb, u32 index)
     ls_fixedArrayRemove(&lb->list, index);
 }
 
-b32 ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer = 0)
+//TODO: Currently the renderer doesn't care if the item's name is too long, and just renders it in full
+b32 ls_uiListBox(UIContext *c, UIListBox *lb, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer = 0)
 {
     Input *UserInput = &c->UserInput;
     b32 inputUse = FALSE;
     
+    //TODO: Why is this constant?
     const s32 arrowBoxWidth = 24;
     if(LeftClickIn(xPos+w, yPos, arrowBoxWidth, h) && ls_uiHasCapture(c, 0))
     {
-        ls_uiFocusChangeSameFrame(c, (u64 *)list);
+        ls_uiFocusChangeSameFrame(c, (u64 *)lb);
         
-        if(list->isOpen) { list->isOpen = FALSE; }
-        //else { list->isOpening = TRUE; } //NOTE:TODO: This is because Claudio wanted instant list open. 
-        else { list->isOpen = TRUE; }
+        if(lb->isOpen) { lb->isOpen = FALSE; }
+        //else { lb->isOpening = TRUE; } //NOTE:TODO: This is because Claudio wanted instant list open. 
+        else { lb->isOpen = TRUE; }
     }
     
     Color bkgColor = c->widgetColor;
     s32 arrowX = xPos + w - 1;
     if(MouseInRect(arrowX, yPos, arrowBoxWidth, h)) { bkgColor = c->highliteColor; }
-    list->arrowBkg = bkgColor;
+    lb->arrowBkg = bkgColor;
     
-    if(list->isOpening)
+    if(lb->isOpening)
     {
-        list->dtOpen += c->dt;
-        if(list->dtOpen > 70) { list->isOpen = TRUE; list->isOpening = FALSE; list->dtOpen = 0; }
+        lb->dtOpen += c->dt;
+        if(lb->dtOpen > 70) { lb->isOpen = TRUE; lb->isOpening = FALSE; lb->dtOpen = 0; }
     }
     
-    if(ls_uiInFocus(c, list))
+    if(ls_uiInFocus(c, lb))
     {
-        if(list->isOpen)
+        if(lb->isOpen)
         {
-            for(u32 i = 0; i < list->list.count; i++)
+            for(u32 i = 0; i < lb->list.count; i++)
             {
                 s32 currY = yPos - (h*(i+1));
-                UIListBoxItem *currItem = list->list + i;
+                UIListBoxItem *currItem = lb->list + i;
                 
                 //TODO: The constant resetting is kinda stupid. Makes me think I should just not
                 //      have listbox items with their own colors. Never even used that feature.
@@ -5805,13 +5181,13 @@ b32 ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h
                 { 
                     currItem->bkgColor = c->highliteColor;
                     if(LeftClick) { 
-                        c->mouseCapture = (u64 *)list;
+                        c->mouseCapture = (u64 *)lb;
                         
-                        list->selectedIndex = i; list->isOpen = FALSE;
+                        lb->selectedIndex = i; lb->isOpen = FALSE;
                         inputUse = TRUE;
                         
-                        //NOTE: list->onSelect
-                        if(list->callback1) { list->callback1(c, list->callback1Data); }
+                        //NOTE: lb->onSelect
+                        if(lb->callback1) { lb->callback1(c, lb->callback1Data); }
                     }
                     
                     //TODO: Lost the ability to hold because of mouse capture.
@@ -5823,19 +5199,21 @@ b32 ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h
         }
     }
     else
-    { list->isOpen = FALSE; }
+    { lb->isOpen = FALSE; }
     
-    s32 maxHeight = (list->list.count)*(h);
+    //TODO: I think it *should* be fine if the count is 0, since the height of the box is set to maxHeight+h
+    //      But i need to test it!
+    s32 maxHeight = (lb->list.count)*(h);
     //NOTE: Here the maxHeight in the command rect is used to determine the maximum height when expanded
     //      the height passed in the layout rect in minY determines the minimum height when contracted.
     //      This also means that yPos is shifted by maxHeight
-    RenderCommand list_command = { UI_RC_LISTBOX, xPos, yPos-maxHeight, w, maxHeight };
+    RenderCommand list_command = { UI_RC_LISTBOX, xPos, yPos-maxHeight, w, maxHeight+h };
     list_command.layout.minY = h;
-    list_command.listBox = list;
+    list_command.listBox = lb;
     ls_uiPushRenderCommand(c, list_command, zLayer);
     
     RenderCommand arr_command = { UI_RC_LISTBOX_ARR, xPos+w, yPos, arrowBoxWidth, h };
-    arr_command.listBox = list;
+    arr_command.listBox = lb;
     ls_uiPushRenderCommand(c, arr_command, zLayer);
     
     return inputUse;
@@ -6154,6 +5532,25 @@ UIColorPicker ls_uiColorPickerInit(UIContext *c, void *userData)
 
 void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor)
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    
+    UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, xPos, yPos, w, h);
+    
+    glBegin(GL_TRIANGLES);
+    glColor4ub(0, 0, 0, 0xFF);
+    glVertex2f(normRect.leftX,  normRect.botY);
+    glVertex2f(normRect.rightX, normRect.botY);
+    
+    glColor4ub(0xFF, 0xFF, 0xFF, 0xFF);
+    glVertex2f(normRect.leftX,  normRect.topY);
+    glVertex2f(normRect.leftX,  normRect.topY);
+    glVertex2f(normRect.rightX, normRect.topY);
+    
+    glColor4ub(0, 0, 0, 0xFF);
+    glVertex2f(normRect.rightX, normRect.botY);
+    glEnd();
+#else
+    
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
     s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
     s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
@@ -6279,12 +5676,71 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
             currGray += step;
         }
     }
+    
+#endif
+}
+
+f32 ls_uiLerp(f32 base, f32 towards, f32 step)
+{
+    return base + step * (towards - base);
+    //return (1.0f - step) * base + step * towards;
 }
 
 //TODO: On my laptop the color wheel appears with a fucked up single tone color. Why?
 void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32 value,
                          UIRect threadRect, UIRect scissor)
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    //TODO: This is not actually equivalent to the software renderer version.
+    //      It's kinda annoying to do in immediate mode.
+    const s32 triangleCount = 100;
+    
+    f32 normCx   = (2.0f*(f32)centerX / (f32)c->width)-1.0f;
+    f32 normCy   = (2.0f*(f32)centerY / (f32)c->height)-1.0f;
+    f32 normRadX = ((f32)radius / (f32)c->width);
+    f32 normRadY = ((f32)radius / (f32)c->height);
+    
+    //NOTE: We start at angle 0, and create triangles by moving one angle step at a time
+    f32 angleStep = TAU / triangleCount;
+    f32 p1X = normCx+normRadX;
+    f32 p1Y = normCy;
+    f32 p2X = normCx+normRadX * cos(angleStep);
+    f32 p2Y = normCy+normRadY * sin(angleStep);
+    
+    f32 baseR = 1.0f;
+    f32 baseG = 0.0f;
+    f32 baseB = 0.0f;
+    f32 step  = 1.0f / ((f32)(triangleCount+1) / 3.0f);
+    
+    glBegin(GL_TRIANGLE_FAN);
+    
+    glColor4ub(0xFF*value, 0xFF*value, 0xFF*value, 0xFF);
+    glVertex2f(normCx, normCy);
+    for(s32 i = 0; i < triangleCount+1; i++)
+    {
+        glColor4ub(baseR*0xFF, baseG*0xFF, baseB*0xFF, 0xFF);
+        glVertex2f(p1X, p1Y);
+        p1X = normCx+normRadX * cos(i*angleStep);
+        p1Y = normCy+normRadY * sin(i*angleStep);
+        
+        if (i < (triangleCount+1)/3) {
+            baseR -= step; if(baseR < 0.0005f) { baseR = 0.0f; }
+            baseG += step; if(baseG > 1.0f)    { baseG = 1.0f; }
+        }
+        else if (i < 2*(triangleCount+1)/3) {
+            baseG -= step; if(baseG < 0.0005f) { baseG = 0.0f; }
+            baseB += step; if(baseB > 1.0f)    { baseB = 1.0f; }
+        }
+        else {
+            baseR += step; if(baseR > 1.0f)    { baseR = 1.0f; }
+            baseB -= step; if(baseB < 0.0005f) { baseB = 0.0f; }
+        }
+    }
+    glVertex2f(normCx+normRadX, normCy);
+    glEnd();
+    
+#else
+    
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
     s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
     s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
@@ -6330,6 +5786,8 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
             }
         }
     }
+    
+#endif
 }
 
 b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
@@ -6400,6 +5858,310 @@ b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 w, s
     return usedInput;
 }
 
+
+#ifndef LS_UI_OPENGL_BACKEND
+
+#if _DEBUG
+static b32 __ui_shouldTag = FALSE;
+#endif
+
+void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
+{
+    AssertMsg(command.type != UI_RC_INVALID,  "Uninitialized Render Command?\n");
+    AssertMsg(zLayer < UI_Z_LAYERS, "zLayer is invalid. A function call did an oopsie\n");
+    
+#if _DEBUG
+    command.UID = RenderCommandUID++;
+#endif
+    
+    command.selectedFont = c->currFont;
+    command.pixelHeight  = c->currPixelHeight;
+    command.scissor      = c->scissor;
+    
+    //NOTE: Normalize the scrolled coordinates, and replace them in the render command.
+    if(c->scroll && command.type != UI_RC_SCROLLBAR)
+    {
+        command.rect.x -= c->scroll->deltaX;
+        command.rect.y -= c->scroll->deltaY;
+        
+        command.layout.startY -= c->scroll->deltaY;
+        command.layout.startX -= c->scroll->deltaX;
+    }
+    
+    UIRect commandRect = command.rect;
+    
+    //NOTETODO: Stupid hack correction.
+    //          Because strings grow downward when creating a layout, and render commands expect objects
+    //          to grow upward, the base Y and height are basically flipped.
+    //          BUT ONLY FOR CHECKS AGAINST THREAD RECTS!
+    if(command.type == UI_RC_LABEL_LAYOUT)
+    {
+        s32 fontHeight = command.selectedFont->pixelHeight;
+        command.rect.y = command.rect.y + fontHeight;
+    }
+    
+    //TODO: The difference between how the command rect and the thread rect's members are used is confusing
+    //      and error prone. One uses x,y,w,h. The other uses minX,minY,maxX,maxY. @ConfusingUnion
+    //      Should probably have 2 different types:
+    //      UIRect       should use (x,y,w,h)
+    //      UIRectRange? should use (minX,minY,maxX,maxY)
+    auto ls_uiRectIsInside = [](UIRect r1, UIRect check) -> b32 {
+        if((r1.x >= check.minX) && ((r1.x + r1.w) <= (check.maxX)))
+        {
+            if((r1.y >= check.minY) && ((r1.y + r1.h) <= (check.maxY)))
+            {
+                return TRUE;
+            }
+        }
+        
+        return FALSE;
+    };
+    
+    auto ls_uiRectIntersects = [](UIRect r1, UIRect check) -> b32 {
+        s32 x0 = r1.x;
+        s32 x1 = r1.x + r1.w;
+        s32 y0 = r1.y;
+        s32 y1 = r1.y + r1.h;
+        
+        b32 cond = (x1 < check.minX || y1 < check.minY || x0 > (check.maxX) || y0 > (check.maxY));
+        return !cond;
+    };
+    
+    //NOTE: All Thread Rects are inclusive on the left/bot, exclusive on the right/top
+    switch(THREAD_COUNT)
+    {
+        case 0:
+        case 1:
+        {
+            command.threadRect = c->renderUIRects[0];
+            
+            stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+            AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
+            
+            ls_stackPush(renderStack, (void *)&command);
+            return;
+        } break;
+        
+        case 2:
+        case 4:
+        case 8:
+        {
+            for(s32 i = 0; i < THREAD_COUNT; i++)
+            {
+                if(ls_uiRectIntersects(commandRect, c->renderUIRects[i]))
+                {
+                    command.threadRect = c->renderUIRects[i];
+                    stack *renderStack = &c->renderGroups[i].RenderCommands[zLayer];
+                    AssertMsgF(renderStack->used < renderStack->capacity, "Out of space in RenderGroup %d\n", i);
+                    ls_stackPush(renderStack, (void *)&command);
+                }
+            }
+            
+            return;
+            
+        } break;
+        
+        default: { AssertMsg(FALSE, "Thread count not supported\n"); } return;
+    }
+    
+    AssertMsg(FALSE, "Should never reach this case!\n");
+}
+#else
+//NOTE: With the OpenGL backend there's no point in deferring the command execution
+void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
+{
+    AssertMsg(command.type != UI_RC_INVALID,  "Uninitialized Render Command?\n");
+    
+    s32 xPos                = command.rect.x;
+    s32 yPos                = command.rect.y;
+    s32 w                   = command.rect.w;
+    s32 h                   = command.rect.h;
+    
+    //UIRect threadRect       = command.threadRect;
+    //UIRect scissor          = command.scissor;
+    Color bkgColor          = command.bkgColor;
+    Color borderColor       = command.borderColor;
+    Color textColor         = command.textColor;
+    
+    UIFont *font            = c->currFont;
+    s32 pixelHeight         = c->currPixelHeight;
+    
+    switch(command.type)
+    {
+        case UI_RC_RECT:
+        {
+            ls_uiBorderedRect(c, xPos, yPos, w, h, {}, {}, bkgColor, borderColor);
+        } break;
+        
+        case UI_RC_LABEL32:
+        {
+            s32 yBaseOff = h - pixelHeight;
+            ls_uiGlyphString(c, font, pixelHeight, xPos, yPos + yBaseOff, 
+                             {}, {}, command.label32, textColor);
+        } break;
+        
+        case UI_RC_LABEL8:
+        {
+            s32 yBaseOff = h - pixelHeight;
+            ls_uiGlyphString(c, font, pixelHeight, xPos, yPos + yBaseOff, 
+                             {}, {}, command.label8, textColor);
+        } break;
+        
+        case UI_RC_SEPARATOR:
+        {
+            ls_uiFillRect(c, xPos, yPos, w, h, {}, {}, borderColor);
+        } break;
+        
+        case UI_RC_BUTTON:
+        {
+            UIButton *button = command.button;
+            
+            if(button->style == UIBUTTON_CLASSIC)
+            {
+                ls_uiBorderedRect(c, xPos, yPos, w, h, {}, {}, bkgColor, borderColor);
+                
+                if(button->name.data)
+                {
+                    s32 strHeight = pixelHeight;
+                    s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
+                    s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
+                    s32 yOff      = strHeight*0.25; //TODO: @FontDescent
+                    
+                    ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, {}, {}, 
+                                     button->name, textColor);
+                }
+            }
+            else if(button->style == UIBUTTON_LINK)
+            {
+                if(button->name.data)
+                {
+                    s32 strHeight = pixelHeight;
+                    s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
+                    s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
+                    s32 yOff      = strHeight*0.25; //TODO: @FontDescent
+                    
+                    ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, {}, {},
+                                     button->name, textColor);
+                }
+            }
+            else if(button->style == UIBUTTON_TEXT_NOBORDER)
+            {
+                ls_uiRect(c, xPos, yPos, w, h, {}, {}, bkgColor);
+                
+                if(button->name.data)
+                {
+                    s32 strHeight = pixelHeight;
+                    s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
+                    s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
+                    s32 yOff      = strHeight*0.25; //TODO: @FontDescent
+                    
+                    ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, {}, {}, 
+                                     button->name, textColor);
+                }
+            }
+            else if(button->style == UIBUTTON_NO_TEXT)
+            {
+                ls_uiRect(c, xPos, yPos, w, h, {}, {}, bkgColor);
+            }
+            else if(button->style == UIBUTTON_BMP)
+            {
+                UIBitmap bmp = { button->bmpData, button->w, button->h };
+                ls_uiBitmap(c, bmp, xPos, yPos, {});
+            }
+            else { AssertMsg(FALSE, "Unhandled button style\n"); }
+            
+        } break;
+        
+        case UI_RC_LISTBOX:
+        {
+            UIListBox *lb = command.listBox;
+            
+            s32 h = command.layout.minY;
+            s32 maxHeight = command.rect.h;
+            s32 origY     = yPos+maxHeight-h;
+            
+            s32 strHeight = pixelHeight; 
+            s32 vertOff = ((h - strHeight) / 2) + 4; //TODO: @FontDescent
+            
+            ls_uiBorderedRect(c, xPos, origY, w, h, {}, {});
+            
+            if(lb->list.count)
+            {
+                utf32 selected = lb->list[lb->selectedIndex].name;
+                ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff, {}, {}, selected, c->textColor);
+            }
+            
+            if(lb->isOpening)
+            {
+                s32 height = 0;
+                if(lb->dtOpen > 17)  { height = maxHeight*0.10f; }
+                if(lb->dtOpen > 34)  { height = maxHeight*0.35f; }
+                if(lb->dtOpen > 52)  { height = maxHeight*0.70f; }
+                
+                if(!lb->isOpen)
+                { ls_uiFillRect(c, xPos+1, origY - height, w-2, height, {}, {}, c->widgetColor); }
+            }
+            
+            if(lb->isOpen)
+            {
+                for(u32 i = 0; i < lb->list.count; i++)
+                {
+                    s32 currY = origY - (h*(i+1));
+                    UIListBoxItem *currItem = lb->list + i;
+                    
+                    ls_uiRect(c, xPos+1, currY, w-2, h, {}, {}, currItem->bkgColor);
+                    ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff - (h*(i+1)),
+                                     {}, {}, currItem->name, currItem->textColor);
+                    
+                }
+                
+                ls_uiBorder(c, xPos, yPos, w, maxHeight+1, {}, {});
+            }
+            
+        } break;
+        
+        //TODO: Why is this a separate command?
+        case UI_RC_LISTBOX_ARR:
+        {
+            ls_uiDrawArrow(c, xPos, yPos, w, h, {}, {}, command.listBox->arrowBkg, UIA_DOWN);
+        } break;
+        
+        case UI_RC_TEXTBOX:
+        {
+            UITextBox *box = command.textBox;
+            
+            Color caretColor = textColor;
+            const s32 horzOff = 4;
+            
+            ls_uiBorderedRect(c, xPos, yPos, w, h, {}, {}, bkgColor);
+            
+            s32 strX = xPos + horzOff;
+            s32 strY = yPos + h - pixelHeight;
+            
+            if(box->align == UI_TB_ALIGN_RIGHT || box->align == UI_TB_ALIGN_CENTER)
+            {
+                ls_uiRenderAlignedStringOnRect(c, font, box, strX, strY, w, h, {}, {}, textColor, c->invTextColor);
+            }
+            else
+            {
+                //NOTETODO: For now we double draw for selected strings. We can improve with 3-segment drawing.
+                ls_uiRenderStringOnRect(c, box, strX, strY, w, h, {}, {}, textColor, c->invTextColor);
+            }
+            
+        } break;
+        
+        
+        default: 
+        { 
+            AssertMsgF(FALSE, "Render Command Type %cs not implemented yet", 
+                       RenderCommandTypeAsString[command.type]);
+        } break;
+    }
+    
+    return;
+}
+#endif
+
 void ls_uiRender(UIContext *c)
 {
 #ifndef LS_UI_OPENGL_BACKEND
@@ -6435,6 +6197,9 @@ void ls_uiRender(UIContext *c)
     c->renderFunc(c);
 }
 
+//TODO: Put the single command handling in a separate function, something like:
+//      ls_uiRenderSingleCommand().
+//      This would allow us to avoid repeating most of the code below in PushRenderCommand in other backends.
 #ifndef LS_UI_OPENGL_BACKEND
 void ls_uiRender__(UIContext *c, u32 threadID)
 {
@@ -6486,7 +6251,6 @@ void ls_uiRender__(UIContext *c, u32 threadID)
         default: { AssertMsg(FALSE, "Unhandled thread count when clearing window\n"); } break;
     }
     
-    
     //NOTE: Render Layers in Z-order. Layer Zero is the first to be rendered, 
     //      so it's the one farther away from the screen
     for(u32 zLayer = 0; zLayer < UI_Z_LAYERS; zLayer++)
@@ -6509,24 +6273,27 @@ void ls_uiRender__(UIContext *c, u32 threadID)
             Color textColor         = curr->textColor;
             
             UIFont *font            = curr->selectedFont;
+            
+            //TODO: I don't know if this is good
+            s32 pixelHeight         = curr->pixelHeight;
 #if _DEBUG
             c->isTagged = curr->isTagged;
 #endif
             
             switch(curr->type)
             {
-                
                 case UI_RC_LABEL8:
                 {
                     //TODO: I don't like this.
-                    s32 yBaseOff = h - font->pixelHeight;
-                    ls_uiGlyphString_8(c, font, xPos, yPos + yBaseOff, threadRect, scissor, curr->label8, textColor);
+                    s32 yBaseOff = h - pixelHeight;
+                    //ls_uiGlyphString_8(c, font, xPos, yPos + yBaseOff, threadRect, scissor, curr->label8, textColor);
+                    ls_uiGlyphString(c, font, pixelHeight, xPos, yPos + yBaseOff, threadRect, scissor, curr->label8, textColor);
                 } break;
                 
                 case UI_RC_LABEL32:
                 {
-                    s32 yBaseOff = h - font->pixelHeight;
-                    ls_uiGlyphString(c, font, xPos, yPos + yBaseOff, threadRect, scissor, curr->label32, textColor);
+                    s32 yBaseOff = h - pixelHeight;
+                    ls_uiGlyphString(c, font, pixelHeight, xPos, yPos + yBaseOff, threadRect, scissor, curr->label32, textColor);
                 } break;
                 
                 case UI_RC_LABEL_LAYOUT:
@@ -6542,7 +6309,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     const s32 horzOff = 4;
                     
                     //TODO: Make the font selection more of a global thing??
-                    s32 strPixelHeight = font->pixelHeight;
+                    s32 strPixelHeight = pixelHeight;
                     
                     ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
                     
@@ -6567,16 +6334,17 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     
                     s32 h = curr->layout.minY;
                     s32 maxHeight = curr->rect.h;
+                    s32 origY     = yPos+maxHeight-h;
                     
-                    s32 strHeight = font->pixelHeight; 
+                    s32 strHeight = pixelHeight; 
                     s32 vertOff = ((h - strHeight) / 2) + 4; //TODO: @FontDescent
                     
-                    ls_uiBorderedRect(c, xPos, yPos+maxHeight, w, h, threadRect, scissor);
+                    ls_uiBorderedRect(c, xPos, origY, w, h, threadRect, scissor);
                     
                     if(list->list.count)
                     {
                         utf32 selected = list->list[list->selectedIndex].name;
-                        ls_uiGlyphString(c, font, xPos+10, yPos + maxHeight + vertOff, threadRect, scissor, selected, c->textColor);
+                        ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff, threadRect, scissor, selected, c->textColor);
                     }
                     
                     if(list->isOpening)
@@ -6587,7 +6355,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         if(list->dtOpen > 52)  { height = maxHeight*0.70f; }
                         
                         if(!list->isOpen)
-                        { ls_uiFillRect(c, xPos+1, yPos + maxHeight - height, w-2, height,
+                        { ls_uiFillRect(c, xPos+1, origY - height, w-2, height,
                                         threadRect, scissor, c->widgetColor); }
                     }
                     
@@ -6595,11 +6363,11 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     {
                         for(u32 i = 0; i < list->list.count; i++)
                         {
-                            s32 currY = yPos + maxHeight - (h*(i+1));
+                            s32 currY = origY - (h*(i+1));
                             UIListBoxItem *currItem = list->list + i;
                             
                             ls_uiRect(c, xPos+1, currY, w-2, h, threadRect, scissor, currItem->bkgColor);
-                            ls_uiGlyphString(c, font, xPos+10, yPos + maxHeight + vertOff - (h*(i+1)),
+                            ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff - (h*(i+1)),
                                              threadRect, scissor, currItem->name, currItem->textColor);
                             
                         }
@@ -6609,6 +6377,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     
                 } break;
                 
+                //TODO: Why is this a separate command?
                 case UI_RC_LISTBOX_ARR:
                 {
                     ls_uiDrawArrow(c, xPos, yPos, w, h,
@@ -6625,12 +6394,12 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         
                         if(button->name.data)
                         {
-                            s32 strHeight = font->pixelHeight;
-                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name).w;
+                            s32 strHeight = pixelHeight;
+                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
                             s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
                             s32 yOff      = strHeight*0.25; //TODO: @FontDescent
                             
-                            ls_uiGlyphString(c, font, xPos+xOff, yPos+yOff, threadRect, scissor, 
+                            ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor, 
                                              button->name, textColor);
                         }
                     }
@@ -6638,12 +6407,12 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     {
                         if(button->name.data)
                         {
-                            s32 strHeight = font->pixelHeight;
-                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name).w;
+                            s32 strHeight = pixelHeight;
+                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
                             s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
                             s32 yOff      = strHeight*0.25; //TODO: @FontDescent
                             
-                            ls_uiGlyphString(c, font, xPos+xOff, yPos+yOff, threadRect, scissor,
+                            ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor,
                                              button->name, textColor);
                         }
                     }
@@ -6653,12 +6422,12 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         
                         if(button->name.data)
                         {
-                            s32 strHeight = font->pixelHeight;
-                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name).w;
+                            s32 strHeight = pixelHeight;
+                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
                             s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
                             s32 yOff      = strHeight*0.25; //TODO: @FontDescent
                             
-                            ls_uiGlyphString(c, font, xPos+xOff, yPos+yOff, threadRect, scissor, 
+                            ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor, 
                                              button->name, textColor);
                         }
                     }
@@ -6668,7 +6437,8 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     }
                     else if(button->style == UIBUTTON_BMP)
                     {
-                        ls_uiBitmap(c, xPos, yPos, button->w, button->h, threadRect, (u32 *)button->bmpData);
+                        UIBitmap bmp = { button->bmpData, button->w, button->h };
+                        ls_uiBitmap(c, bmp, xPos, yPos, threadRect);
                     }
                     else { AssertMsg(FALSE, "Unhandled button style\n"); }
                     
@@ -6682,12 +6452,16 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     {
                         if(check->bmpActive && check->bmpInactive)
                         {
-                            u32 *bmpData = check->isActive ? (u32 *)check->bmpActive : (u32 *)check->bmpInactive;
-                            ls_uiBitmap(c, xPos, yPos, w, h, threadRect, bmpData);
+                            UIBitmap inactive = { check->bmpInactive, check->w, check->h };
+                            UIBitmap active   = { check->bmpActive, check->w, check->h };
+                            
+                            UIBitmap chosen = check->isActive ? active : inactive;
+                            ls_uiBitmap(c, chosen, xPos, yPos, threadRect);
                         }
                         else if(check->bmpInactive && check->bmpAdditive)
                         {
-                            ls_uiBitmap(c, xPos, yPos, check->w, check->h, threadRect, (u32 *)check->bmpInactive);
+                            UIBitmap inactive = { check->bmpInactive, check->w, check->h };
+                            ls_uiBitmap(c, inactive, xPos, yPos, threadRect);
                             if(check->isActive)
                             {
                                 s32 addX = xPos;
@@ -6695,8 +6469,9 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                                 
                                 if(check->addW > check->w) { addX -= (check->addW - check->w) / 2; }
                                 if(check->addH > check->h) { addY -= (check->addH - check->h) / 2; }
-                                ls_uiBitmap(c, addX, addY, check->addW, check->addH,
-                                            threadRect, (u32 *)check->bmpAdditive);
+                                
+                                UIBitmap additive = { check->bmpAdditive, check->w, check->h };
+                                ls_uiBitmap(c, additive, addX, addY, threadRect);
                             }
                         }
                         else { AssertMsg(FALSE, "Unhandled check bmp collection\n"); }
@@ -6734,9 +6509,9 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         utf32 val = { valBuf, 0, 32};
                         ls_utf32FromInt_t(&val, slider->currValue);
                         
-                        s32 strHeight = font->pixelHeight;
+                        s32 strHeight = pixelHeight;
                         
-                        u32 textLen = ls_uiGlyphStringRect(c, font, val).w;
+                        u32 textLen = ls_uiGlyphStringRect(c, font, val, pixelHeight).w;
                         s32 strXPos = xPos + slidePos - textLen - 2;
                         Color textBkgC = slider->lColor;
                         
@@ -6745,7 +6520,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         Color valueColor = c->borderColor;
                         u8 alpha = 0x00 + (slider->isHeld*0xFF);
                         valueColor = SetAlpha(valueColor, alpha);
-                        ls_uiGlyphString(c, font, strXPos, yPos + h - strHeight, threadRect, scissor, val, valueColor);
+                        ls_uiGlyphString(c, font, pixelHeight, strXPos, yPos + h - strHeight, threadRect, scissor, val, valueColor);
                         
                         if(slider->isHot)
                         {
@@ -6774,15 +6549,15 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                     rectColor = SetAlpha(rectColor, opacity);
                     ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, rectColor, borderColor);
                     
-                    s32 strHeight = font->pixelHeight;
-                    s32 strWidth  = ls_uiGlyphStringRect(c, font, slider->text).w;
+                    s32 strHeight = pixelHeight;
+                    s32 strWidth  = ls_uiGlyphStringRect(c, font, slider->text, pixelHeight).w;
                     s32 xOff      = (w - strWidth) / 2;
                     s32 yOff      = (h - strHeight) + 3; //TODO: @FontDescent
                     
                     Color textColor = c->textColor;
                     textColor = SetAlpha(textColor, opacity);
                     
-                    ls_uiGlyphString(c, font, xPos+xOff, yPos + yOff, threadRect, scissor,
+                    ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos + yOff, threadRect, scissor,
                                      slider->text, textColor);
                 } break;
                 
@@ -6801,13 +6576,13 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         
                         s32 subX = xPos + (subIdx*menu->itemWidth);
                         
-                        s32 strWidth = ls_uiGlyphStringRect(c, font, sub->name).w;
+                        s32 strWidth = ls_uiGlyphStringRect(c, font, sub->name, pixelHeight).w;
                         s32 xOff = (subW - strWidth) / 2;
                         s32 yOff = 5;
                         
                         Color subColor = sub->isHot ? c->highliteColor : bkgColor;
                         ls_uiBorderedRect(c, subX, subY, subW, subH, threadRect, scissor, subColor, c->widgetColor);
-                        ls_uiGlyphString(c, font, subX+xOff, subY+yOff, threadRect, scissor, sub->name, textColor);
+                        ls_uiGlyphString(c, font, pixelHeight, subX+xOff, subY+yOff, threadRect, scissor, sub->name, textColor);
                         
                         if(menu->isOpen && (menu->openIdx == subIdx))
                         {
@@ -6820,7 +6595,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                             {
                                 UIMenuItem *item = sub->items + itemIdx;
                                 
-                                strWidth = ls_uiGlyphStringRect(c, font, item->name).w;
+                                strWidth = ls_uiGlyphStringRect(c, font, item->name, pixelHeight).w;
                                 xOff = (subW - strWidth) / 2;
                                 
                                 if(item->isVisible) {
@@ -6834,7 +6609,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                                     ls_uiRect(c, subX, currY, subW, subH, threadRect, scissor, bkgColor);
                                 }
                                 
-                                ls_uiGlyphString(c, font, subX+xOff, currY+yOff, threadRect, scissor,
+                                ls_uiGlyphString(c, font, pixelHeight, subX+xOff, currY+yOff, threadRect, scissor,
                                                  item->name, c->textColor);
                                 
                                 currY -= subH;
@@ -6850,7 +6625,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         s32 realIndex = itemIdx + menu->subMenus.count;
                         s32 itemX = xPos + (realIndex*menu->itemWidth);
                         
-                        s32 strWidth = ls_uiGlyphStringRect(c, font, item->name).w;
+                        s32 strWidth = ls_uiGlyphStringRect(c, font, item->name, pixelHeight).w;
                         s32 xOff = (subW - strWidth) / 2;
                         s32 yOff = 5;
                         
@@ -6858,7 +6633,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         ls_uiBorderedRect(c, itemX, subY, subW, subH,
                                           threadRect, scissor, itemColor, c->widgetColor);
                         
-                        ls_uiGlyphString(c, font, itemX+xOff, subY+yOff, threadRect, scissor,
+                        ls_uiGlyphString(c, font, pixelHeight, itemX+xOff, subY+yOff, threadRect, scissor,
                                          item->name, c->textColor);
                     }
                     
@@ -6941,7 +6716,7 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         s32 rgbX    = picker->centerX - picker->radius;
                         s32 rgbY    = picker->centerY - picker->radius - yMargin;
                         
-                        ls_uiGlyphString(c, font, rgbX, rgbY, threadRect, scissor,
+                        ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor,
                                          ls_utf32Constant(U"RGB"), textColor);
                         
                         
@@ -6950,33 +6725,33 @@ void ls_uiRender__(UIContext *c, u32 threadID)
                         
                         rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, ls_utf32Constant(U"RGB"));
                         ls_utf32FromInt_t(&tmp, picker->pickedColor.r);
-                        ls_uiGlyphString(c, font, rgbX, rgbY, threadRect, scissor, tmp, textColor);
+                        ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor, tmp, textColor);
                         
                         rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
                         ls_utf32FromInt_t(&tmp, picker->pickedColor.g);
-                        ls_uiGlyphString(c, font, rgbX, rgbY, threadRect, scissor, tmp, textColor);
+                        ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor, tmp, textColor);
                         
                         rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
                         ls_utf32FromInt_t(&tmp, picker->pickedColor.b);
-                        ls_uiGlyphString(c, font, rgbX, rgbY, threadRect, scissor, tmp, textColor);
+                        ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor, tmp, textColor);
                         
                         //NOTE: Add HSV Label
                         s32 hsvX = picker->centerX - picker->radius;
                         s32 hsvY = picker->centerY - picker->radius - 2*yMargin;
-                        ls_uiGlyphString(c, font, hsvX, hsvY, threadRect, scissor,
+                        ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor,
                                          ls_utf32Constant(U"HSV"), textColor);
                         
                         hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, ls_utf32Constant(U"HSV"));
                         ls_utf32FromInt_t(&tmp, hue);
-                        ls_uiGlyphString(c, font, hsvX, hsvY, threadRect, scissor, tmp, textColor);
+                        ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor, tmp, textColor);
                         
                         hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
                         ls_utf32FromInt_t(&tmp, saturation*100);
-                        ls_uiGlyphString(c, font, hsvX, hsvY, threadRect, scissor, tmp, textColor);
+                        ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor, tmp, textColor);
                         
                         hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
                         ls_utf32FromInt_t(&tmp, picker->value*100);
-                        ls_uiGlyphString(c, font, hsvX, hsvY, threadRect, scissor, tmp, textColor);
+                        ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor, tmp, textColor);
                         
                     }
                 } break;
