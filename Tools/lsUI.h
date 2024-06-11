@@ -3099,23 +3099,48 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
     }
 }
 
-void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, 
-                             UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
+void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UITextBox *box, s32 xPos, s32 yPos, 
+                             s32 w, s32 h, UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
 {
+    //TODO: Copypasted from ls_uiGlyphString()
+    struct MapEntry
+    { //NOTE: I'm gonna assume this will be packed, being a multiple of 32 bits in size...
+        u32 codepoint;
+        s32 pixelX;
+        s32 pixelY;
+        s32 width;
+        s32 height;
+        s32 xOff;
+        s32 yOff;
+        s32 xAdv;
+        s32 leftSB;
+    };
+    
+    //NOTE: Look for the glyph pixel data in the map
+    auto getMapEntryFromAtlas = [](UIFont *font, u32 codepoint) -> MapEntry *{
+        s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
+        s32 glyphCount = font->cpCount;
+        MapEntry *map  = (MapEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
+        while(glyphCount-- && map->codepoint != codepoint) { map += 1; }
+        AssertMsg(map->codepoint == codepoint, "Glyph Codepoint is not present in Atlas");
+        return map;
+    };
+    
+    
     AssertMsg(c, "Context is null\n");
     AssertMsg(box, "TextBox is null\n");
     AssertMsg(c->currFont, "Current Font is null\n");
     
     s32 cIdx = box->caretIndex-box->currLineBeginIdx;
     
-    //NOTETODO Hacky shit.
-    const s32 lineHeight = 18;
+    f64 scaling          = (f64)pixelHeight / (f64)font->pixelHeight;
+    const s32 lineHeight = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
     
-    //NOTETODO: Hacky shit.
+    //NOTETODO: Hacky shit. Maybe use first glyph x0? Or a fraction of the client width?
     const u32 horzOff = 8;
     const u32 strMaxX = xPos + (w - 2*horzOff);
     
-    //NOTETODO: Hacky shit.
+    //NOTETODO: Hacky shit. Maybe use first glyph y0? Or a fraction of the client height?
     const u32 vertOff = 8;
     const u32 strMaxH = (h-(vertOff*2));
     const u32 vertGlyphOff = 3;
@@ -3127,7 +3152,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
     
     //TODO: SIMD this?
     s32 i = 0;
-    if(box->caretLineIdx > maxLines) { 
+    if(box->caretLineIdx > maxLines) {
         yOffset = box->caretLineIdx - maxLines;
         
         //NOTE: Advance the string vertically to the nth line
@@ -3171,33 +3196,77 @@ void ls_uiRenderStringOnRect(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s
             AssertMsgF(code <= c->currFont->maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
             
             Color actualColor = textColor;
-            UIGlyph *currGlyph = &c->currFont->glyph[code];
+            UIGlyph currGlyph = {};
+            
+            if(font->isAtlas)
+            {
+                MapEntry *map = getMapEntryFromAtlas(font, code);
+                currGlyph = { 
+                    .data = &font->fontAtlasSDF[map->pixelY*font->atlasWidth + map->pixelX],
+                    .width = (u32)map->width,
+                    .height = (u32)map->height,
+                    .x0 = map->xOff,
+                    .y0 = map->yOff,
+                    .y1 = map->height + map->yOff,
+                    .xAdv = map->xAdv,
+                    .yAdv = 0
+                };
+            }
+            else { currGlyph = c->currFont->glyph[code]; }
             
             //TODO: Pretty inefficient to keep redrawing the background all the time.
             if(box->isSelecting && (box->selectBeginLine <= lineIdx) && (box->selectEndLine >= lineIdx)
                && (box->selectBeginIdx <= i) && (box->selectEndIdx > i))
             { 
                 actualColor = invTextColor;
-                ls_uiFillRect(c, currXPos, currYPos, currGlyph->xAdv, lineHeight-vertGlyphOff, 
+                ls_uiFillRect(c, currXPos, currYPos, currGlyph.xAdv, lineHeight, 
                               threadRect, scissor, c->invWidgetColor);
             }
             
-            ls_uiGlyph(c, currXPos, currYPos+vertGlyphOff, threadRect, scissor, currGlyph, actualColor);
-            
-            s32 kernAdvance = 0;
-            if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
-            currXPos += (currGlyph->xAdv + kernAdvance);
-            
+            if(font->isAtlas)
+            {
+                ls_uiSDFGlyph(c, &currGlyph, currXPos, currYPos+vertGlyphOff, font->atlasWidth, scaling,
+                              threadRect, scissor, actualColor);
+                
+                currXPos += currGlyph.xAdv*scaling;
+                if(code == (u32)'\n') { currXPos = xPos; currYPos -= lineHeight; }
+            }
+            else {
+                ls_uiGlyph(c, currXPos, currYPos+vertGlyphOff, threadRect, scissor, &currGlyph, actualColor);
+                
+                s32 kernAdvance = 0;
+                if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
+                currXPos += (currGlyph.xAdv + kernAdvance);
+            }
         }
         
         if(((lineIdx == box->caretLineIdx) && cIdx == line.len)) { caretX = currXPos-3; }
         
         if(box->isCaretOn && (c->currentFocus == (u64 *)box) && (lineIdx == box->caretLineIdx))
         {
-            UIGlyph *currGlyph = &c->currFont->glyph[(char32_t)'|'];
-            ls_uiGlyph(c, caretX, currYPos+vertGlyphOff, threadRect, scissor, currGlyph, textColor);
+            if(font->isAtlas)
+            {
+                MapEntry *map = getMapEntryFromAtlas(font, (u32)'|');
+                UIGlyph caretGlyph = { 
+                    .data = &font->fontAtlasSDF[map->pixelY*font->atlasWidth + map->pixelX],
+                    .width = (u32)map->width,
+                    .height = (u32)map->height,
+                    .x0 = map->xOff,
+                    .y0 = map->yOff,
+                    .y1 = map->height + map->yOff,
+                    .xAdv = map->xAdv,
+                    .yAdv = 0
+                };
+                ls_uiSDFGlyph(c, &caretGlyph, caretX, currYPos+vertGlyphOff, font->atlasWidth, scaling,
+                              threadRect, scissor, textColor);
+            }
+            else
+            {
+                UIGlyph *currGlyph = &c->currFont->glyph[(char32_t)'|'];
+                ls_uiGlyph(c, caretX, currYPos+vertGlyphOff, threadRect, scissor, currGlyph, textColor);
+            }
+            
         }
-        
         
         currYPos -= lineHeight;
         currXPos  = xPos;
@@ -3209,6 +3278,7 @@ template<typename T>
 void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32 yPos,
                       UIRect threadRect, UIRect scissor, T text, Color textColor)
 {
+    //TODO: Copypasted to ls_uiRenderStringOnRect()
     struct MapEntry
     { //NOTE: I'm gonna assume this will be packed, being a multiple of 32 bits in size...
         u32 codepoint;
@@ -3506,6 +3576,30 @@ UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, T text, s32 pixelHeight)
 //      So, maybe either find a way to remove this, or just fit it inside ls_uiTextBox() instead!
 s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
 {
+    //TODO: Copypasted from ls_uiGlyphString()
+    struct MapEntry
+    { //NOTE: I'm gonna assume this will be packed, being a multiple of 32 bits in size...
+        u32 codepoint;
+        s32 pixelX;
+        s32 pixelY;
+        s32 width;
+        s32 height;
+        s32 xOff;
+        s32 yOff;
+        s32 xAdv;
+        s32 leftSB;
+    };
+    
+    //NOTE: Look for the glyph pixel data in the map
+    auto getMapEntryFromAtlas = [](UIFont *font, u32 codepoint) -> MapEntry *{
+        s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
+        s32 glyphCount = font->cpCount;
+        MapEntry *map  = (MapEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
+        while(glyphCount-- && map->codepoint != codepoint) { map += 1; }
+        AssertMsg(map->codepoint == codepoint, "Glyph Codepoint is not present in Atlas");
+        return map;
+    };
+    
     AssertMsg(c, "Context is null\n");
     LogMsg(font, "Passed font is null\n");
     if(!font) { return 0; }
@@ -3513,15 +3607,37 @@ s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
     s32 totalLen = 0;
     for(s32 i = text.len-1; i > 0; i--)
     {
-        u32 indexInGlyphArray = text.data[i];
-        AssertMsgF(indexInGlyphArray <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
+        u32 codepoint = text.data[i];
+        AssertMsgF(codepoint <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
         
-        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
+        if(font->isAtlas)
+        {
+            //TODO: Annoying c->currPixelHeight
+            f32 scaling = c->currPixelHeight / font->pixelHeight;
+            MapEntry *map = getMapEntryFromAtlas(font, codepoint);
+            UIGlyph currGlyph = { 
+                .data = &font->fontAtlasSDF[map->pixelY*font->atlasWidth + map->pixelX],
+                .width = (u32)map->width,
+                .height = (u32)map->height,
+                .x0 = map->xOff,
+                .y0 = map->yOff,
+                .y1 = map->height + map->yOff,
+                .xAdv = map->xAdv,
+                .yAdv = 0
+            };
+            
+            totalLen += map->xAdv*scaling;
+        }
+        else
+        {
+            UIGlyph *currGlyph = &font->glyph[codepoint];
+            
+            s32 kernAdvance = 0;
+            if(i > 0) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i-1], text.data[i]); }
+            
+            totalLen += (currGlyph->xAdv + kernAdvance);
+        }
         
-        s32 kernAdvance = 0;
-        if(i > 0) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i-1], text.data[i]); }
-        
-        totalLen += (currGlyph->xAdv + kernAdvance);
         if(totalLen >= maxLen) { return i; }
     }
     
@@ -5968,6 +6084,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
 }
 #else
 //NOTE: With the OpenGL backend there's no point in deferring the command execution
+void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr);
 void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
 {
     AssertMsg(command.type != UI_RC_INVALID,  "Uninitialized Render Command?\n");
@@ -5983,180 +6100,10 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     Color borderColor       = command.borderColor;
     Color textColor         = command.textColor;
     
-    UIFont *font            = c->currFont;
-    s32 pixelHeight         = c->currPixelHeight;
+    command.selectedFont    = c->currFont;
+    command.pixelHeight     = c->currPixelHeight;
     
-    switch(command.type)
-    {
-        case UI_RC_RECT:
-        {
-            ls_uiBorderedRect(c, xPos, yPos, w, h, {}, {}, bkgColor, borderColor);
-        } break;
-        
-        case UI_RC_LABEL32:
-        {
-            s32 yBaseOff = h - pixelHeight;
-            ls_uiGlyphString(c, font, pixelHeight, xPos, yPos + yBaseOff, 
-                             {}, {}, command.label32, textColor);
-        } break;
-        
-        case UI_RC_LABEL8:
-        {
-            s32 yBaseOff = h - pixelHeight;
-            ls_uiGlyphString(c, font, pixelHeight, xPos, yPos + yBaseOff, 
-                             {}, {}, command.label8, textColor);
-        } break;
-        
-        case UI_RC_SEPARATOR:
-        {
-            ls_uiFillRect(c, xPos, yPos, w, h, {}, {}, borderColor);
-        } break;
-        
-        case UI_RC_BUTTON:
-        {
-            UIButton *button = command.button;
-            
-            if(button->style == UIBUTTON_CLASSIC)
-            {
-                ls_uiBorderedRect(c, xPos, yPos, w, h, {}, {}, bkgColor, borderColor);
-                
-                if(button->name.data)
-                {
-                    s32 strHeight = pixelHeight;
-                    s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
-                    s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
-                    s32 yOff      = strHeight*0.25; //TODO: @FontDescent
-                    
-                    ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, {}, {}, 
-                                     button->name, textColor);
-                }
-            }
-            else if(button->style == UIBUTTON_LINK)
-            {
-                if(button->name.data)
-                {
-                    s32 strHeight = pixelHeight;
-                    s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
-                    s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
-                    s32 yOff      = strHeight*0.25; //TODO: @FontDescent
-                    
-                    ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, {}, {},
-                                     button->name, textColor);
-                }
-            }
-            else if(button->style == UIBUTTON_TEXT_NOBORDER)
-            {
-                ls_uiRect(c, xPos, yPos, w, h, {}, {}, bkgColor);
-                
-                if(button->name.data)
-                {
-                    s32 strHeight = pixelHeight;
-                    s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
-                    s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
-                    s32 yOff      = strHeight*0.25; //TODO: @FontDescent
-                    
-                    ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, {}, {}, 
-                                     button->name, textColor);
-                }
-            }
-            else if(button->style == UIBUTTON_NO_TEXT)
-            {
-                ls_uiRect(c, xPos, yPos, w, h, {}, {}, bkgColor);
-            }
-            else if(button->style == UIBUTTON_BMP)
-            {
-                UIBitmap bmp = { button->bmpData, button->w, button->h };
-                ls_uiBitmap(c, bmp, xPos, yPos, {});
-            }
-            else { AssertMsg(FALSE, "Unhandled button style\n"); }
-            
-        } break;
-        
-        case UI_RC_LISTBOX:
-        {
-            UIListBox *lb = command.listBox;
-            
-            s32 h = command.layout.minY;
-            s32 maxHeight = command.rect.h;
-            s32 origY     = yPos+maxHeight-h;
-            
-            s32 strHeight = pixelHeight; 
-            s32 vertOff = ((h - strHeight) / 2) + 4; //TODO: @FontDescent
-            
-            ls_uiBorderedRect(c, xPos, origY, w, h, {}, {});
-            
-            if(lb->list.count)
-            {
-                utf32 selected = lb->list[lb->selectedIndex].name;
-                ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff, {}, {}, selected, c->textColor);
-            }
-            
-            if(lb->isOpening)
-            {
-                s32 height = 0;
-                if(lb->dtOpen > 17)  { height = maxHeight*0.10f; }
-                if(lb->dtOpen > 34)  { height = maxHeight*0.35f; }
-                if(lb->dtOpen > 52)  { height = maxHeight*0.70f; }
-                
-                if(!lb->isOpen)
-                { ls_uiFillRect(c, xPos+1, origY - height, w-2, height, {}, {}, c->widgetColor); }
-            }
-            
-            if(lb->isOpen)
-            {
-                for(u32 i = 0; i < lb->list.count; i++)
-                {
-                    s32 currY = origY - (h*(i+1));
-                    UIListBoxItem *currItem = lb->list + i;
-                    
-                    ls_uiRect(c, xPos+1, currY, w-2, h, {}, {}, currItem->bkgColor);
-                    ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff - (h*(i+1)),
-                                     {}, {}, currItem->name, currItem->textColor);
-                    
-                }
-                
-                ls_uiBorder(c, xPos, yPos, w, maxHeight+1, {}, {});
-            }
-            
-        } break;
-        
-        //TODO: Why is this a separate command?
-        case UI_RC_LISTBOX_ARR:
-        {
-            ls_uiDrawArrow(c, xPos, yPos, w, h, {}, {}, command.listBox->arrowBkg, UIA_DOWN);
-        } break;
-        
-        case UI_RC_TEXTBOX:
-        {
-            UITextBox *box = command.textBox;
-            
-            Color caretColor = textColor;
-            const s32 horzOff = 4;
-            
-            ls_uiBorderedRect(c, xPos, yPos, w, h, {}, {}, bkgColor);
-            
-            s32 strX = xPos + horzOff;
-            s32 strY = yPos + h - pixelHeight;
-            
-            if(box->align == UI_TB_ALIGN_RIGHT || box->align == UI_TB_ALIGN_CENTER)
-            {
-                ls_uiRenderAlignedStringOnRect(c, font, box, strX, strY, w, h, {}, {}, textColor, c->invTextColor);
-            }
-            else
-            {
-                //NOTETODO: For now we double draw for selected strings. We can improve with 3-segment drawing.
-                ls_uiRenderStringOnRect(c, box, strX, strY, w, h, {}, {}, textColor, c->invTextColor);
-            }
-            
-        } break;
-        
-        
-        default: 
-        { 
-            AssertMsgF(FALSE, "Render Command Type %cs not implemented yet", 
-                       RenderCommandTypeAsString[command.type]);
-        } break;
-    }
+    ls_uiRenderSingleCommand(c, &command);
     
     return;
 }
@@ -6195,6 +6142,513 @@ void ls_uiRender(UIContext *c)
 #endif
     
     c->renderFunc(c);
+}
+
+void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
+{
+    s32 xPos                = curr->rect.x;
+    s32 yPos                = curr->rect.y;
+    s32 w                   = curr->rect.w;
+    s32 h                   = curr->rect.h;
+    
+    UIRect threadRect       = curr->threadRect;
+    UIRect scissor          = curr->scissor;
+    Color bkgColor          = curr->bkgColor;
+    Color borderColor       = curr->borderColor;
+    Color textColor         = curr->textColor;
+    
+    UIFont *font            = curr->selectedFont;
+    
+    //TODO: I don't know if this is good
+    s32 pixelHeight         = curr->pixelHeight;
+    
+#if _DEBUG
+    c->isTagged = curr->isTagged;
+#endif
+    
+    switch(curr->type)
+    {
+        case UI_RC_LABEL8:
+        {
+            //TODO: I don't like this.
+            s32 yBaseOff = h - pixelHeight;
+            //ls_uiGlyphString_8(c, font, xPos, yPos + yBaseOff, threadRect, scissor, curr->label8, textColor);
+            ls_uiGlyphString(c, font, pixelHeight, xPos, yPos + yBaseOff, threadRect, scissor, curr->label8, textColor);
+        } break;
+        
+        case UI_RC_LABEL32:
+        {
+            s32 yBaseOff = h - pixelHeight;
+            ls_uiGlyphString(c, font, pixelHeight, xPos, yPos + yBaseOff, threadRect, scissor, curr->label32, textColor);
+        } break;
+        
+        case UI_RC_LABEL_LAYOUT:
+        {
+            ls_uiGlyphStringInLayout(c, font, curr->layout, threadRect, scissor, curr->label32, textColor);
+        } break;
+        
+        case UI_RC_TEXTBOX:
+        {
+            UITextBox *box = curr->textBox;
+            
+            Color caretColor = textColor;
+            const s32 horzOff = 4;
+            
+            ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
+            
+            s32 strX = xPos + horzOff;
+            s32 strY = yPos + h - pixelHeight;
+            
+            if(box->align == UI_TB_ALIGN_RIGHT || box->align == UI_TB_ALIGN_CENTER)
+            {
+                ls_uiRenderAlignedStringOnRect(c, font, box, strX, strY, w, h, threadRect, scissor, textColor, c->invTextColor);
+            }
+            else
+            {
+                //NOTETODO: For now we double draw for selected strings. We can improve with 3-segment drawing.
+                ls_uiRenderStringOnRect(c, font, pixelHeight, box, strX, strY, w, h, threadRect, scissor, 
+                                        textColor, c->invTextColor);
+            }
+            
+        } break;
+        
+        case UI_RC_LISTBOX:
+        {
+            UIListBox *list = curr->listBox;
+            
+            s32 h = curr->layout.minY;
+            s32 maxHeight = curr->rect.h;
+            s32 origY     = yPos+maxHeight-h;
+            
+            s32 strHeight = pixelHeight; 
+            s32 vertOff = ((h - strHeight) / 2) + 4; //TODO: @FontDescent
+            
+            ls_uiBorderedRect(c, xPos, origY, w, h, threadRect, scissor);
+            
+            if(list->list.count)
+            {
+                utf32 selected = list->list[list->selectedIndex].name;
+                ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff, threadRect, scissor, selected, c->textColor);
+            }
+            
+            if(list->isOpening)
+            {
+                s32 height = 0;
+                if(list->dtOpen > 17)  { height = maxHeight*0.10f; }
+                if(list->dtOpen > 34)  { height = maxHeight*0.35f; }
+                if(list->dtOpen > 52)  { height = maxHeight*0.70f; }
+                
+                if(!list->isOpen)
+                { ls_uiFillRect(c, xPos+1, origY - height, w-2, height,
+                                threadRect, scissor, c->widgetColor); }
+            }
+            
+            if(list->isOpen)
+            {
+                for(u32 i = 0; i < list->list.count; i++)
+                {
+                    s32 currY = origY - (h*(i+1));
+                    UIListBoxItem *currItem = list->list + i;
+                    
+                    ls_uiRect(c, xPos+1, currY, w-2, h, threadRect, scissor, currItem->bkgColor);
+                    ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff - (h*(i+1)),
+                                     threadRect, scissor, currItem->name, currItem->textColor);
+                    
+                }
+                
+                ls_uiBorder(c, xPos, yPos, w, maxHeight+1, threadRect, scissor);
+            }
+            
+        } break;
+        
+        //TODO: Why is this a separate command?
+        case UI_RC_LISTBOX_ARR:
+        {
+            ls_uiDrawArrow(c, xPos, yPos, w, h,
+                           threadRect, scissor, curr->listBox->arrowBkg, UIA_DOWN);
+        } break;
+        
+        case UI_RC_BUTTON:
+        {
+            UIButton *button = curr->button;
+            
+            if(button->style == UIBUTTON_CLASSIC)
+            {
+                ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor, borderColor);
+                
+                if(button->name.data)
+                {
+                    s32 strHeight = pixelHeight;
+                    s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
+                    s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
+                    s32 yOff      = strHeight*0.25; //TODO: @FontDescent
+                    
+                    ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor, 
+                                     button->name, textColor);
+                }
+            }
+            else if(button->style == UIBUTTON_LINK)
+            {
+                if(button->name.data)
+                {
+                    s32 strHeight = pixelHeight;
+                    s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
+                    s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
+                    s32 yOff      = strHeight*0.25; //TODO: @FontDescent
+                    
+                    ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor,
+                                     button->name, textColor);
+                }
+            }
+            else if(button->style == UIBUTTON_TEXT_NOBORDER)
+            {
+                ls_uiRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
+                
+                if(button->name.data)
+                {
+                    s32 strHeight = pixelHeight;
+                    s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
+                    s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
+                    s32 yOff      = strHeight*0.25; //TODO: @FontDescent
+                    
+                    ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor, 
+                                     button->name, textColor);
+                }
+            }
+            else if(button->style == UIBUTTON_NO_TEXT)
+            {
+                ls_uiRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
+            }
+            else if(button->style == UIBUTTON_BMP)
+            {
+                UIBitmap bmp = { button->bmpData, button->w, button->h };
+                ls_uiBitmap(c, bmp, xPos, yPos, threadRect);
+            }
+            else { AssertMsg(FALSE, "Unhandled button style\n"); }
+            
+        } break;
+        
+        case UI_RC_CHECK:
+        {
+            UICheck *check = curr->check;
+            
+            if(check->style == UICHECK_BMP)
+            {
+                if(check->bmpActive && check->bmpInactive)
+                {
+                    UIBitmap inactive = { check->bmpInactive, check->w, check->h };
+                    UIBitmap active   = { check->bmpActive, check->w, check->h };
+                    
+                    UIBitmap chosen = check->isActive ? active : inactive;
+                    ls_uiBitmap(c, chosen, xPos, yPos, threadRect);
+                }
+                else if(check->bmpInactive && check->bmpAdditive)
+                {
+                    UIBitmap inactive = { check->bmpInactive, check->w, check->h };
+                    ls_uiBitmap(c, inactive, xPos, yPos, threadRect);
+                    if(check->isActive)
+                    {
+                        s32 addX = xPos;
+                        s32 addY = yPos;
+                        
+                        if(check->addW > check->w) { addX -= (check->addW - check->w) / 2; }
+                        if(check->addH > check->h) { addY -= (check->addH - check->h) / 2; }
+                        
+                        UIBitmap additive = { check->bmpAdditive, check->w, check->h };
+                        ls_uiBitmap(c, additive, addX, addY, threadRect);
+                    }
+                }
+                else { AssertMsg(FALSE, "Unhandled check bmp collection\n"); }
+            }
+            else { AssertMsg(FALSE, "Unhandled check style\n"); }
+            
+        } break;
+        
+        case UI_RC_SLIDER:
+        {
+            //TODO: There seems to be a rendering bug in here. the top right square of pixels
+            //      in the colored slider area seem to not be properly colored.
+            
+            UISlider *slider = curr->slider;
+            
+            //NOTE: Box Slider Branchless Opacity Check
+            //u8 opacity = 0xEE - (0xB0*slider->isHeld);
+            u8 opacity = 0xC0 - (0xB0*slider->isHeld);
+            
+            if(slider->style == SL_BOX)
+            {
+                s32 slideWidth = 3;
+                
+                //NOTE: Not necessary. The border is drawn anyway later to display text. 
+                //ls_uiBorder(c, xPos, yPos, w, h, threadRect,);
+                
+                s32 slidePos = w*slider->currPos;
+                s32 lColorW = slidePos == w ? slidePos-2 : slidePos;
+                s32 rColorW = w-slidePos-2;
+                ls_uiFillRect(c, xPos+1, yPos+1, lColorW, h-2, threadRect, scissor, slider->lColor);
+                ls_uiFillRect(c, xPos+slidePos+1, yPos+1, rColorW, h-2,
+                              threadRect, scissor, slider->rColor);
+                
+                u32 valBuf[32] = {};
+                utf32 val = { valBuf, 0, 32};
+                ls_utf32FromInt_t(&val, slider->currValue);
+                
+                s32 strHeight = pixelHeight;
+                
+                u32 textLen = ls_uiGlyphStringRect(c, font, val, pixelHeight).w;
+                s32 strXPos = xPos + slidePos - textLen - 2;
+                Color textBkgC = slider->lColor;
+                
+                if(strXPos < xPos+1) { strXPos = xPos + slidePos + slideWidth + 2; textBkgC = slider->rColor; }
+                
+                Color valueColor = c->borderColor;
+                u8 alpha = 0x00 + (slider->isHeld*0xFF);
+                valueColor = SetAlpha(valueColor, alpha);
+                ls_uiGlyphString(c, font, pixelHeight, strXPos, yPos + h - strHeight, threadRect, scissor, val, valueColor);
+                
+                if(slider->isHot)
+                {
+                    s32 actualX = (xPos + slidePos) - 1;
+                    s32 actualY = yPos - 2;
+                    
+                    s32 actualWidth  = slideWidth+2;
+                    s32 actualHeight = 4 + h;
+                    
+                    ls_uiFillRect(c, actualX, actualY, actualWidth, actualHeight,
+                                  threadRect, scissor, c->borderColor);
+                }
+                else
+                {
+                    ls_uiFillRect(c, xPos+slidePos, yPos, slideWidth, h,
+                                  threadRect, scissor, c->borderColor);
+                }
+                
+            }
+            else if(slider->style == SL_LINE)
+            { AssertMsg(FALSE, "Slider style line is not implemented\n"); }
+            
+            //NOTE: Draw the displayed text, and hide through Alpha the slider info.
+            
+            Color rectColor = c->widgetColor;
+            rectColor = SetAlpha(rectColor, opacity);
+            ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, rectColor, borderColor);
+            
+            s32 strHeight = pixelHeight;
+            s32 strWidth  = ls_uiGlyphStringRect(c, font, slider->text, pixelHeight).w;
+            s32 xOff      = (w - strWidth) / 2;
+            s32 yOff      = (h - strHeight) + 3; //TODO: @FontDescent
+            
+            Color textColor = c->textColor;
+            textColor = SetAlpha(textColor, opacity);
+            
+            ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos + yOff, threadRect, scissor,
+                             slider->text, textColor);
+        } break;
+        
+        case UI_RC_MENU:
+        {
+            UIMenu *menu = curr->menu;
+            ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor, c->widgetColor);
+            
+            s32 subY = yPos;
+            s32 subW = menu->itemWidth;
+            s32 subH = h;
+            
+            for(u32 subIdx = 0; subIdx < menu->subMenus.count; subIdx++)
+            {
+                UISubMenu *sub = menu->subMenus + subIdx;
+                
+                s32 subX = xPos + (subIdx*menu->itemWidth);
+                
+                s32 strWidth = ls_uiGlyphStringRect(c, font, sub->name, pixelHeight).w;
+                s32 xOff = (subW - strWidth) / 2;
+                s32 yOff = 5;
+                
+                Color subColor = sub->isHot ? c->highliteColor : bkgColor;
+                ls_uiBorderedRect(c, subX, subY, subW, subH, threadRect, scissor, subColor, c->widgetColor);
+                ls_uiGlyphString(c, font, pixelHeight, subX+xOff, subY+yOff, threadRect, scissor, sub->name, textColor);
+                
+                if(menu->isOpen && (menu->openIdx == subIdx))
+                {
+                    u32 openSubHeight = subH*sub->items.count;
+                    ls_uiBorderedRect(c, subX, subY-openSubHeight, subW, openSubHeight+1,
+                                      threadRect, scissor, bkgColor, c->widgetColor);
+                    
+                    u32 currY = subY-subH;
+                    for(u32 itemIdx = 0; itemIdx < sub->items.count; itemIdx++)
+                    {
+                        UIMenuItem *item = sub->items + itemIdx;
+                        
+                        strWidth = ls_uiGlyphStringRect(c, font, item->name, pixelHeight).w;
+                        xOff = (subW - strWidth) / 2;
+                        
+                        if(item->isVisible) {
+                            if(item->isHot) {
+                                ls_uiRect(c, subX, currY, subW, subH, threadRect, scissor, c->highliteColor);
+                            }
+                        }
+                        else
+                        {
+                            Color bkgColor = ls_uiAlphaBlend(c->widgetColor, RGBg(0xAA));
+                            ls_uiRect(c, subX, currY, subW, subH, threadRect, scissor, bkgColor);
+                        }
+                        
+                        ls_uiGlyphString(c, font, pixelHeight, subX+xOff, currY+yOff, threadRect, scissor,
+                                         item->name, c->textColor);
+                        
+                        currY -= subH;
+                    }
+                }
+            }
+            
+            
+            for(u32 itemIdx = 0; itemIdx < menu->items.count; itemIdx++)
+            {
+                UIMenuItem *item = menu->items + itemIdx;
+                
+                s32 realIndex = itemIdx + menu->subMenus.count;
+                s32 itemX = xPos + (realIndex*menu->itemWidth);
+                
+                s32 strWidth = ls_uiGlyphStringRect(c, font, item->name, pixelHeight).w;
+                s32 xOff = (subW - strWidth) / 2;
+                s32 yOff = 5;
+                
+                Color itemColor = item->isHot ? c->highliteColor : bkgColor;
+                ls_uiBorderedRect(c, itemX, subY, subW, subH,
+                                  threadRect, scissor, itemColor, c->widgetColor);
+                
+                ls_uiGlyphString(c, font, pixelHeight, itemX+xOff, subY+yOff, threadRect, scissor,
+                                 item->name, c->textColor);
+            }
+            
+        } break;
+        
+        case UI_RC_RECT:
+        {
+            ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor, borderColor);
+        } break;
+        
+        case UI_RC_SEPARATOR:
+        {
+            ls_uiFillRect(c, xPos, yPos, w, h, threadRect, scissor, borderColor);
+        } break;
+        
+        case UI_RC_SCROLLBAR:
+        {
+            //TODO: Differentiate between horizontal and vertical scrollbars
+            s32 scrollRectX = xPos + w - 16;
+            ls_uiBorderedRect(c, scrollRectX, yPos, 16, h-1, threadRect, scissor);
+            
+            //NOTE: Calculate current scrollbar position
+            s32 scrollBarH   = 30;
+            s32 usableHeight = h - 4 - scrollBarH;
+            s32 totalHeight  = curr->scroll.y - curr->scroll.minY;
+            
+            s32 scrollBarYOff = ((f32)-curr->scroll.deltaY / (f32)totalHeight) * usableHeight;
+            s32 scrollBarY    = (yPos + h - 4) - scrollBarYOff - scrollBarH;
+            
+            if(scrollBarY < yPos+2)                  { scrollBarY = yPos+2; }
+            if(scrollBarY > yPos+h-2-scrollBarH)     { scrollBarY = yPos+h-2-scrollBarH; }
+            
+            ls_uiFillRect(c, scrollRectX+2, scrollBarY, 12, scrollBarH,
+                          threadRect, scissor, c->borderColor);
+        } break;
+        
+        case UI_RC_TEXTURED_RECT:
+        {
+            ls_uiStretchBitmap(c, threadRect, curr->rect, &curr->bitmap);
+        } break;
+        
+        case UI_RC_COLOR_PICKER:
+        {
+            UIColorPicker *picker = curr->colorPicker;
+            
+            ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor);
+            
+            ls_uiFillColorWheel(c, picker->centerX, picker->centerY, 
+                                picker->radius, picker->value, threadRect, scissor);
+            
+            ls_uiColorValueRect(c, picker->valueRectX, picker->valueRectY, 
+                                picker->valueRectW, picker->valueRectH, threadRect, scissor);
+            
+            //NOTE: Create a visible white rectangle around the selected value
+            ls_uiBorder(c, picker->valueRectX, picker->valueRectY + (picker->valueRectH*picker->value) - 4, picker->valueRectW, 8, threadRect, scissor, RGBg(0xFF));
+            
+            if(picker->hasPicked == TRUE)
+            {
+                s32 cX = picker->pickedX - picker->centerX;
+                s32 cY = picker->pickedY - picker->centerY;
+                
+                f32 saturation = ls_sqrt(cX*cX + cY*cY) / (f32)picker->radius;
+                saturation     = ls_clamp(saturation*1.00f, 1.0f, 0.0f);
+                
+                f32 angle = ls_atan2((f32)cY, (f32)cX) / PI;
+                s32 hue   = (angle*180) + 179;
+                
+                picker->pickedColor = ls_uiHSVtoRGB(hue, saturation, picker->value);
+                
+                //NOTE: Draw a small circle around the selected color
+                ls_uiCircle(c, picker->pickedX, picker->pickedY, 
+                            picker->radius*0.1f+2, 2, threadRect, scissor, RGBg(0x0));
+                ls_uiCircle(c, picker->pickedX, picker->pickedY, 
+                            picker->radius*0.1f, 2, threadRect, scissor, RGBg(0xFF));
+                
+                
+                //NOTE: Add RGB Label
+                s32 xMargin = w*0.15f;
+                s32 yMargin = h*0.07f;
+                s32 rgbX    = picker->centerX - picker->radius;
+                s32 rgbY    = picker->centerY - picker->radius - yMargin;
+                
+                ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor,
+                                 ls_utf32Constant(U"RGB"), textColor);
+                
+                
+                u32 numberBuff[32] = {};
+                utf32 tmp = { numberBuff, 0, 32 };
+                
+                rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, ls_utf32Constant(U"RGB"));
+                ls_utf32FromInt_t(&tmp, picker->pickedColor.r);
+                ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor, tmp, textColor);
+                
+                rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
+                ls_utf32FromInt_t(&tmp, picker->pickedColor.g);
+                ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor, tmp, textColor);
+                
+                rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
+                ls_utf32FromInt_t(&tmp, picker->pickedColor.b);
+                ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor, tmp, textColor);
+                
+                //NOTE: Add HSV Label
+                s32 hsvX = picker->centerX - picker->radius;
+                s32 hsvY = picker->centerY - picker->radius - 2*yMargin;
+                ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor,
+                                 ls_utf32Constant(U"HSV"), textColor);
+                
+                hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, ls_utf32Constant(U"HSV"));
+                ls_utf32FromInt_t(&tmp, hue);
+                ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor, tmp, textColor);
+                
+                hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
+                ls_utf32FromInt_t(&tmp, saturation*100);
+                ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor, tmp, textColor);
+                
+                hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
+                ls_utf32FromInt_t(&tmp, picker->value*100);
+                ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor, tmp, textColor);
+                
+            }
+        } break;
+        
+        default: { 
+            char error[128]   = "Unhandled Render Command Type ";
+            u32 cmdTypeStrLen = ls_len((char*)RenderCommandTypeAsString[curr->type]);
+            ls_memcpy((void *)RenderCommandTypeAsString[curr->type], (void *)(error + 30), cmdTypeStrLen);
+            error[30+cmdTypeStrLen] = '\n';
+            
+            AssertMsg(FALSE, (char *)error);
+        } break;
+    }
 }
 
 //TODO: Put the single command handling in a separate function, something like:
@@ -6260,511 +6714,8 @@ void ls_uiRender__(UIContext *c, u32 threadID)
         s32 count = currLayer->count;
         for(u32 commandIdx = 0; commandIdx < count; commandIdx++)
         {
-            RenderCommand *curr     = (RenderCommand *)ls_stackPop(currLayer);
-            s32 xPos                = curr->rect.x;
-            s32 yPos                = curr->rect.y;
-            s32 w                   = curr->rect.w;
-            s32 h                   = curr->rect.h;
-            
-            UIRect threadRect       = curr->threadRect;
-            UIRect scissor          = curr->scissor;
-            Color bkgColor          = curr->bkgColor;
-            Color borderColor       = curr->borderColor;
-            Color textColor         = curr->textColor;
-            
-            UIFont *font            = curr->selectedFont;
-            
-            //TODO: I don't know if this is good
-            s32 pixelHeight         = curr->pixelHeight;
-#if _DEBUG
-            c->isTagged = curr->isTagged;
-#endif
-            
-            switch(curr->type)
-            {
-                case UI_RC_LABEL8:
-                {
-                    //TODO: I don't like this.
-                    s32 yBaseOff = h - pixelHeight;
-                    //ls_uiGlyphString_8(c, font, xPos, yPos + yBaseOff, threadRect, scissor, curr->label8, textColor);
-                    ls_uiGlyphString(c, font, pixelHeight, xPos, yPos + yBaseOff, threadRect, scissor, curr->label8, textColor);
-                } break;
-                
-                case UI_RC_LABEL32:
-                {
-                    s32 yBaseOff = h - pixelHeight;
-                    ls_uiGlyphString(c, font, pixelHeight, xPos, yPos + yBaseOff, threadRect, scissor, curr->label32, textColor);
-                } break;
-                
-                case UI_RC_LABEL_LAYOUT:
-                {
-                    ls_uiGlyphStringInLayout(c, font, curr->layout, threadRect, scissor, curr->label32, textColor);
-                } break;
-                
-                case UI_RC_TEXTBOX:
-                {
-                    UITextBox *box = curr->textBox;
-                    
-                    Color caretColor = textColor;
-                    const s32 horzOff = 4;
-                    
-                    //TODO: Make the font selection more of a global thing??
-                    s32 strPixelHeight = pixelHeight;
-                    
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
-                    
-                    s32 strX = xPos + horzOff;
-                    s32 strY = yPos + h - strPixelHeight;
-                    
-                    if(box->align == UI_TB_ALIGN_RIGHT || box->align == UI_TB_ALIGN_CENTER)
-                    {
-                        ls_uiRenderAlignedStringOnRect(c, font, box, strX, strY, w, h, threadRect, scissor, textColor, c->invTextColor);
-                    }
-                    else
-                    {
-                        //NOTETODO: For now we double draw for selected strings. We can improve with 3-segment drawing.
-                        ls_uiRenderStringOnRect(c, box, strX, strY, w, h, threadRect, scissor, textColor, c->invTextColor);
-                    }
-                    
-                } break;
-                
-                case UI_RC_LISTBOX:
-                {
-                    UIListBox *list = curr->listBox;
-                    
-                    s32 h = curr->layout.minY;
-                    s32 maxHeight = curr->rect.h;
-                    s32 origY     = yPos+maxHeight-h;
-                    
-                    s32 strHeight = pixelHeight; 
-                    s32 vertOff = ((h - strHeight) / 2) + 4; //TODO: @FontDescent
-                    
-                    ls_uiBorderedRect(c, xPos, origY, w, h, threadRect, scissor);
-                    
-                    if(list->list.count)
-                    {
-                        utf32 selected = list->list[list->selectedIndex].name;
-                        ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff, threadRect, scissor, selected, c->textColor);
-                    }
-                    
-                    if(list->isOpening)
-                    {
-                        s32 height = 0;
-                        if(list->dtOpen > 17)  { height = maxHeight*0.10f; }
-                        if(list->dtOpen > 34)  { height = maxHeight*0.35f; }
-                        if(list->dtOpen > 52)  { height = maxHeight*0.70f; }
-                        
-                        if(!list->isOpen)
-                        { ls_uiFillRect(c, xPos+1, origY - height, w-2, height,
-                                        threadRect, scissor, c->widgetColor); }
-                    }
-                    
-                    if(list->isOpen)
-                    {
-                        for(u32 i = 0; i < list->list.count; i++)
-                        {
-                            s32 currY = origY - (h*(i+1));
-                            UIListBoxItem *currItem = list->list + i;
-                            
-                            ls_uiRect(c, xPos+1, currY, w-2, h, threadRect, scissor, currItem->bkgColor);
-                            ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff - (h*(i+1)),
-                                             threadRect, scissor, currItem->name, currItem->textColor);
-                            
-                        }
-                        
-                        ls_uiBorder(c, xPos, yPos, w, maxHeight+1, threadRect, scissor);
-                    }
-                    
-                } break;
-                
-                //TODO: Why is this a separate command?
-                case UI_RC_LISTBOX_ARR:
-                {
-                    ls_uiDrawArrow(c, xPos, yPos, w, h,
-                                   threadRect, scissor, curr->listBox->arrowBkg, UIA_DOWN);
-                } break;
-                
-                case UI_RC_BUTTON:
-                {
-                    UIButton *button = curr->button;
-                    
-                    if(button->style == UIBUTTON_CLASSIC)
-                    {
-                        ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor, borderColor);
-                        
-                        if(button->name.data)
-                        {
-                            s32 strHeight = pixelHeight;
-                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
-                            s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
-                            s32 yOff      = strHeight*0.25; //TODO: @FontDescent
-                            
-                            ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor, 
-                                             button->name, textColor);
-                        }
-                    }
-                    else if(button->style == UIBUTTON_LINK)
-                    {
-                        if(button->name.data)
-                        {
-                            s32 strHeight = pixelHeight;
-                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
-                            s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
-                            s32 yOff      = strHeight*0.25; //TODO: @FontDescent
-                            
-                            ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor,
-                                             button->name, textColor);
-                        }
-                    }
-                    else if(button->style == UIBUTTON_TEXT_NOBORDER)
-                    {
-                        ls_uiRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
-                        
-                        if(button->name.data)
-                        {
-                            s32 strHeight = pixelHeight;
-                            s32 strWidth  = ls_uiGlyphStringRect(c, font, button->name, pixelHeight).w;
-                            s32 xOff      = (w - strWidth) / 2; //TODO: What happens when the string is too long?
-                            s32 yOff      = strHeight*0.25; //TODO: @FontDescent
-                            
-                            ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor, 
-                                             button->name, textColor);
-                        }
-                    }
-                    else if(button->style == UIBUTTON_NO_TEXT)
-                    {
-                        ls_uiRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
-                    }
-                    else if(button->style == UIBUTTON_BMP)
-                    {
-                        UIBitmap bmp = { button->bmpData, button->w, button->h };
-                        ls_uiBitmap(c, bmp, xPos, yPos, threadRect);
-                    }
-                    else { AssertMsg(FALSE, "Unhandled button style\n"); }
-                    
-                } break;
-                
-                case UI_RC_CHECK:
-                {
-                    UICheck *check = curr->check;
-                    
-                    if(check->style == UICHECK_BMP)
-                    {
-                        if(check->bmpActive && check->bmpInactive)
-                        {
-                            UIBitmap inactive = { check->bmpInactive, check->w, check->h };
-                            UIBitmap active   = { check->bmpActive, check->w, check->h };
-                            
-                            UIBitmap chosen = check->isActive ? active : inactive;
-                            ls_uiBitmap(c, chosen, xPos, yPos, threadRect);
-                        }
-                        else if(check->bmpInactive && check->bmpAdditive)
-                        {
-                            UIBitmap inactive = { check->bmpInactive, check->w, check->h };
-                            ls_uiBitmap(c, inactive, xPos, yPos, threadRect);
-                            if(check->isActive)
-                            {
-                                s32 addX = xPos;
-                                s32 addY = yPos;
-                                
-                                if(check->addW > check->w) { addX -= (check->addW - check->w) / 2; }
-                                if(check->addH > check->h) { addY -= (check->addH - check->h) / 2; }
-                                
-                                UIBitmap additive = { check->bmpAdditive, check->w, check->h };
-                                ls_uiBitmap(c, additive, addX, addY, threadRect);
-                            }
-                        }
-                        else { AssertMsg(FALSE, "Unhandled check bmp collection\n"); }
-                    }
-                    else { AssertMsg(FALSE, "Unhandled check style\n"); }
-                    
-                } break;
-                
-                case UI_RC_SLIDER:
-                {
-                    //TODO: There seems to be a rendering bug in here. the top right square of pixels
-                    //      in the colored slider area seem to not be properly colored.
-                    
-                    UISlider *slider = curr->slider;
-                    
-                    //NOTE: Box Slider Branchless Opacity Check
-                    //u8 opacity = 0xEE - (0xB0*slider->isHeld);
-                    u8 opacity = 0xC0 - (0xB0*slider->isHeld);
-                    
-                    if(slider->style == SL_BOX)
-                    {
-                        s32 slideWidth = 3;
-                        
-                        //NOTE: Not necessary. The border is drawn anyway later to display text. 
-                        //ls_uiBorder(c, xPos, yPos, w, h, threadRect,);
-                        
-                        s32 slidePos = w*slider->currPos;
-                        s32 lColorW = slidePos == w ? slidePos-2 : slidePos;
-                        s32 rColorW = w-slidePos-2;
-                        ls_uiFillRect(c, xPos+1, yPos+1, lColorW, h-2, threadRect, scissor, slider->lColor);
-                        ls_uiFillRect(c, xPos+slidePos+1, yPos+1, rColorW, h-2,
-                                      threadRect, scissor, slider->rColor);
-                        
-                        u32 valBuf[32] = {};
-                        utf32 val = { valBuf, 0, 32};
-                        ls_utf32FromInt_t(&val, slider->currValue);
-                        
-                        s32 strHeight = pixelHeight;
-                        
-                        u32 textLen = ls_uiGlyphStringRect(c, font, val, pixelHeight).w;
-                        s32 strXPos = xPos + slidePos - textLen - 2;
-                        Color textBkgC = slider->lColor;
-                        
-                        if(strXPos < xPos+1) { strXPos = xPos + slidePos + slideWidth + 2; textBkgC = slider->rColor; }
-                        
-                        Color valueColor = c->borderColor;
-                        u8 alpha = 0x00 + (slider->isHeld*0xFF);
-                        valueColor = SetAlpha(valueColor, alpha);
-                        ls_uiGlyphString(c, font, pixelHeight, strXPos, yPos + h - strHeight, threadRect, scissor, val, valueColor);
-                        
-                        if(slider->isHot)
-                        {
-                            s32 actualX = (xPos + slidePos) - 1;
-                            s32 actualY = yPos - 2;
-                            
-                            s32 actualWidth  = slideWidth+2;
-                            s32 actualHeight = 4 + h;
-                            
-                            ls_uiFillRect(c, actualX, actualY, actualWidth, actualHeight,
-                                          threadRect, scissor, c->borderColor);
-                        }
-                        else
-                        {
-                            ls_uiFillRect(c, xPos+slidePos, yPos, slideWidth, h,
-                                          threadRect, scissor, c->borderColor);
-                        }
-                        
-                    }
-                    else if(slider->style == SL_LINE)
-                    { AssertMsg(FALSE, "Slider style line is not implemented\n"); }
-                    
-                    //NOTE: Draw the displayed text, and hide through Alpha the slider info.
-                    
-                    Color rectColor = c->widgetColor;
-                    rectColor = SetAlpha(rectColor, opacity);
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, rectColor, borderColor);
-                    
-                    s32 strHeight = pixelHeight;
-                    s32 strWidth  = ls_uiGlyphStringRect(c, font, slider->text, pixelHeight).w;
-                    s32 xOff      = (w - strWidth) / 2;
-                    s32 yOff      = (h - strHeight) + 3; //TODO: @FontDescent
-                    
-                    Color textColor = c->textColor;
-                    textColor = SetAlpha(textColor, opacity);
-                    
-                    ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos + yOff, threadRect, scissor,
-                                     slider->text, textColor);
-                } break;
-                
-                case UI_RC_MENU:
-                {
-                    UIMenu *menu = curr->menu;
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor, c->widgetColor);
-                    
-                    s32 subY = yPos;
-                    s32 subW = menu->itemWidth;
-                    s32 subH = h;
-                    
-                    for(u32 subIdx = 0; subIdx < menu->subMenus.count; subIdx++)
-                    {
-                        UISubMenu *sub = menu->subMenus + subIdx;
-                        
-                        s32 subX = xPos + (subIdx*menu->itemWidth);
-                        
-                        s32 strWidth = ls_uiGlyphStringRect(c, font, sub->name, pixelHeight).w;
-                        s32 xOff = (subW - strWidth) / 2;
-                        s32 yOff = 5;
-                        
-                        Color subColor = sub->isHot ? c->highliteColor : bkgColor;
-                        ls_uiBorderedRect(c, subX, subY, subW, subH, threadRect, scissor, subColor, c->widgetColor);
-                        ls_uiGlyphString(c, font, pixelHeight, subX+xOff, subY+yOff, threadRect, scissor, sub->name, textColor);
-                        
-                        if(menu->isOpen && (menu->openIdx == subIdx))
-                        {
-                            u32 openSubHeight = subH*sub->items.count;
-                            ls_uiBorderedRect(c, subX, subY-openSubHeight, subW, openSubHeight+1,
-                                              threadRect, scissor, bkgColor, c->widgetColor);
-                            
-                            u32 currY = subY-subH;
-                            for(u32 itemIdx = 0; itemIdx < sub->items.count; itemIdx++)
-                            {
-                                UIMenuItem *item = sub->items + itemIdx;
-                                
-                                strWidth = ls_uiGlyphStringRect(c, font, item->name, pixelHeight).w;
-                                xOff = (subW - strWidth) / 2;
-                                
-                                if(item->isVisible) {
-                                    if(item->isHot) {
-                                        ls_uiRect(c, subX, currY, subW, subH, threadRect, scissor, c->highliteColor);
-                                    }
-                                }
-                                else
-                                {
-                                    Color bkgColor = ls_uiAlphaBlend(c->widgetColor, RGBg(0xAA));
-                                    ls_uiRect(c, subX, currY, subW, subH, threadRect, scissor, bkgColor);
-                                }
-                                
-                                ls_uiGlyphString(c, font, pixelHeight, subX+xOff, currY+yOff, threadRect, scissor,
-                                                 item->name, c->textColor);
-                                
-                                currY -= subH;
-                            }
-                        }
-                    }
-                    
-                    
-                    for(u32 itemIdx = 0; itemIdx < menu->items.count; itemIdx++)
-                    {
-                        UIMenuItem *item = menu->items + itemIdx;
-                        
-                        s32 realIndex = itemIdx + menu->subMenus.count;
-                        s32 itemX = xPos + (realIndex*menu->itemWidth);
-                        
-                        s32 strWidth = ls_uiGlyphStringRect(c, font, item->name, pixelHeight).w;
-                        s32 xOff = (subW - strWidth) / 2;
-                        s32 yOff = 5;
-                        
-                        Color itemColor = item->isHot ? c->highliteColor : bkgColor;
-                        ls_uiBorderedRect(c, itemX, subY, subW, subH,
-                                          threadRect, scissor, itemColor, c->widgetColor);
-                        
-                        ls_uiGlyphString(c, font, pixelHeight, itemX+xOff, subY+yOff, threadRect, scissor,
-                                         item->name, c->textColor);
-                    }
-                    
-                } break;
-                
-                case UI_RC_RECT:
-                {
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor, borderColor);
-                } break;
-                
-                case UI_RC_SEPARATOR:
-                {
-                    ls_uiFillRect(c, xPos, yPos, w, h, threadRect, scissor, borderColor);
-                } break;
-                
-                case UI_RC_SCROLLBAR:
-                {
-                    //TODO: Differentiate between horizontal and vertical scrollbars
-                    s32 scrollRectX = xPos + w - 16;
-                    ls_uiBorderedRect(c, scrollRectX, yPos, 16, h-1, threadRect, scissor);
-                    
-                    //NOTE: Calculate current scrollbar position
-                    s32 scrollBarH   = 30;
-                    s32 usableHeight = h - 4 - scrollBarH;
-                    s32 totalHeight  = curr->scroll.y - curr->scroll.minY;
-                    
-                    s32 scrollBarYOff = ((f32)-curr->scroll.deltaY / (f32)totalHeight) * usableHeight;
-                    s32 scrollBarY    = (yPos + h - 4) - scrollBarYOff - scrollBarH;
-                    
-                    if(scrollBarY < yPos+2)                  { scrollBarY = yPos+2; }
-                    if(scrollBarY > yPos+h-2-scrollBarH)     { scrollBarY = yPos+h-2-scrollBarH; }
-                    
-                    ls_uiFillRect(c, scrollRectX+2, scrollBarY, 12, scrollBarH,
-                                  threadRect, scissor, c->borderColor);
-                } break;
-                
-                case UI_RC_TEXTURED_RECT:
-                {
-                    ls_uiStretchBitmap(c, threadRect, curr->rect, &curr->bitmap);
-                } break;
-                
-                case UI_RC_COLOR_PICKER:
-                {
-                    UIColorPicker *picker = curr->colorPicker;
-                    
-                    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor);
-                    
-                    ls_uiFillColorWheel(c, picker->centerX, picker->centerY, 
-                                        picker->radius, picker->value, threadRect, scissor);
-                    
-                    ls_uiColorValueRect(c, picker->valueRectX, picker->valueRectY, 
-                                        picker->valueRectW, picker->valueRectH, threadRect, scissor);
-                    
-                    //NOTE: Create a visible white rectangle around the selected value
-                    ls_uiBorder(c, picker->valueRectX, picker->valueRectY + (picker->valueRectH*picker->value) - 4, picker->valueRectW, 8, threadRect, scissor, RGBg(0xFF));
-                    
-                    if(picker->hasPicked == TRUE)
-                    {
-                        s32 cX = picker->pickedX - picker->centerX;
-                        s32 cY = picker->pickedY - picker->centerY;
-                        
-                        f32 saturation = ls_sqrt(cX*cX + cY*cY) / (f32)picker->radius;
-                        saturation     = ls_clamp(saturation*1.00f, 1.0f, 0.0f);
-                        
-                        f32 angle = ls_atan2((f32)cY, (f32)cX) / PI;
-                        s32 hue   = (angle*180) + 179;
-                        
-                        picker->pickedColor = ls_uiHSVtoRGB(hue, saturation, picker->value);
-                        
-                        //NOTE: Draw a small circle around the selected color
-                        ls_uiCircle(c, picker->pickedX, picker->pickedY, 
-                                    picker->radius*0.1f+2, 2, threadRect, scissor, RGBg(0x0));
-                        ls_uiCircle(c, picker->pickedX, picker->pickedY, 
-                                    picker->radius*0.1f, 2, threadRect, scissor, RGBg(0xFF));
-                        
-                        
-                        //NOTE: Add RGB Label
-                        s32 xMargin = w*0.15f;
-                        s32 yMargin = h*0.07f;
-                        s32 rgbX    = picker->centerX - picker->radius;
-                        s32 rgbY    = picker->centerY - picker->radius - yMargin;
-                        
-                        ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor,
-                                         ls_utf32Constant(U"RGB"), textColor);
-                        
-                        
-                        u32 numberBuff[32] = {};
-                        utf32 tmp = { numberBuff, 0, 32 };
-                        
-                        rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, ls_utf32Constant(U"RGB"));
-                        ls_utf32FromInt_t(&tmp, picker->pickedColor.r);
-                        ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor, tmp, textColor);
-                        
-                        rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
-                        ls_utf32FromInt_t(&tmp, picker->pickedColor.g);
-                        ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor, tmp, textColor);
-                        
-                        rgbX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
-                        ls_utf32FromInt_t(&tmp, picker->pickedColor.b);
-                        ls_uiGlyphString(c, font, pixelHeight, rgbX, rgbY, threadRect, scissor, tmp, textColor);
-                        
-                        //NOTE: Add HSV Label
-                        s32 hsvX = picker->centerX - picker->radius;
-                        s32 hsvY = picker->centerY - picker->radius - 2*yMargin;
-                        ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor,
-                                         ls_utf32Constant(U"HSV"), textColor);
-                        
-                        hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, ls_utf32Constant(U"HSV"));
-                        ls_utf32FromInt_t(&tmp, hue);
-                        ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor, tmp, textColor);
-                        
-                        hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
-                        ls_utf32FromInt_t(&tmp, saturation*100);
-                        ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor, tmp, textColor);
-                        
-                        hsvX += xMargin;// + ls_uiGlyphStringLen(c, font, tmp);
-                        ls_utf32FromInt_t(&tmp, picker->value*100);
-                        ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor, tmp, textColor);
-                        
-                    }
-                } break;
-                
-                default: { 
-                    char error[128]   = "Unhandled Render Command Type ";
-                    u32 cmdTypeStrLen = ls_len((char*)RenderCommandTypeAsString[curr->type]);
-                    ls_memcpy((void *)RenderCommandTypeAsString[curr->type], (void *)(error + 30), cmdTypeStrLen);
-                    error[30+cmdTypeStrLen] = '\n';
-                    
-                    AssertMsg(FALSE, (char *)error);
-                } break;
-            }
+            RenderCommand *curr = (RenderCommand *)ls_stackPop(currLayer);
+            ls_uiRenderSingleCommand(c, curr);
         }
     }
     
