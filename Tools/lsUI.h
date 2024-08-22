@@ -84,7 +84,7 @@ if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
 #define WheelRotatedIn(x, y, w, h) (WheelRotated && MouseInRect(x, y, w, h))
 
 
-const     u32 THREAD_COUNT       = 8;
+const     u32 THREAD_COUNT       = 0;
 constexpr u32 RENDER_GROUP_COUNT = THREAD_COUNT == 0 ? 1 : THREAD_COUNT;
 
 //-------------------------
@@ -171,6 +171,19 @@ struct UIGlyph
     
     s32 xAdv;
     s32 yAdv;
+};
+
+struct UIAtlasEntry
+{
+    u32 codepoint;
+    s32 pixelX;
+    s32 pixelY;
+    s32 width;
+    s32 height;
+    s32 xOff;
+    s32 yOff;
+    s32 xAdv;
+    s32 leftSB;
 };
 
 enum UIFontSize
@@ -634,7 +647,7 @@ struct UIContext
     
 #ifndef LS_UI_OPENGL_BACKEND
     RenderGroup renderGroups[RENDER_GROUP_COUNT];
-    UIRect      renderUIRects[THREAD_COUNT];
+    UIRect      renderUIRects[RENDER_GROUP_COUNT];
     
     CONDITION_VARIABLE startRender;
     CRITICAL_SECTION crit;
@@ -1559,8 +1572,8 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
                                    RenderCallback cb = __ui_default_windows_render_callback)
 {
     Arena contextArena = ls_arenaCreate(contextArenaSize);
-    Arena frameArena = ls_arenaCreate(frameArenaSize);
-    Arena widgetArena = ls_arenaCreate(widgetArenaSize);
+    Arena frameArena   = ls_arenaCreate(frameArenaSize);
+    Arena widgetArena  = ls_arenaCreate(widgetArenaSize);
     return ls_uiInitDefaultContext(backBuffer, width, height, contextArena, frameArena, widgetArena, cb);
 }
 
@@ -2805,6 +2818,10 @@ void ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, UIRect threadRe
 //TODO: I don't like that uiGlyph and SDFGlyph are separate functions...
 void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, UIRect threadRect, UIRect scissor, UIGlyph *glyph, Color textColor)
 {
+    AssertNonNull(c);
+    AssertNonNull(glyph);
+    if(glyph->width == 0 || glyph->height == 0) { return; }
+    
     s32 minX = threadRect.minX;
     s32 minY = threadRect.minY;
     s32 maxX = threadRect.maxX;
@@ -2850,9 +2867,80 @@ void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, UIRect threadRect, UIRect scis
     }
 }
 
+UIAtlasEntry *ls_uiGetAtlasEntry(UIFont *font, u32 codepoint);
+#ifdef LS_UI_OPENGL_BACKEND
+void ls_uiSDFGlyph(UIContext *c, UIFont *font, u32 codepoint, s32 xPos, s32 yPos, s32 stride, f64 scaling, 
+                   UIRect threadRect, UIRect scissor, Color textColor)
+#else
 void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride, f64 scaling, 
                    UIRect threadRect, UIRect scissor, Color textColor)
+#endif
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    UIAtlasEntry *map = ls_uiGetAtlasEntry(font, codepoint);
+    
+    f64 texelLeft  = (f64)map->pixelX / (f64)font->atlasWidth;
+    f64 texelRight = (f64)(map->pixelX+map->width) / (f64)font->atlasWidth;
+    f64 texelBot   = (f64)map->pixelY / (f64)font->atlasHeight;
+    f64 texelTop   = (f64)(map->pixelY+map->height) / (f64)font->atlasHeight;
+    
+    //TODOf32 limitAlpha = (f32)map->onEdgeValue / 255.0f;
+    f32 limitAlpha = 160.0f / 255.0f;
+    
+    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+    //   ----> https://github.com/nothings/stb/issues/450
+    // Proper vertical positioning of a glyph requires this y1 computation.
+    // Basically, (y1 - y0) == Height of the bounding box
+    // y1 represents the portion of the glyph below the baseline (usually positive)
+    // y0 represents the portion of the glyph above the baseline (usually negative)
+    // The font ascent represents the highest point from the baseline a glyph will draw (usually positive)
+    // The descent represent the lowest point from the baseline a glyph will draw (usually negative)
+    // The line gap is simply the distance between two separate lines (usually positive)
+    // Thus to compute the distance between 2 consecutive lines baselines you do:
+    //  linespace = ascent - descent + linegap
+    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
+    s32 y1 = map->height*scaling + map->yOff*scaling;
+    s32 realY = yPos - y1;
+    
+    UIRect norm = ls_uiScreenCoordsToUnitSquare(c, xPos, realY, 
+                                                map->width*scaling, map->height*scaling);
+    
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, limitAlpha);
+    
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, font->texID);
+    //TODO: We will care about these kinda stuff in the near future
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
+    f32 colorRed   = (f32)textColor.r / 255.0f;
+    f32 colorGreen = (f32)textColor.g / 255.0f;
+    f32 colorBlue  = (f32)textColor.b / 255.0f;
+    glColor4f(colorRed, colorGreen, colorBlue, 1.0f);
+    glBegin(GL_TRIANGLES);
+    
+    glTexCoord2f(texelLeft,  texelBot); glVertex2f(norm.leftX,  norm.topY);
+    glTexCoord2f(texelLeft,  texelTop); glVertex2f(norm.leftX,  norm.botY);
+    glTexCoord2f(texelRight, texelBot); glVertex2f(norm.rightX, norm.topY);
+    glTexCoord2f(texelRight, texelBot); glVertex2f(norm.rightX, norm.topY);
+    glTexCoord2f(texelLeft,  texelTop); glVertex2f(norm.leftX,  norm.botY);
+    glTexCoord2f(texelRight, texelTop); glVertex2f(norm.rightX, norm.botY);
+    
+    glEnd();
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_ALPHA_TEST);
+    
+#else
+    
+    AssertNonNull(c);
+    AssertNonNull(glyph);
+    if(glyph->width == 0 || glyph->height == 0) { return; }
+    
     auto bl_interp = [stride](UIGlyph *glyph, f64 x, f64 y) -> f64 {
         //NOTE: Calculate the Integer and Fractional parts of the coordinates
         s32 x0 = (s32)x;
@@ -2937,6 +3025,7 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
             At[backbufferY * c->width + backbufferX] = final.value;
         }
     }
+#endif
 }
 
 
@@ -3003,8 +3092,6 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
             i += 1;
         }
     }
-    
-    s32 adjustedCaretLine = box->caretLineIdx - yOffset;
     
     s32 currXPos = xPos;
     s32 currYPos = yPos;
@@ -3099,42 +3186,19 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
     }
 }
 
+UIGlyph ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint);
 void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UITextBox *box, s32 xPos, s32 yPos, 
                              s32 w, s32 h, UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
 {
-    //TODO: Copypasted from ls_uiGlyphString()
-    struct MapEntry
-    { //NOTE: I'm gonna assume this will be packed, being a multiple of 32 bits in size...
-        u32 codepoint;
-        s32 pixelX;
-        s32 pixelY;
-        s32 width;
-        s32 height;
-        s32 xOff;
-        s32 yOff;
-        s32 xAdv;
-        s32 leftSB;
-    };
-    
-    //NOTE: Look for the glyph pixel data in the map
-    auto getMapEntryFromAtlas = [](UIFont *font, u32 codepoint) -> MapEntry *{
-        s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
-        s32 glyphCount = font->cpCount;
-        MapEntry *map  = (MapEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
-        while(glyphCount-- && map->codepoint != codepoint) { map += 1; }
-        AssertMsg(map->codepoint == codepoint, "Glyph Codepoint is not present in Atlas");
-        return map;
-    };
-    
-    
     AssertMsg(c, "Context is null\n");
     AssertMsg(box, "TextBox is null\n");
     AssertMsg(c->currFont, "Current Font is null\n");
     
     s32 cIdx = box->caretIndex-box->currLineBeginIdx;
     
-    f64 scaling          = (f64)pixelHeight / (f64)font->pixelHeight;
-    const s32 lineHeight = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
+    f64 scaling    = (f64)pixelHeight / (f64)font->pixelHeight;
+    s32 lineHeight = font->pixelHeight*1.1f;
+    if(font->isAtlas) { lineHeight = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling; }
     
     //NOTETODO: Hacky shit. Maybe use first glyph x0? Or a fraction of the client width?
     const u32 horzOff = 8;
@@ -3151,45 +3215,67 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
     s32 maxLines = strMaxH / lineHeight;
     
     //TODO: SIMD this?
-    s32 i = 0;
+    //NOTE: This is used to offset the textbox string data, and start rendering from the actually visible part
+    //      Since when scrolled the earlier characters should not be rendered.
+    s32 viewStartIdx = 0;
     if(box->caretLineIdx > maxLines) {
         yOffset = box->caretLineIdx - maxLines;
+        s32 tmpYOff = yOffset;
         
         //NOTE: Advance the string vertically to the nth line
-        while(yOffset)
+        while(tmpYOff)
         {
-            u32 code = box->text.data[i];
+            u32 code = box->text.data[viewStartIdx];
             AssertMsgF(code <= c->currFont->maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
             
-            if(code == (char32_t)'\n') { yOffset -= 1; }
-            i += 1;
+            if(code == (char32_t)'\n') { tmpYOff -= 1; }
+            viewStartIdx += 1;
         }
     }
     
-    s32 adjustedCaretLine = box->caretLineIdx - yOffset;
-    
     s32 currXPos = xPos;
     s32 currYPos = yPos;
+    s32 relativeCaretLineIdx = box->caretLineIdx - yOffset;
     u32 code    = 0;
     
-    utf32 realString = { box->text.data + i, box->text.len - i, box->text.size - i };
+    utf32 realString = { box->text.data + viewStartIdx, box->text.len - viewStartIdx, box->text.size - viewStartIdx };
     uview lineView = ls_uviewCreate(realString);
     
-    for(u32 lineIdx = 0; lineIdx < (box->lineCount+1-yOffset); lineIdx++)
+    //NOTE: This is the index into the entire original string data for the textbox.
+    //      This is necessary because some textbox metadata (like selection begin/end indices) are absolute
+    //      (so relative to the beginning of the entire textbox string, rather than its line). And if we need to
+    //      compare against them, we need an absolute index into the string, rather then an index relative to the
+    //      currently rendered line.
+    s32 absoluteTextIdx = viewStartIdx;
+    for(u32 lineIdx = 0; lineIdx < box->lineCount; lineIdx++)
     {
+        //NOTE: Stop rendering lines below the border of the box
+        if(lineIdx > maxLines) { break; }
+        s32 relativeLineIdx = lineIdx + yOffset;
+        
         lineView = ls_uviewNextLine(lineView);
         utf32 line = lineView.s;
         
-        i += xOffset;
+        //NOTE: xOffset will only be > 0 when scrolled right.
+        // We must not advance more than a given line's length,
+        // Otherwise the successive lines will have their absoluteTextIdx
+        // wrongly offsetted
+        if(line.len < xOffset) { absoluteTextIdx += line.len; }
+        else                   { absoluteTextIdx += xOffset; }
+        
         u32 lIdx = xOffset;
         s32 caretX = currXPos-3;
-        for(; lIdx < line.len; lIdx++, i++)
+        for(; lIdx < line.len; lIdx++, absoluteTextIdx++)
         {
-            if((lineIdx == box->caretLineIdx) && (cIdx == lIdx)) { caretX = currXPos-3; }
+            if((lineIdx == relativeCaretLineIdx) && (cIdx == lIdx)) { caretX = currXPos-3; }
+            
+            //NOTE: If we're trying to render data past the current view (scrolled away to the right)
+            //      We just stop. We re-adjust the caret position if necessary, and advance the
+            //      absoluteTextIdx to take into consideration the missed iterations.
             if(currXPos > strMaxX)
             {
-                if((lineIdx == box->caretLineIdx) && (cIdx == lIdx+1)) { caretX = currXPos-3; }
-                i += line.len - lIdx; break;
+                if((lineIdx == relativeCaretLineIdx) && (cIdx == lIdx+1)) { caretX = currXPos-3; }
+                absoluteTextIdx += (line.len - lIdx); break;
             }
             
             code = line.data[lIdx];
@@ -3198,38 +3284,30 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
             Color actualColor = textColor;
             UIGlyph currGlyph = {};
             
-            if(font->isAtlas)
-            {
-                MapEntry *map = getMapEntryFromAtlas(font, code);
-                currGlyph = { 
-                    .data = &font->fontAtlasSDF[map->pixelY*font->atlasWidth + map->pixelX],
-                    .width = (u32)map->width,
-                    .height = (u32)map->height,
-                    .x0 = map->xOff,
-                    .y0 = map->yOff,
-                    .y1 = map->height + map->yOff,
-                    .xAdv = map->xAdv,
-                    .yAdv = 0
-                };
-            }
-            else { currGlyph = c->currFont->glyph[code]; }
+            if(font->isAtlas) { currGlyph = ls_uiGetGlyphFromAtlas(font, code); }
+            else              { currGlyph = c->currFont->glyph[code]; }
             
             //TODO: Pretty inefficient to keep redrawing the background all the time.
-            if(box->isSelecting && (box->selectBeginLine <= lineIdx) && (box->selectEndLine >= lineIdx)
-               && (box->selectBeginIdx <= i) && (box->selectEndIdx > i))
+            if(box->isSelecting && (box->selectBeginLine <= relativeLineIdx) && (box->selectEndLine >= relativeLineIdx)
+               && (box->selectBeginIdx <= absoluteTextIdx) && (box->selectEndIdx > absoluteTextIdx))
             { 
                 actualColor = invTextColor;
-                ls_uiFillRect(c, currXPos, currYPos, currGlyph.xAdv, lineHeight, 
-                              threadRect, scissor, c->invWidgetColor);
+                
+                s32 xAdv = currGlyph.xAdv;
+                if(font->isAtlas) { xAdv *= scaling; }
+                ls_uiFillRect(c, currXPos, currYPos, xAdv, lineHeight, threadRect, scissor, c->invWidgetColor);
             }
             
             if(font->isAtlas)
             {
+#ifdef LS_UI_OPENGL_BACKEND
+                ls_uiSDFGlyph(c, font, code, currXPos, currYPos+vertGlyphOff, font->atlasWidth, scaling,
+                              threadRect, scissor, actualColor);
+#else
                 ls_uiSDFGlyph(c, &currGlyph, currXPos, currYPos+vertGlyphOff, font->atlasWidth, scaling,
                               threadRect, scissor, actualColor);
-                
+#endif
                 currXPos += currGlyph.xAdv*scaling;
-                if(code == (u32)'\n') { currXPos = xPos; currYPos -= lineHeight; }
             }
             else {
                 ls_uiGlyph(c, currXPos, currYPos+vertGlyphOff, threadRect, scissor, &currGlyph, actualColor);
@@ -3240,25 +3318,20 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
             }
         }
         
-        if(((lineIdx == box->caretLineIdx) && cIdx == line.len)) { caretX = currXPos-3; }
+        if((lineIdx == relativeCaretLineIdx) && (cIdx == line.len)) { caretX = currXPos-3; }
         
-        if(box->isCaretOn && (c->currentFocus == (u64 *)box) && (lineIdx == box->caretLineIdx))
+        if(box->isCaretOn && (c->currentFocus == (u64 *)box) && (lineIdx == relativeCaretLineIdx))
         {
             if(font->isAtlas)
             {
-                MapEntry *map = getMapEntryFromAtlas(font, (u32)'|');
-                UIGlyph caretGlyph = { 
-                    .data = &font->fontAtlasSDF[map->pixelY*font->atlasWidth + map->pixelX],
-                    .width = (u32)map->width,
-                    .height = (u32)map->height,
-                    .x0 = map->xOff,
-                    .y0 = map->yOff,
-                    .y1 = map->height + map->yOff,
-                    .xAdv = map->xAdv,
-                    .yAdv = 0
-                };
+#ifdef LS_UI_OPENGL_BACKEND
+                ls_uiSDFGlyph(c, font, (u32)'|', caretX, currYPos+vertGlyphOff, font->atlasWidth, scaling,
+                              threadRect, scissor, textColor);
+#else
+                UIGlyph caretGlyph = ls_uiGetGlyphFromAtlas(font, (u32)'|');
                 ls_uiSDFGlyph(c, &caretGlyph, caretX, currYPos+vertGlyphOff, font->atlasWidth, scaling,
                               threadRect, scissor, textColor);
+#endif
             }
             else
             {
@@ -3274,34 +3347,11 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
     
 }
 
+UIAtlasEntry *ls_uiGetAtlasEntry(UIFont *font, u32 codepoint);
 template<typename T>
 void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32 yPos,
                       UIRect threadRect, UIRect scissor, T text, Color textColor)
 {
-    //TODO: Copypasted to ls_uiRenderStringOnRect()
-    struct MapEntry
-    { //NOTE: I'm gonna assume this will be packed, being a multiple of 32 bits in size...
-        u32 codepoint;
-        s32 pixelX;
-        s32 pixelY;
-        s32 width;
-        s32 height;
-        s32 xOff;
-        s32 yOff;
-        s32 xAdv;
-        s32 leftSB;
-    };
-    
-    //NOTE: Look for the glyph pixel data in the map
-    auto getMapEntryFromAtlas = [](UIFont *font, u32 codepoint) -> MapEntry *{
-        s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
-        s32 glyphCount = font->cpCount;
-        MapEntry *map  = (MapEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
-        while(glyphCount-- && map->codepoint != codepoint) { map += 1; }
-        AssertMsg(map->codepoint == codepoint, "Glyph Codepoint is not present in Atlas");
-        return map;
-    };
-    
     AssertMsg(c, "Context is null\n");
     LogMsg(font, "Passed font is null\n");
     if(!font) { return; }
@@ -3330,7 +3380,7 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
         AssertMsgF(codepoint <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
         
-        MapEntry *map = getMapEntryFromAtlas(font, codepoint);
+        UIAtlasEntry *map = ls_uiGetAtlasEntry(font, codepoint);
         
         f64 texelLeft  = (f64)map->pixelX / (f64)font->atlasWidth;
         f64 texelRight = (f64)(map->pixelX+map->width) / (f64)font->atlasWidth;
@@ -3413,18 +3463,7 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         //      the branch predictor should get it though...
         if(font->isAtlas)
         {
-            MapEntry *map = getMapEntryFromAtlas(font, codepoint);
-            UIGlyph currGlyph = { 
-                .data = &font->fontAtlasSDF[map->pixelY*font->atlasWidth + map->pixelX],
-                .width = (u32)map->width,
-                .height = (u32)map->height,
-                .x0 = map->xOff,
-                .y0 = map->yOff,
-                .y1 = map->height + map->yOff,
-                .xAdv = map->xAdv,
-                .yAdv = 0
-            };
-            
+            UIGlyph currGlyph = ls_uiGetGlyphFromAtlas(font, codepoint);
             ls_uiSDFGlyph(c, &currGlyph, currXPos, currYPos, font->atlasWidth, scaling, 
                           threadRect, scissor, textColor);
             
@@ -3613,19 +3652,8 @@ s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
         if(font->isAtlas)
         {
             //TODO: Annoying c->currPixelHeight
-            f32 scaling = c->currPixelHeight / font->pixelHeight;
+            f64 scaling = (f64)c->currPixelHeight / (f64)font->pixelHeight;
             MapEntry *map = getMapEntryFromAtlas(font, codepoint);
-            UIGlyph currGlyph = { 
-                .data = &font->fontAtlasSDF[map->pixelY*font->atlasWidth + map->pixelX],
-                .width = (u32)map->width,
-                .height = (u32)map->height,
-                .x0 = map->xOff,
-                .y0 = map->yOff,
-                .y1 = map->height + map->yOff,
-                .xAdv = map->xAdv,
-                .yAdv = 0
-            };
-            
             totalLen += map->xAdv*scaling;
         }
         else
@@ -3706,6 +3734,39 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, UILayoutRect layout, u
     UIRect finalLayout = { currX, currY, layout.maxX, layout.startY - currY + (s32)font->pixelHeight };
     
     return finalLayout;
+}
+
+UIAtlasEntry *ls_uiGetAtlasEntry(UIFont *font, u32 codepoint)
+{
+    AssertNonNull(font);
+    AssertNonNull(font->fontAtlasSDF);
+    
+    s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
+    s32 glyphCount = font->cpCount;
+    UIAtlasEntry *map  = (UIAtlasEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
+    while(glyphCount-- && map->codepoint != codepoint) { map += 1; }
+    AssertMsg(map->codepoint == codepoint, "Glyph Codepoint is not present in Atlas");
+    return map;
+}
+
+UIGlyph ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint)
+{
+    AssertNonNull(font);
+    AssertNonNull(font->fontAtlasSDF);
+    
+    UIAtlasEntry *map = ls_uiGetAtlasEntry(font, codepoint);
+    UIGlyph result = { 
+        .data = &font->fontAtlasSDF[map->pixelY*font->atlasWidth + map->pixelX],
+        .width = (u32)map->width,
+        .height = (u32)map->height,
+        .x0 = map->xOff,
+        .y0 = map->yOff,
+        .y1 = map->height + map->yOff,
+        .xAdv = map->xAdv,
+        .yAdv = 0
+    };
+    
+    return result;
 }
 
 void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
@@ -4379,7 +4440,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
         return realOffset;
     };
     
-    auto handleSelection = [UserInput, box](s32 direction) {
+    auto handleSelection = [UserInput, box](s32 direction, s32 prevCI, s32 prevCLI, s32 currCI, s32 currCLI) {
         
         AssertMsg((direction == -1) || (direction == 1) || (direction == -2) || (direction == 2) ||
                   (direction == -3) || (direction == 3), "Invalid direction passed to handleSelection\n");
@@ -4395,48 +4456,42 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
                     case -1:
                     case  1: //NOTE: Left/Right Arrow
                     {
-                        box->selectBeginLine = box->caretLineIdx;
-                        box->selectEndLine   = box->caretLineIdx;
+                        box->selectBeginLine = prevCLI;
+                        box->selectEndLine   = prevCLI;
                         
                         if(direction == -1)
                         {
-                            if(box->text.data[box->caretIndex] == (char32_t)'\n')
-                            { box->selectBeginLine = box->caretLineIdx - 1; }
-                            else if(box->text.data[box->caretIndex + direction] == (char32_t)'\n')
-                            { box->selectBeginLine = box->caretLineIdx - 1; }
-                            
-                            box->selectBeginIdx  = box->caretIndex - 1;
-                            box->selectEndIdx    = box->caretIndex;
+                            box->selectBeginLine = currCLI;
+                            box->selectBeginIdx  = currCI;
+                            box->selectEndIdx    = prevCI;
                         }
                         else
                         {
-                            if(box->text.data[box->caretIndex + direction] == (char32_t)'\n')
-                            { box->selectEndLine   = box->caretLineIdx + 1; }
-                            
-                            box->selectBeginIdx  = box->caretIndex;
-                            box->selectEndIdx    = box->caretIndex + 1;
+                            box->selectEndLine   = currCLI;
+                            box->selectBeginIdx  = prevCI;
+                            box->selectEndIdx    = currCI;
                         }
                     } break;
                     
                     
                     case -2: //NOTE: Home
                     {
-                        if(box->caretIndex == 0) { box->isSelecting = FALSE; break; }
+                        if(prevCI == 0) { box->isSelecting = FALSE; break; }
                         
                         box->selectBeginLine = 0;
-                        box->selectEndLine   = box->caretLineIdx;
+                        box->selectEndLine   = prevCLI;
                         box->selectBeginIdx  = 0;
-                        box->selectEndIdx    = box->caretIndex;
+                        box->selectEndIdx    = prevCI;
                     } break;
                     
                     case  2: //NOTE: End
                     {
-                        if(box->caretIndex >= box->text.len) { box->isSelecting = FALSE; break; }
+                        if(prevCI >= box->text.len) { box->isSelecting = FALSE; break; }
                         
-                        box->selectBeginLine = box->caretLineIdx;
-                        box->selectEndLine   = box->lineCount;
-                        box->selectBeginIdx  = box->caretIndex;
-                        box->selectEndIdx    = box->text.len;
+                        box->selectBeginLine = prevCLI;
+                        box->selectEndLine   = currCLI; //box->lineCount; TODO: which is better, more clear?
+                        box->selectBeginIdx  = prevCI;
+                        box->selectEndIdx    = currCI; //box->text.len; TODO: which is better, more clear?
                     } break;
                     
                     case -3: //NOTE: Up Arrow
@@ -4454,47 +4509,56 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
             {
                 switch(direction)
                 {
-                    case -1:
-                    case  1:
+                    case -1: //NOTE: Left
+                    case  1: //NOTE: Right
                     {
-                        if(box->caretIndex == box->selectBeginIdx)
+                        if(prevCI == box->selectBeginIdx)
                         { 
                             box->selectBeginIdx += direction;
+                            box->selectBeginLine = currCLI;
+                            /*
                             if(box->text.data[box->caretIndex + direction] == (char32_t)'\n')
-                            { box->selectBeginLine += direction;}
+                            { box->selectBeginLine += direction;}*/
                         }
-                        else if(box->caretIndex == box->selectEndIdx)
+                        else if(prevCI == box->selectEndIdx)
                         { 
-                            box->selectEndIdx   += direction;
+                            box->selectEndIdx += direction;
+                            box->selectEndLine = currCLI;
+                            /*
                             if(box->text.data[box->caretIndex] == (char32_t)'\n') { box->selectEndLine += direction; }
+*/
                         }
                         else
                         { AssertMsg(FALSE, "Arrow Left Or Right -> Caret is not aligned with select anymore\n"); }
                         
                     } break;
                     
-                    case -2:
+                    case -2: //NOTE: Home
                     {
-                        if(box->caretIndex == box->selectBeginIdx)
+                        if(prevCI == box->selectBeginIdx)
                         { box->selectBeginIdx = 0; box->selectBeginLine = 0; }
-                        else if(box->caretIndex == box->selectEndIdx)
+                        else if(prevCI == box->selectEndIdx)
                         { 
                             box->selectEndIdx    = box->selectBeginIdx; box->selectBeginIdx = 0; 
-                            box->selectBeginLine = 0; box->selectEndLine = box->caretLineIdx;
+                            box->selectBeginLine = 0; box->selectEndLine = prevCLI; //box->caretLineIdx;
                         }
                         else
                         { AssertMsg(FALSE, "Home -> Caret is not aligned with select anymore\n"); }
                         
                     } break;
-                    case  2:
+                    
+                    case  2: //NOTE: End
                     {
-                        if(box->caretIndex == box->selectBeginIdx)
+                        if(prevCI == box->selectBeginIdx)
                         { 
-                            box->selectBeginIdx  = box->selectEndIdx; box->selectEndIdx  = box->text.len; 
-                            box->selectBeginLine = box->caretLineIdx; box->selectEndLine = box->lineCount;
+                            box->selectBeginIdx  = box->selectEndIdx; box->selectEndIdx  = currCI;//box->text.len; 
+                            box->selectBeginLine = prevCLI;           box->selectEndLine = currCLI;//box->lineCount;
                         }
-                        else if(box->caretIndex == box->selectEndIdx)
-                        { box->selectEndIdx   = box->text.len; box->selectEndLine = box->lineCount; }
+                        else if(prevCI == box->selectEndIdx)
+                        { 
+                            box->selectEndIdx  = currCI;  //box->text.len; 
+                            box->selectEndLine = currCLI; //box->lineCount;
+                        }
                         else
                         { AssertMsg(FALSE, "End -> Caret is not aligned with select anymore\n"); }
                         
@@ -4514,7 +4578,6 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
                 box->selectBeginLine = 0; box->selectEndLine   = 0;
             }
         }
-        
     };
     
     auto removeSelection = [=]() {
@@ -4529,6 +4592,9 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
     
     if(ls_uiInFocus(c, box))
     {
+        s32 prevCI  = box->caretIndex;
+        s32 prevCLI = box->caretLineIdx;
+        
         //NOTE: box->preInput
         if(box->callback1)
         { inputUse |= box->callback1(c, box->callback1Data); }
@@ -4617,8 +4683,6 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
         
         else if(KeyPressOrRepeat(keyMap::LArrow) && box->caretIndex > 0)
         {
-            handleSelection(-1);
-            
             box->isCaretOn      = TRUE;
             box->dtCaret        = 0;
             box->caretIndex    -= 1;
@@ -4646,12 +4710,12 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
                 s32 lineIdx = box->caretIndex - box->currLineBeginIdx;
                 if(lineIdx < box->viewBeginIdx) { box->viewBeginIdx -= 1; }
             }
+            
+            handleSelection(-1, prevCI, prevCLI, box->caretIndex, box->caretLineIdx);
         }
         
         else if(KeyPressOrRepeat(keyMap::RArrow) && box->caretIndex < box->text.len)
         { 
-            handleSelection(1);
-            
             if(box->text.data[box->caretIndex] == (char32_t)'\n')
             { 
                 box->caretLineIdx    += 1;
@@ -4667,6 +4731,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
             box->isCaretOn      = TRUE;
             box->dtCaret        = 0;
             box->caretIndex    += 1;
+            
+            handleSelection(1, prevCI, prevCLI, box->caretIndex, box->caretLineIdx);
         }
         
         else if(KeyPressOrRepeat(keyMap::UArrow) && box->caretLineIdx > 0)
@@ -4693,6 +4759,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
             else                    { box->viewBeginIdx = 0; }
             
             //TODO: Handle Selection is a mess.
+            //TODO: Move to the handleSelection lambda...
             if(KeyHeld(keyMap::Shift))
             {
                 if(!box->isSelecting)
@@ -4775,6 +4842,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
             else                    { box->viewBeginIdx = 0; }
             
             //TODO: Handle Selection is a mess.
+            //TODO: Move to the handleSelection lambda...
             if(KeyHeld(keyMap::Shift))
             {
                 if(!box->isSelecting)
@@ -4821,25 +4889,24 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
         
         else if(KeyPress(keyMap::Home))
         { 
-            handleSelection(-2);
-            
             box->isCaretOn = TRUE; box->dtCaret = 0;
             box->caretIndex       = 0;
             box->currLineBeginIdx = 0;
             box->caretLineIdx     = 0;
             
             setIndices(0);
+            handleSelection(-2, prevCI, prevCLI, box->caretIndex, box->caretLineIdx);
         }
         
         else if(KeyPress(keyMap::End))
         {
-            handleSelection(2);
-            
             box->isCaretOn    = TRUE; box->dtCaret = 0; 
             box->caretIndex   = box->text.len;
             box->caretLineIdx = box->lineCount-1;
             
             box->currLineBeginIdx = setIndices(box->caretIndex-1);
+            
+            handleSelection(2, prevCI, prevCLI, box->caretIndex, box->caretLineIdx);
         }
         
         else if(KeyHeld(keyMap::Control) && KeyPress(keyMap::A))
@@ -4903,6 +4970,50 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
         if(box->callback2 && inputUse)
         { box->callback2(c, box->callback2Data); }
     }
+    
+#if 0
+    //TODONOTE: DEBUG Info On Textbox -------------
+    
+    Arena prev2 = ls_arenaUse(c->frameArena);
+    
+    utf32 lineCountStr        = ls_utf32FromInt(box->lineCount);
+    utf32 currLineBeginIdxStr = ls_utf32FromInt(box->currLineBeginIdx);
+    utf32 caretIndexStr       = ls_utf32FromInt(box->caretIndex);
+    utf32 caretLineIdxStr     = ls_utf32FromInt(box->caretLineIdx);
+    utf32 viewBeginIdxStr     = ls_utf32FromInt(box->viewBeginIdx);
+    utf32 selectBeginLineStr  = ls_utf32FromInt(box->selectBeginLine);
+    utf32 selectEndLineStr    = ls_utf32FromInt(box->selectEndLine);
+    utf32 selectBeginIdxStr   = ls_utf32FromInt(box->selectBeginIdx);
+    utf32 selectEndIdxStr     = ls_utf32FromInt(box->selectEndIdx);
+    utf32 isSelectingStr      = ls_utf32FromAscii(box->isSelecting == TRUE ? 
+                                                  (char *)"Is Selecting: True" : 
+                                                  (char *)"Is Selecting: False");
+    
+    ls_utf32Prepend(&lineCountStr, U"Line Count: "_W);
+    ls_utf32Prepend(&currLineBeginIdxStr, U"Curr Line Begin Idx: "_W);
+    ls_utf32Prepend(&caretIndexStr, U"Caret Index: "_W);
+    ls_utf32Prepend(&caretLineIdxStr, U"Caret Line Idx: "_W);
+    ls_utf32Prepend(&viewBeginIdxStr, U"View Begin Idx: "_W);
+    ls_utf32Prepend(&selectBeginLineStr, U"Select Begin Line: "_W);
+    ls_utf32Prepend(&selectEndLineStr, U"Select End Line: "_W);
+    ls_utf32Prepend(&selectBeginIdxStr, U"Select Begin Idx: "_W);
+    ls_utf32Prepend(&selectEndIdxStr, U"Select End Idx: "_W);
+    
+    ls_uiLabel(c, lineCountStr, 400, 600);
+    ls_uiLabel(c, currLineBeginIdxStr, 400, 580);
+    ls_uiLabel(c, caretIndexStr, 400, 560);
+    ls_uiLabel(c, caretLineIdxStr, 400, 540);
+    ls_uiLabel(c, viewBeginIdxStr, 400, 520);
+    ls_uiLabel(c, selectBeginLineStr, 400, 500);
+    ls_uiLabel(c, selectEndLineStr, 400, 480);
+    ls_uiLabel(c, selectBeginIdxStr, 400, 460);
+    ls_uiLabel(c, selectEndIdxStr, 400, 440);
+    ls_uiLabel(c, isSelectingStr, 400, 420);
+    
+    ls_arenaUse(prev2);
+    
+    //TODONOTE: DEBUG Info On Textbox -------------
+#endif
     
     RenderCommand command = {UI_RC_TEXTBOX, xPos, yPos, w, h };
     command.textBox       = box;
