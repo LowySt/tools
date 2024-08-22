@@ -2921,7 +2921,8 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     f32 colorRed   = (f32)textColor.r / 255.0f;
     f32 colorGreen = (f32)textColor.g / 255.0f;
     f32 colorBlue  = (f32)textColor.b / 255.0f;
-    glColor4f(colorRed, colorGreen, colorBlue, 1.0f);
+    f32 colorAlpha = (f32)textColor.a / 255.0f;
+    glColor4f(colorRed, colorGreen, colorBlue, colorAlpha);
     glBegin(GL_TRIANGLES);
     
     glTexCoord2f(texelLeft,  texelBot); glVertex2f(norm.leftX,  norm.topY);
@@ -3368,6 +3369,7 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
     f32 colorRed   = (f32)textColor.r / 255.0f;
     f32 colorGreen = (f32)textColor.g / 255.0f;
     f32 colorBlue  = (f32)textColor.b / 255.0f;
+    f32 colorAlpha = (f32)textColor.a / 255.0f;
     
     for(u32 i = 0; i < text.len; i++)
     {
@@ -3388,7 +3390,8 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         f64 texelTop   = (f64)(map->pixelY+map->height) / (f64)font->atlasHeight;
         
         //TODOf32 limitAlpha = (f32)map->onEdgeValue / 255.0f;
-        f32 limitAlpha = 160.0f / 255.0f;
+        //f32 limitAlpha = 160.0f / 255.0f;
+        f32 limitAlpha = 120.0f / 255.0f;
         
         //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
         //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
@@ -3428,7 +3431,7 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         
-        glColor4f(colorRed, colorGreen, colorBlue, 1.0f);
+        glColor4f(colorRed, colorGreen, colorBlue, colorAlpha);
         glBegin(GL_TRIANGLES);
         
         glTexCoord2f(texelLeft,  texelBot); glVertex2f(norm.leftX,  norm.topY);
@@ -3467,7 +3470,7 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
             ls_uiSDFGlyph(c, &currGlyph, currXPos, currYPos, font->atlasWidth, scaling, 
                           threadRect, scissor, textColor);
             
-            currXPos += map->xAdv*scaling;
+            currXPos += currGlyph.xAdv*scaling;
             if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
         }
         else
@@ -6762,9 +6765,6 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
     }
 }
 
-//TODO: Put the single command handling in a separate function, something like:
-//      ls_uiRenderSingleCommand().
-//      This would allow us to avoid repeating most of the code below in PushRenderCommand in other backends.
 #ifndef LS_UI_OPENGL_BACKEND
 void ls_uiRender__(UIContext *c, u32 threadID)
 {
