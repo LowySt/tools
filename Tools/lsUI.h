@@ -4,11 +4,6 @@
 /*TODOs
 -Implement the OpenGL backend
 
--Premultiplied Alpha
-
--8 Render Threads
--Maybe pre-compute thread rects and collapse even further the pushRenderCommand function sub-switch cases.
-
 -@Alpha-Un-Multiply
 -Fix pre-multiplied alpha for LightenRGB and DarkenRGB
 */
@@ -84,8 +79,12 @@ if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
 #define WheelRotatedIn(x, y, w, h) (WheelRotated && MouseInRect(x, y, w, h))
 
 
-const     u32 THREAD_COUNT       = 0;
-constexpr u32 RENDER_GROUP_COUNT = THREAD_COUNT == 0 ? 1 : THREAD_COUNT;
+#ifdef LS_UI_OPENGL_BACKEND
+const     u32 __LS_UI_THREAD_COUNT     = 0;
+#else
+const     u32 __LS_UI_THREAD_COUNT     = 8;
+#endif
+constexpr u32 LS_UI_RENDER_GROUP_COUNT = __LS_UI_THREAD_COUNT == 0 ? 1 : __LS_UI_THREAD_COUNT;
 
 //-------------------------
 //NOTE: Color RGBA stuff
@@ -127,6 +126,18 @@ Color ls_uiAlphaPremultiply(Color source)
     return Result;
 }
 
+Color ls_uiAlphaUnmultiply(Color source)
+{
+    f32 fAlpha = (f32)source.a / 255.0f;
+    Color Result = {
+        .b = (u8)(source.b/fAlpha),
+        .g = (u8)(source.g/fAlpha),
+        .r = (u8)(source.r/fAlpha),
+        .a = source.a
+    };
+    return Result;
+}
+
 Color SetAlpha(Color v, u8 a)
 { 
     f32 alphaConv = ((f32)a / (f32)v.a);
@@ -136,6 +147,8 @@ Color SetAlpha(Color v, u8 a)
 
 u8 GetAlpha(Color v)
 { return v.a; }
+
+#define ColorComponentToFloat(color, comp) ((f32)color.comp / 255.0f)
 
 //NOTE: Color RGBA stuff
 //-------------------------
@@ -158,6 +171,7 @@ struct UILayoutRect
     s32 startX, startY;
 };
 
+//TODO: Hate how UIGlyph, UIAtlasEntry and UIAtlasGlyph are all separate entities...
 struct UIGlyph
 {
     u8 *data;
@@ -184,6 +198,20 @@ struct UIAtlasEntry
     s32 yOff;
     s32 xAdv;
     s32 leftSB;
+};
+
+struct UIAtlasGlyph
+{
+    UIAtlasEntry *map;
+    s32 idxInAtlas;
+};
+
+struct UIAtlasIterator
+{
+    UIAtlasEntry *curr;
+    UIAtlasEntry *last;
+    s32 count;
+    s32 idx;
 };
 
 enum UIFontSize
@@ -221,9 +249,10 @@ struct UIFont
     s32 atlasHeight;
     
 #ifdef LS_UI_OPENGL_BACKEND
-    //NOTE: As of right now OpenGL expects the font to be loaded as an SDFAtlas, uploaded to the gpu as a single
-    //      large bitmap, represented by this texture ID.
+    //NOTE: As of right now OpenGL expects the font to be loaded as an SDFAtlas, 
+    // uploaded to the gpu as a single large bitmap, represented by this texture ID.
     GLuint texID;
+    GLuint atlasVAO;
 #endif
 };
 
@@ -292,8 +321,7 @@ struct UIButton
     UIButtonStyle style;
     
     utf32 name;
-    u8 *bmpData;
-    s32 w, h;
+    UIBitmap bmp;
     
     b32 isHot;
     b32 isHeld;
@@ -578,9 +606,8 @@ struct RenderCommand
 #endif
 };
 
-#ifndef LS_UI_OPENGL_BACKEND
 const u32 UI_Z_LAYERS = 4;
-
+#ifndef LS_UI_OPENGL_BACKEND
 struct RenderGroup
 {
     stack RenderCommands[UI_Z_LAYERS];
@@ -646,11 +673,16 @@ struct UIContext
     u64 *mouseCapture;
     
 #ifndef LS_UI_OPENGL_BACKEND
-    RenderGroup renderGroups[RENDER_GROUP_COUNT];
-    UIRect      renderUIRects[RENDER_GROUP_COUNT];
+    RenderGroup renderGroups[LS_UI_RENDER_GROUP_COUNT];
+    UIRect      renderUIRects[LS_UI_RENDER_GROUP_COUNT];
     
     CONDITION_VARIABLE startRender;
     CRITICAL_SECTION crit;
+#endif
+    
+#ifdef LS_UI_OPENGL_BACKEND
+    f64 zLayer; //TODO: Temporary to make passing zLayer to primitive drawing funcs easier
+    u32 defaultShaderProgram; //TODO: Temporary to understand this shit.
 #endif
     
     HDC  WindowDC;
@@ -682,6 +714,13 @@ struct UIContext
     Arena contextArena;
     Arena widgetArena;
     
+    //TODO: This means scratches could interfere with each other
+    // Would be solved by making a ScratchArena type, which deals with this stuff.
+    // So right now, the rule is *you have to allocate and de-allocate within the same function!*
+    // This way, functions can't stomp over each other's data.
+    // If it becomes a real problem in the future, I'll just fix it then.
+    Arena scratchArena;
+    
     onDestroyFunc onDestroy;
 };
 
@@ -708,6 +747,12 @@ void         ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs);
 
 void         ls_uiLoadPackedFontAtlas(UIContext *c, char *path);
 UIBitmap     ls_uiBitmapFromRGBAPixelData(UIContext *c, s32 w, s32 h, void *data);
+
+UIGlyph      ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint);
+UIAtlasGlyph ls_uiGetAtlasGlyph(UIFont *font, u32 codepoint);
+UIAtlasIterator ls_uiAtlasIterStart(UIFont *font);
+void         ls_uiAtlasIterNext(UIAtlasIterator *iter);
+b32          ls_uiAtlasIterDone(UIAtlasIterator iter);
 
 void         ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f);
 
@@ -858,21 +903,17 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
 void ls_uiDebugDrawInfo(UIContext *c)
 {
 #ifndef LS_UI_OPENGL_BACKEND
-    for(s32 i = 0; i < THREAD_COUNT; i++)
+    for(s32 i = 0; i < __LS_UI_THREAD_COUNT; i++)
     {
         UIRect r = c->renderUIRects[i];
-        ls_uiBorder(c, r.minX, r.minY, r.maxX - r.minX, r.maxY - r.minY, 
-                    {0, 0, c->width, c->height}, {0,0,c->width,c->height}, 
-                    RGB(253, 0, 255));
+        ls_uiRect(c, r.minX, r.minY, r.maxX - r.minX, r.maxY - r.minY, RGBA(0,0,0,0), RGB(253, 0, 255), 3);
     }
 #endif
     
     u32 buff[64]    = {};
     utf32 frameTime = { buff, 0, 64 };
     ls_utf32FromInt_t(&frameTime, c->dt);
-    
-    ls_uiGlyphString(c, c->currFont, 16, (s32)(0.95f*c->width), (s32)(0.95f*c->height),
-                     {0, 0, c->width, c->height}, {0,0,c->width,c->height}, frameTime, c->textColor);
+    ls_uiLabel(c, frameTime, 0.95f, 0.95f, c->textColor, 3);
 }
 
 #endif //_DEBUG
@@ -881,7 +922,7 @@ void ls_uiDebugDrawInfo(UIContext *c)
 void __ls_ui_fillRenderThreadUIRects(UIContext *c)
 {
     //NOTE: All Thread Rects are inclusive on the left/bot, exclusive on the right/top
-    switch(THREAD_COUNT)
+    switch(__LS_UI_THREAD_COUNT)
     {
         case 0:
         case 1: { c->renderUIRects[0] = {0, 0, c->width, c->height }; } break;
@@ -933,6 +974,46 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
     {
         case WM_ERASEBKGND: return TRUE; break;
         
+        //NOTETODO:
+        // This is used to handle the size of the non client area.
+        // By handling it ourselves windows will not keep track of it, supposedly?
+        case WM_NCCALCSIZE:
+        {
+            if(w == TRUE) {
+                //NCCALCSIZE_PARAMS* pncsp = (NCCALCSIZE_PARAMS*)lParam;
+                return 0;
+            }
+        } break;
+        
+        //NOTETODO:
+        // Since we won't let windows keep track of the non client area, we need to hit test
+        // ourselves for re-sizing the window
+        case WM_NCHITTEST:
+        {
+            // Handle resizing
+            // Allow resizing from the borders
+            POINTS pts = MAKEPOINTS(l);
+            RECT rcWindow;
+            if(GetWindowRect(h, &rcWindow) == 0)
+            { LogMsg(FALSE, "GetWindowRect failed during WM_NCHITTEST."); }
+            
+            const s32 BORDER_WIDTH = 4;
+            if (pts.y >= rcWindow.top && pts.y <= rcWindow.top+BORDER_WIDTH) {
+                if (pts.x >= rcWindow.left && pts.x <= rcWindow.left + BORDER_WIDTH) return HTTOPLEFT;
+                if (pts.x >= rcWindow.right - BORDER_WIDTH && pts.x <= rcWindow.right) return HTTOPRIGHT;
+                return HTTOP;
+            }
+            if (pts.y >= rcWindow.bottom - BORDER_WIDTH && pts.y <= rcWindow.bottom) {
+                if (pts.x >= rcWindow.left && pts.x <= rcWindow.left + BORDER_WIDTH) return HTBOTTOMLEFT;
+                if (pts.x >= rcWindow.right - BORDER_WIDTH && pts.x <= rcWindow.right) return HTBOTTOMRIGHT;
+                return HTBOTTOM;
+            }
+            if (pts.x >= rcWindow.left && pts.x <= rcWindow.left + BORDER_WIDTH) return HTLEFT;
+            if (pts.x >= rcWindow.right - BORDER_WIDTH && pts.x <= rcWindow.right) return HTRIGHT;
+            
+            return HTCLIENT;
+        } break;
+        
         //NOTE
         //A few messages are sent BEFORE WM_CREATE
         //   WM_GETMINMAXINFO WM_NCCREATE and WM_NCCALCSIZE.
@@ -970,6 +1051,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         //TODO: This will only be used for fixed size steps
         case WM_SIZE:
         {
+#ifndef LS_UI_OPENGL_BACKEND
             if(!c || !c->drawBuffer) { return DefWindowProcA(h, msg, w, l); }
             
             u32 width       = LOWORD(l);
@@ -1004,11 +1086,6 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             //NOTE: Draw Buffer Dimensions
             c->width        = width;
             c->height       = height;
-#if 0
-            //NOTE: Client window dimensions
-            c->windowWidth  = (s32)width;
-            c->windowHeight = (s32)height;
-#endif
             
             //NOTE: Client window position.
             RECT windowRect = {};
@@ -1028,10 +1105,50 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             }
             else { LogMsg(FALSE, "GetCursorPos failed after resize."); }
             
-#ifndef LS_UI_OPENGL_BACKEND
             //NOTE: Reset the Render UIRect for every Thread.
             __ls_ui_fillRenderThreadUIRects(c);
+#else
+            if(!c || !glViewport) { return DefWindowProcA(h, msg, w, l); }
+            
+            u32 width       = LOWORD(l);
+            u32 height      = HIWORD(l);
+            
+            //NOTE: Draw Buffer Dimensions
+            c->width        = width;
+            c->height       = height;
+            
+            //NOTE: Client window position.
+            RECT windowRect = {};
+            if(GetWindowRect(h, &windowRect) != 0)
+            {
+                c->windowPosX = windowRect.left;
+                c->windowPosY = windowRect.top;
+            }
+            else { LogMsg(FALSE, "GetWindowRect failed after resize."); }
+            
+            //NOTE: Mouse position
+            POINT currMouse = {};
+            if(GetCursorPos(&currMouse) != 0)
+            {
+                c->prevMousePosX = currMouse.x;
+                c->prevMousePosY = currMouse.y;
+            }
+            else { LogMsg(FALSE, "GetCursorPos failed after resize."); }
+            
+            const f64 aspectRatio = (f64)width / (f64)height;
+            f64 xSpan = 1.0;
+            f64 ySpan = 1.0;
+            
+            //NOTE: Width > Height, so scale xSpan accordingly
+            if(aspectRatio > 1.0) { xSpan *= aspectRatio; }
+            //NOTE: Width < Height, so scale ySpan accordingly
+            else                  { ySpan *= aspectRatio; }
+            
+            //glOrtho(-1.0*xSpan, xSpan, -1.0*ySpan, ySpan, -1.0, 1.0);
+            glViewport(0, 0, width, height);
+            //glScissor(0, 0, width, height); TODO: Support scissoring in OpenGL?
 #endif
+            return 0;
         } break;
         
         case WM_PAINT:
@@ -1279,6 +1396,77 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
     return Result;
 }
 
+#ifdef LS_UI_OPENGL_BACKEND
+void __ui_InitOpenGLExtensions()
+{
+    WNDCLASSA DummyClass = {
+        .style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
+        .lpfnWndProc = DefWindowProcA,
+        .hInstance = GetModuleHandleA(0),
+        .lpszClassName = "Dummy_WGL_ijsdaijsda",
+    };
+    
+    if(!RegisterClassA(&DummyClass))
+    {
+        DWORD Error = GetLastError();
+        AssertMsgF(FALSE, "When Registering Dummy OpenGL"
+                   "WindowClass got error: %d", Error);
+    }
+    
+    HWND DummyWindow;
+    if ((DummyWindow = CreateWindowExA(0, DummyClass.lpszClassName, "Dummy OpenGL Window", 0,
+                                       CW_USEDEFAULT, CW_USEDEFAULT,
+                                       CW_USEDEFAULT, CW_USEDEFAULT,
+                                       0, 0, DummyClass.hInstance, 0)) == nullptr)
+    {
+        DWORD Error = GetLastError();
+        AssertMsgF(FALSE, "When Creating Dummy OpenGL Window"
+                   "got error: %d", Error);
+    }
+    
+    HDC DummyDC = GetDC(DummyWindow);
+    
+    PIXELFORMATDESCRIPTOR pfd = {
+        .nSize = sizeof(pfd),
+        .nVersion = 1,
+        .dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
+        .iPixelType = PFD_TYPE_RGBA,
+        .cColorBits = 32,
+        .cAlphaBits = 8,
+        .cDepthBits = 24,
+        .cStencilBits = 8,
+        .iLayerType = PFD_MAIN_PLANE,
+    };
+    
+    s32 pixelFormat = ChoosePixelFormat(DummyDC, &pfd);
+    if(!pixelFormat) {
+        AssertMsg(FALSE, "Failed to find Pixel Format");
+    }
+    
+    if(!SetPixelFormat(DummyDC, pixelFormat, &pfd)) {
+        AssertMsg(FALSE, "Failed to set Pixel Format");
+    }
+    
+    HGLRC DummyContext = wglCreateContext(DummyDC);
+    if(!DummyContext) {
+        AssertMsg(FALSE, "Failed to create Dummy OpenGL context");
+    }
+    
+    if(!wglMakeCurrent(DummyDC, DummyContext)) {
+        AssertMsg(FALSE, "Failed to activate Dummy OpenGL context");
+    }
+    
+    wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)wglGetProcAddress("wglCreateContextAttribsARB");
+    wglChoosePixelFormatARB = (PFNWGLCHOOSEPIXELFORMATARBPROC)wglGetProcAddress("wglChoosePixelFormatARB");
+    
+    wglMakeCurrent(DummyDC, 0);
+    wglDeleteContext(DummyContext);
+    ReleaseDC(DummyWindow, DummyDC);
+    DestroyWindow(DummyWindow);
+    
+}
+#endif
+
 void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
 {
     
@@ -1290,9 +1478,9 @@ void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
     WindowClass.hInstance = MainInstance;
     WindowClass.lpszClassName = name;
     
-    //NOTE: We load the cursor after creating the window, 
-    //      otherwise windows will reset it to this default after every MOUSEMOVE event if we ever change it.
-    WindowClass.hCursor = NULL;
+    //NOTE: If we don't load the cursor here, windows wouldn't reset it to the correct bitmap
+    //      after it changes (for example during resizing)
+    WindowClass.hCursor = LoadCursorA(NULL, IDC_ARROW);
     
     if (!RegisterClassA(&WindowClass))
     {
@@ -1303,7 +1491,7 @@ void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
 
 HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowName)
 {
-    u32 style = LS_THIN_BORDER | LS_POPUP;// | LS_VISIBLE; //| LS_OVERLAPPEDWINDOW;
+    u32 style = LS_THICK_BORDER | LS_POPUP;// | LS_RESIZE;// | LS_VISIBLE; //| LS_OVERLAPPEDWINDOW;
     BOOL Result;
     
     int screenHeight = GetSystemMetrics(SM_CYSCREEN);
@@ -1331,41 +1519,152 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     SetCursor(DefaultArrow);
     
 #ifdef LS_UI_OPENGL_BACKEND
-    PIXELFORMATDESCRIPTOR pfd = {
-        sizeof(PIXELFORMATDESCRIPTOR),
-        1,
-        PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    // Flags
-        PFD_TYPE_RGBA,        // The kind of framebuffer. RGBA or palette.
-        32,                   // Colordepth of the framebuffer.
-        0, 0, 0, 0, 0, 0,
-        0,
-        0,
-        0,
-        0, 0, 0, 0,
-        24,                   // Number of bits for the depthbuffer
-        8,                    // Number of bits for the stencilbuffer
-        0,                    // Number of Aux buffers in the framebuffer.
-        PFD_MAIN_PLANE,
-        0,
-        0, 0, 0
+    __ui_InitOpenGLExtensions();
+    
+    s32 pixelFormatAttribs[] {
+        WGL_DRAW_TO_WINDOW_ARB,     GL_TRUE,
+        WGL_SUPPORT_OPENGL_ARB,     GL_TRUE,
+        WGL_DOUBLE_BUFFER_ARB,      GL_TRUE,
+        WGL_ACCELERATION_ARB,       WGL_FULL_ACCELERATION_ARB,
+        WGL_PIXEL_TYPE_ARB,         WGL_TYPE_RGBA_ARB,
+        WGL_COLOR_BITS_ARB,         32,
+        WGL_DEPTH_BITS_ARB,         24,
+        WGL_STENCIL_BITS_ARB,       8,
+        0
     };
     
+    s32 pixelFormat;
+    u32 numFormats;
     c->WindowDC = GetDC(WindowHandle);
-    s32 windowsChosenFormat = ChoosePixelFormat(c->WindowDC, &pfd);
-    SetPixelFormat(c->WindowDC, windowsChosenFormat, &pfd);
-    
-    HGLRC wglRenderingContext = wglCreateContext(c->WindowDC);
-    if(wglRenderingContext == NULL)
-    {
-        ls_log("Error Code: {s32}", GetLastError());
+    wglChoosePixelFormatARB(c->WindowDC, pixelFormatAttribs, 0, 1, &pixelFormat, &numFormats);
+    if(!numFormats) {
+        AssertMsg(FALSE, "Failed to set OpenGL Pixel Format");
     }
-    AssertNonNull(wglRenderingContext);
-    wglMakeCurrent(c->WindowDC, wglRenderingContext);
-    //ls_glLoadFunc(c->WindowDC);
-    ls_log("OpenGL Version: {char*}", (char *)glGetString(GL_VERSION));
+    
+    PIXELFORMATDESCRIPTOR pfd;
+    DescribePixelFormat(c->WindowDC, pixelFormat, sizeof(pfd), &pfd);
+    if(!SetPixelFormat(c->WindowDC, pixelFormat, &pfd)) {
+        AssertMsg(FALSE, "Failed to set OpenGL Pixel Format");
+    }
+    
+    s32 gl33Attribs[] = {
+        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+        WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        0,
+    };
+    
+    HGLRC gl33Context = wglCreateContextAttribsARB(c->WindowDC, 0, gl33Attribs);
+    if(!gl33Context) {
+        AssertMsg(FALSE, "Failed to create OpenGL 3.3 context");
+    }
+    
+    if(!wglMakeCurrent(c->WindowDC, gl33Context)) {
+        AssertMsg(FALSE, "Failed to Activate OpenGL 3.3 context");
+    }
+    
+    ls_glLoadFunc(c->WindowDC);
+    
+    const char *defaultVertexShader = R"LONGLONG(
+#version 330 core
+
+layout(location = 0) in vec2 inPosition;   // Vertex position
+layout(location = 1) in vec2 inTexCoord;   // Texture coordinates
+
+out vec2 TexCoord;
+
+void main() {
+
+    gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
+    TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
+
+}
+)LONGLONG";
+    
+    u32 vertShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertShader, 1, &defaultVertexShader, NULL);
+    glCompileShader(vertShader);
+    
+    s32 success;
+    char infoLog[512];
+    glGetShaderiv(vertShader, GL_COMPILE_STATUS, &success);
+    if(!success)
+    {
+        glGetShaderInfoLog(vertShader, 512, NULL, infoLog);
+        ls_log("[ERROR] Default Vertex Shader Compilation Failed\n{char*}", infoLog);
+    }
+    
+    //TODO: This is temporary... ok?
+    const char *defaultFragShader = R"LONGLONG(
+#version 330 core
+
+in vec2 TexCoord;
+out vec4 FragColor;
+
+uniform sampler2D sdfTexture;  // SDF font texture
+uniform uvec4 textColor;        // Premultiplied RGBA color
+uniform float smoothing;       // Smoothing factor for the SDF edge
+
+vec4 convertIntColToFloat(uvec4 inC) {
+
+vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+result.rgba /= 255.0;
+return result;
+}
+
+void main() {
+
+    // Sample the SDF texture, values range from 0 to 1
+    float sdfValue = texture(sdfTexture, TexCoord).r;
+
+    // Compute the alpha value using a threshold (0.5 is the middle distance)
+float base = 0.7;
+    float alpha = smoothstep(base - smoothing, base + smoothing, sdfValue);
+
+vec4 fColor = convertIntColToFloat(textColor);
+
+    // Output color with pre-multiplied alpha
+vec4 result = vec4(fColor.rgb * alpha, fColor.a * alpha);
+if(result.a < 0.01) { discard; }
+FragColor = result;
+}
+  )LONGLONG";
+    
+    u32 fragShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragShader, 1, &defaultFragShader, NULL);
+    glCompileShader(fragShader);
+    
+    glGetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
+    if(!success)
+    {
+        glGetShaderInfoLog(fragShader, 512, NULL, infoLog);
+        ls_log("[ERROR] Default Fragment Shader Compilation Failed\n{char*}", infoLog);
+    }
+    
+    u32 shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, fragShader);
+    glAttachShader(shaderProgram, vertShader);
+    glLinkProgram(shaderProgram);
+    
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+        ls_log("[ERROR] Default Shader Program Link Failed\n{char*}", infoLog);
+    }
+    glDeleteShader(fragShader);
+    
+    c->defaultShaderProgram = shaderProgram;
     
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    
+    //NOTE: This should be better since I'm passing premultiplied alpha colors.
+    //  I *think* this means: Assume destination is a flat color,
+    //                        and cosider the source a premultiplied alpha source
+    //glBlendFunc(GL_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA);
+    
+    glEnable(GL_DEPTH_TEST);
+    //glDepthFunc();
     
 #else
     
@@ -1475,6 +1774,8 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
     uiContext->contextArena    = contextArena;
     uiContext->frameArena      = frameArena;
     uiContext->widgetArena     = widgetArena;
+    uiContext->scratchArena    = ls_arenaCreate(MBytes(1));
+    
     uiContext->drawBuffer      = backBuffer;
     
     uiContext->backbufferW     = width;
@@ -1482,12 +1783,6 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
     
     uiContext->width           = width;
     uiContext->height          = height;
-    
-#if 0
-    //TODO: These are initially set to 0, but are set when a ls_uiMenu call is given
-    uiContext->clientWidth     = 0;
-    uiContext->clientHeight    = 0;
-#endif
     
     uiContext->renderFunc      = cb;
     uiContext->backgroundColor = RGB(34, 40, 49);
@@ -1507,9 +1802,9 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
     
 #ifndef LS_UI_OPENGL_BACKEND
     //TODO: Make number of zLayers and zLayer Storage more customizable!
-    if(THREAD_COUNT != 0)
+    if(__LS_UI_THREAD_COUNT != 0)
     {
-        for(u32 i = 0; i < THREAD_COUNT; i++)
+        for(u32 i = 0; i < __LS_UI_THREAD_COUNT; i++)
         {
             uiContext->renderGroups[i].RenderCommands[0] = ls_stackInit(sizeof(RenderCommand), 512);
             
@@ -1522,7 +1817,7 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
         InitializeConditionVariable(&uiContext->startRender);
         InitializeCriticalSection(&uiContext->crit);
         
-        for(u32 i = 0; i < THREAD_COUNT; i++)
+        for(u32 i = 0; i < __LS_UI_THREAD_COUNT; i++)
         {
             ___threadCtx *t = (___threadCtx *)ls_alloc(sizeof(___threadCtx));
             t->c            = uiContext;
@@ -1681,11 +1976,12 @@ void ls_uiFrameBegin(UIContext *c)
     if(LeftUp || RightUp || MiddleUp) { c->mouseCapture = 0; }
     
 #ifdef LS_UI_OPENGL_BACKEND
-    f64 rLinear  = ((f64)c->backgroundColor.r / 255.0);
-    f64 gLinear  = ((f64)c->backgroundColor.g / 255.0);
-    f64 bLinear  = ((f64)c->backgroundColor.b / 255.0);
+    f64 rLinear = ((f64)c->backgroundColor.r / 255.0);
+    f64 gLinear = ((f64)c->backgroundColor.g / 255.0);
+    f64 bLinear = ((f64)c->backgroundColor.b / 255.0);
+    f64 aLinear = ((f64)c->backgroundColor.a / 255.0);
     
-    glClearColor(rLinear, gLinear, bLinear, 1.0);
+    glClearColor(rLinear, gLinear, bLinear, aLinear);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 #endif
 }
@@ -1840,6 +2136,8 @@ void ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs)
 
 void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
 {
+    //TODO: If I'm working with the GPU, do I actually need the Atlas Data to be kept in RAM?
+    // After we upload it, can't it just stay on the GPU?
     Arena prev = ls_arenaUse(c->contextArena);
     
     u8 *bitmapFile = NULL;
@@ -1878,15 +2176,111 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     c->currFont->maxCodepoint     = c->fonts[0].cpCount;
     
 #ifdef LS_UI_OPENGL_BACKEND
+    // -------------------------------------------
+    //NOTE: Generate and load to the gpu the Atlas
+    //
     glGenTextures(1, &c->fonts[0].texID);
-    glBindTexture(GL_TEXTURE_2D, c->fonts[0].texID);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_INTENSITY, Width, Height, 0, GL_RED, GL_UNSIGNED_BYTE, c->fonts[0].fontAtlasSDF);
-    
     GLenum err = glGetError();
-    if(err != GL_NO_ERROR)
-    {
-        ls_log("OpenGL Error: {s32}", err);
+    if(err != GL_NO_ERROR) {
+        AssertMsgF(FALSE, "Coldn't Gen Textures for Font Atlas, Error: %d", err);
     }
+    
+    glBindTexture(GL_TEXTURE_2D, c->fonts[0].texID);
+    
+    err = glGetError();
+    if(err != GL_NO_ERROR) {
+        AssertMsgF(FALSE, "Couldn't Bind Generated Textures for Font Atlas, Error: %d", err);
+    }
+    
+    //NOTE: This is not available past OpenGL 3.0, since INTENSITY AND LUMINANCE formats are deprecated
+    //glTexImage2D(GL_TEXTURE_2D, 0, GL_INTENSITY, Width, Height, 0, GL_RED, GL_UNSIGNED_BYTE, c->fonts[0].fontAtlasSDF);
+    
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, Width, Height, 0, GL_RED, GL_UNSIGNED_BYTE, c->fonts[0].fontAtlasSDF);
+    
+    err = glGetError();
+    if(err != GL_NO_ERROR) {
+        AssertMsgF(FALSE, "Couldn't TexImage2D for Font Atlas, Error: %d", err);
+    }
+    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
+    glBindTexture(GL_TEXTURE_2D, 0);
+    
+    // -------------------------------------------
+    //NOTE: Setup VAO/VBO to have the correct UV for each glyph in the atlas
+    //
+    
+    ls_arenaUse(c->scratchArena);
+    
+    UIFont *font = &c->fonts[0];
+    
+    UIAtlasIterator atlasIt = ls_uiAtlasIterStart(font);
+    s32 glyphCount = atlasIt.count;
+    const s32 verticesPerGlyph = 6;
+    const s32 floatsPerVertex = 4;
+    const s32 sizeOfSingleGlyphVertex = verticesPerGlyph * floatsPerVertex * sizeof(f32);
+    s32 sizeOfVertexMap = glyphCount * sizeOfSingleGlyphVertex;
+    f32 *glyphVertexMap = (f32 *)ls_alloc(sizeOfVertexMap);
+    s32 glyphVertMapIdx = 0;
+    
+    for (; !ls_uiAtlasIterDone(atlasIt); ls_uiAtlasIterNext(&atlasIt))
+    {
+        UIAtlasEntry *map = atlasIt.curr;
+        
+        f32 texelLeft  = (f32)map->pixelX / (f32)font->atlasWidth;
+        f32 texelRight = (f32)(map->pixelX+map->width) / (f32)font->atlasWidth;
+        f32 texelBot   = (f32)map->pixelY / (f32)font->atlasHeight;
+        f32 texelTop   = (f32)(map->pixelY+map->height) / (f32)font->atlasHeight;
+        
+        //NOTE: Basically this scale doesn't matter... Since we scale and translate
+        //      inside the shader, to position the glyph on the screen.
+        f32 scale = 12.0;
+        f32 xPos = -0.125;
+        f32 yPos = -0.125;
+        f32 w = (f32)map->width / (f32)font->atlasWidth * scale;
+        f32 h = (f32)map->height / (f32)font->atlasHeight * scale;
+        
+        //Vertex Data (posX, posY, texU, texV)
+        f32 verticesCurrent[6][4] =
+        {
+            {xPos,     yPos,     texelLeft,  texelTop},  // Bottom-left
+            {xPos,     yPos + h, texelLeft,  texelBot},  // Top-left
+            {xPos + w, yPos,     texelRight, texelTop},  // Bot-right
+            
+            {xPos + w, yPos,     texelRight, texelTop},  // Bot-right
+            {xPos,     yPos + h, texelLeft,  texelBot},  // Top-left
+            {xPos + w, yPos + h, texelRight, texelBot}   // Top-right
+        };
+        
+        ls_memcpy(verticesCurrent, glyphVertexMap + glyphVertMapIdx, sizeOfSingleGlyphVertex);
+        glyphVertMapIdx += (verticesPerGlyph * floatsPerVertex);
+    }
+    
+    GLuint VBO;
+    glGenVertexArrays(1, &font->atlasVAO);
+    glGenBuffers(1, &VBO);
+    glBindVertexArray(font->atlasVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    
+    //NOTE: Since you can free the underling buffer after the call to glBufferData, this means
+    // that glBufferData will copy over the data right here. I'm not sure if it uploads it to the gpu
+    // or create a temporary copy in RAM (which would be undesirable)
+    // TODO: Look into glMapBufferRange() which apparently does things a little different
+    glBufferData(GL_ARRAY_BUFFER, sizeOfVertexMap, glyphVertexMap, GL_STATIC_DRAW);
+    
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+    
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    
+    ls_arenaClear(c->scratchArena);
 #endif
     
     ls_arenaUse(prev);
@@ -2197,12 +2591,12 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
     
     glColor3ub(col.r, col.g, col.b);
     glBegin(GL_TRIANGLES);
-    glVertex2f(normRect.leftX,  normRect.topY);
-    glVertex2f(normRect.leftX,  normRect.botY);
-    glVertex2f(normRect.rightX, normRect.topY);
-    glVertex2f(normRect.rightX, normRect.topY);
-    glVertex2f(normRect.leftX,  normRect.botY);
-    glVertex2f(normRect.rightX, normRect.botY);
+    glVertex3f(normRect.leftX,  normRect.topY, c->zLayer);
+    glVertex3f(normRect.leftX,  normRect.botY, c->zLayer);
+    glVertex3f(normRect.rightX, normRect.topY, c->zLayer);
+    glVertex3f(normRect.rightX, normRect.topY, c->zLayer);
+    glVertex3f(normRect.leftX,  normRect.botY, c->zLayer);
+    glVertex3f(normRect.rightX, normRect.botY, c->zLayer);
     glEnd();
 #else
     s32 diffWidth = (w % 4);
@@ -2262,14 +2656,22 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     
     UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, xPos, yPos, w, h);
     
+    Color srgb = ls_uiAlphaUnmultiply(col);
+    if(col.a != 255)
+    {
+        ls_log("ORIGINAL: {Color}", col);
+        ls_log("CONVERTED: {Color}", srgb);
+        srgb.a = 10;
+    }
+    col = srgb;
     glColor4ub(col.r, col.g, col.b, col.a);
     glBegin(GL_TRIANGLES);
-    glVertex2f(normRect.leftX,  normRect.topY);
-    glVertex2f(normRect.leftX,  normRect.botY);
-    glVertex2f(normRect.rightX, normRect.topY);
-    glVertex2f(normRect.rightX, normRect.topY);
-    glVertex2f(normRect.leftX,  normRect.botY);
-    glVertex2f(normRect.rightX, normRect.botY);
+    glVertex3f(normRect.leftX,  normRect.topY, c->zLayer);
+    glVertex3f(normRect.leftX,  normRect.botY, c->zLayer);
+    glVertex3f(normRect.rightX, normRect.topY, c->zLayer);
+    glVertex3f(normRect.rightX, normRect.topY, c->zLayer);
+    glVertex3f(normRect.leftX,  normRect.botY, c->zLayer);
+    glVertex3f(normRect.rightX, normRect.botY, c->zLayer);
     glEnd();
     
 #else
@@ -2410,14 +2812,14 @@ void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
     glColor4ub(col.r, col.g, col.b, col.a);
     glBegin(GL_TRIANGLE_FAN);
     
-    glVertex2f(normCx, normCy);
+    glVertex3f(normCx, normCy, c->zLayer);
     for(s32 i = 0; i < triangleCount+1; i++)
     {
-        glVertex2f(p1X, p1Y);
+        glVertex3f(p1X, p1Y, c->zLayer);
         p1X = normCx+normRadX * cos(i*angleStep);
         p1Y = normCy+normRadY * sin(i*angleStep);
     }
-    glVertex2f(normCx+normRadX, normCy);
+    glVertex3f(normCx+normRadX, normCy, c->zLayer);
     
     glEnd();
     
@@ -2490,14 +2892,14 @@ void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickne
     
     for(s32 th = 0; th < thickness; th++)
     {
-        glVertex2f(p1X, p1Y);
+        glVertex3f(p1X, p1Y, c->zLayer);
         for(s32 i = 0; i < linesCount+1; i++)
         {
-            glVertex2f(p2X, p2Y);
+            glVertex3f(p2X, p2Y, c->zLayer);
             p2X = normCx+normRadX * cos((i+1)*angleStep);
             p2Y = normCy+normRadY * sin((i+1)*angleStep);
         }
-        glVertex2f(p1X, p1Y);
+        glVertex3f(p1X, p1Y, c->zLayer);
         
         radius -= 1;
         normRadX = ((f32)radius / (f32)c->width);
@@ -2668,12 +3070,12 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     glBegin(GL_TRIANGLES);
     
-    glTexCoord2f(0.0, 1.0); glVertex2f(norm.leftX,  norm.topY);
-    glTexCoord2f(0.0, 0.0); glVertex2f(norm.leftX,  norm.botY);
-    glTexCoord2f(1.0, 1.0); glVertex2f(norm.rightX, norm.topY);
-    glTexCoord2f(1.0, 1.0); glVertex2f(norm.rightX, norm.topY);
-    glTexCoord2f(0.0, 0.0); glVertex2f(norm.leftX,  norm.botY);
-    glTexCoord2f(1.0, 0.0); glVertex2f(norm.rightX, norm.botY);
+    glTexCoord2f(0.0, 1.0); glVertex3f(norm.leftX,  norm.topY, c->zLayer);
+    glTexCoord2f(0.0, 0.0); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
+    glTexCoord2f(1.0, 1.0); glVertex3f(norm.rightX, norm.topY, c->zLayer);
+    glTexCoord2f(1.0, 1.0); glVertex3f(norm.rightX, norm.topY, c->zLayer);
+    glTexCoord2f(0.0, 0.0); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
+    glTexCoord2f(1.0, 0.0); glVertex3f(norm.rightX, norm.botY, c->zLayer);
     
     glEnd();
     glDisable(GL_TEXTURE_2D);
@@ -2867,7 +3269,6 @@ void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, UIRect threadRect, UIRect scis
     }
 }
 
-UIAtlasEntry *ls_uiGetAtlasEntry(UIFont *font, u32 codepoint);
 #ifdef LS_UI_OPENGL_BACKEND
 void ls_uiSDFGlyph(UIContext *c, UIFont *font, u32 codepoint, s32 xPos, s32 yPos, s32 stride, f64 scaling, 
                    UIRect threadRect, UIRect scissor, Color textColor)
@@ -2877,6 +3278,7 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
 #endif
 {
 #ifdef LS_UI_OPENGL_BACKEND
+#if 0
     UIAtlasEntry *map = ls_uiGetAtlasEntry(font, codepoint);
     
     f64 texelLeft  = (f64)map->pixelX / (f64)font->atlasWidth;
@@ -2925,16 +3327,55 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     glColor4f(colorRed, colorGreen, colorBlue, colorAlpha);
     glBegin(GL_TRIANGLES);
     
-    glTexCoord2f(texelLeft,  texelBot); glVertex2f(norm.leftX,  norm.topY);
-    glTexCoord2f(texelLeft,  texelTop); glVertex2f(norm.leftX,  norm.botY);
-    glTexCoord2f(texelRight, texelBot); glVertex2f(norm.rightX, norm.topY);
-    glTexCoord2f(texelRight, texelBot); glVertex2f(norm.rightX, norm.topY);
-    glTexCoord2f(texelLeft,  texelTop); glVertex2f(norm.leftX,  norm.botY);
-    glTexCoord2f(texelRight, texelTop); glVertex2f(norm.rightX, norm.botY);
+    glTexCoord2f(texelLeft,  texelBot); glVertex3f(norm.leftX,  norm.topY, c->zLayer);
+    glTexCoord2f(texelLeft,  texelTop); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
+    glTexCoord2f(texelRight, texelBot); glVertex3f(norm.rightX, norm.topY, c->zLayer);
+    glTexCoord2f(texelRight, texelBot); glVertex3f(norm.rightX, norm.topY, c->zLayer);
+    glTexCoord2f(texelLeft,  texelTop); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
+    glTexCoord2f(texelRight, texelTop); glVertex3f(norm.rightX, norm.botY, c->zLayer);
     
     glEnd();
     glDisable(GL_TEXTURE_2D);
     glDisable(GL_ALPHA_TEST);
+    
+#else
+    
+    //TODO: Seems inefficient, but whatever... Maybe create a jumptable from codepoint to index
+    // baked directly in the atlas?
+    UIAtlasGlyph glyph = ls_uiGetAtlasGlyph(font, codepoint);
+    const s32 verticesPerGlyph = 6;
+    
+    //NOTE: These should have been set at initialization, and we use them everywhere... ostensibly
+    //glEnable(GL_BLEND);
+    //glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    
+    glUseProgram(c->defaultShaderProgram);
+    
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, c->fonts[0].texID);
+    GLint swizzleMask[] = {GL_RED, GL_RED, GL_RED, GL_RED};  // Map red to R, G, B, A
+    glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask);
+    
+    Color col = textColor;
+    f64 smoothingValue = 0.05;
+    glUniform1i(glGetUniformLocation(c->defaultShaderProgram, "sdfTexture"), 0); // Texture unit 0
+    glUniform4ui(glGetUniformLocation(c->defaultShaderProgram, "textColor"), col.r, col.g, col.b, col.a);
+    glUniform1f(glGetUniformLocation(c->defaultShaderProgram, "smoothing"), smoothingValue);
+    
+    glBindVertexArray(font->atlasVAO);
+    glDrawArrays(GL_TRIANGLES, glyph.idxInAtlas * verticesPerGlyph, verticesPerGlyph);
+    
+    glBindVertexArray(0);
+    glUseProgram(0);
+    
+#if 0
+    GLenum err = glGetError();
+    while(err != GL_NO_ERROR) {
+        AssertMsgF(FALSE, "Coldn't Gen Textures for Font Atlas, Error: %d", err);
+        err = glGetError();
+    }
+#endif
+#endif
     
 #else
     
@@ -3187,7 +3628,6 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
     }
 }
 
-UIGlyph ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint);
 void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UITextBox *box, s32 xPos, s32 yPos, 
                              s32 w, s32 h, UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
 {
@@ -3348,7 +3788,6 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
     
 }
 
-UIAtlasEntry *ls_uiGetAtlasEntry(UIFont *font, u32 codepoint);
 template<typename T>
 void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32 yPos,
                       UIRect threadRect, UIRect scissor, T text, Color textColor)
@@ -3382,7 +3821,10 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
         AssertMsgF(codepoint <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
         
-        UIAtlasEntry *map = ls_uiGetAtlasEntry(font, codepoint);
+        UIAtlasEntry *map = ls_uiGetAtlasGlyph(font, codepoint).map;
+        ls_uiSDFGlyph(c, font, codepoint, xPos, yPos, 0, 0, threadRect, scissor, textColor);
+#if 0
+        UIAtlasEntry *map = ls_uiGetAtlasGlyph(font, codepoint).map;
         
         f64 texelLeft  = (f64)map->pixelX / (f64)font->atlasWidth;
         f64 texelRight = (f64)(map->pixelX+map->width) / (f64)font->atlasWidth;
@@ -3434,12 +3876,12 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         glColor4f(colorRed, colorGreen, colorBlue, colorAlpha);
         glBegin(GL_TRIANGLES);
         
-        glTexCoord2f(texelLeft,  texelBot); glVertex2f(norm.leftX,  norm.topY);
-        glTexCoord2f(texelLeft,  texelTop); glVertex2f(norm.leftX,  norm.botY);
-        glTexCoord2f(texelRight, texelBot); glVertex2f(norm.rightX, norm.topY);
-        glTexCoord2f(texelRight, texelBot); glVertex2f(norm.rightX, norm.topY);
-        glTexCoord2f(texelLeft,  texelTop); glVertex2f(norm.leftX,  norm.botY);
-        glTexCoord2f(texelRight, texelTop); glVertex2f(norm.rightX, norm.botY);
+        glTexCoord2f(texelLeft,  texelBot); glVertex3f(norm.leftX,  norm.topY, c->zLayer);
+        glTexCoord2f(texelLeft,  texelTop); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
+        glTexCoord2f(texelRight, texelBot); glVertex3f(norm.rightX, norm.topY, c->zLayer);
+        glTexCoord2f(texelRight, texelBot); glVertex3f(norm.rightX, norm.topY, c->zLayer);
+        glTexCoord2f(texelLeft,  texelTop); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
+        glTexCoord2f(texelRight, texelTop); glVertex3f(norm.rightX, norm.botY, c->zLayer);
         
         glEnd();
         glDisable(GL_TEXTURE_2D);
@@ -3447,6 +3889,7 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         
         currXPos += map->xAdv*scaling;
         if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
+#endif
     }
 #else
     
@@ -3739,17 +4182,20 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, UILayoutRect layout, u
     return finalLayout;
 }
 
-UIAtlasEntry *ls_uiGetAtlasEntry(UIFont *font, u32 codepoint)
+UIAtlasGlyph ls_uiGetAtlasGlyph(UIFont *font, u32 codepoint)
 {
     AssertNonNull(font);
     AssertNonNull(font->fontAtlasSDF);
     
     s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
     s32 glyphCount = font->cpCount;
+    s32 index = 0;
     UIAtlasEntry *map  = (UIAtlasEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
-    while(glyphCount-- && map->codepoint != codepoint) { map += 1; }
+    while(glyphCount-- && map->codepoint != codepoint) { map += 1; index += 1; }
     AssertMsg(map->codepoint == codepoint, "Glyph Codepoint is not present in Atlas");
-    return map;
+    
+    UIAtlasGlyph result = { map, index };
+    return result;
 }
 
 UIGlyph ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint)
@@ -3757,7 +4203,7 @@ UIGlyph ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint)
     AssertNonNull(font);
     AssertNonNull(font->fontAtlasSDF);
     
-    UIAtlasEntry *map = ls_uiGetAtlasEntry(font, codepoint);
+    UIAtlasEntry *map = ls_uiGetAtlasGlyph(font, codepoint).map;
     UIGlyph result = { 
         .data = &font->fontAtlasSDF[map->pixelY*font->atlasWidth + map->pixelX],
         .width = (u32)map->width,
@@ -3770,6 +4216,41 @@ UIGlyph ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint)
     };
     
     return result;
+}
+
+UIAtlasIterator ls_uiAtlasIterStart(UIFont *font)
+{
+    AssertNonNull(font);
+    AssertNonNull(font->fontAtlasSDF);
+    
+    s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
+    s32 glyphCount = font->cpCount;
+    UIAtlasEntry *map  = (UIAtlasEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
+    UIAtlasEntry *last = map + glyphCount;
+    UIAtlasIterator iter = { map, last, glyphCount, 0 };
+    return iter;
+}
+
+void ls_uiAtlasIterNext(UIAtlasIterator *iter)
+{
+    AssertNonNull(iter);
+    AssertNonNull(iter->curr);
+    AssertNonNull(iter->last);
+    AssertMsg(iter->idx < iter->count, "Going past last index in Atlas Iterator");
+    AssertMsg(iter->curr != iter->last, "Going past last entry in Atlas Iterator");
+    
+    iter->curr += 1;
+    iter->idx  += 1;
+    return;
+}
+
+b32 ls_uiAtlasIterDone(UIAtlasIterator iter)
+{
+    AssertNonNull(iter.curr);
+    AssertNonNull(iter.last);
+    
+    if(iter.curr >= iter.last) { return TRUE; }
+    return FALSE;
 }
 
 void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
@@ -3908,8 +4389,8 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 text, UIC
     s32 width = ls_uiGlyphStringRect(c, c->currFont, text, pixelHeight).w + 16;
 #endif
     
-    b->w = width;
-    b->h = height;
+    b->bmp.w = width;
+    b->bmp.h = height;
 }
 
 void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t *t, UICallback onClick,
@@ -3943,8 +4424,8 @@ void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t 
     s32 width = ls_uiGlyphStringRect(c, c->currFont, b->name, pixelHeight).w + 16;
 #endif
     
-    b->w = width;
-    b->h = height;
+    b->bmp.w = width;
+    b->bmp.h = height;
     
     ls_arenaUse(prev);
 }
@@ -3971,7 +4452,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgCol
         textColor = ls_uiDarkenRGB(textColor, 0.50f);
         bkgColor  = ls_uiDarkenRGB(bkgColor, 0.50f);
         
-        RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->w, button->h };
+        RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->bmp.w, button->bmp.h };
         command.button        = button;
         command.bkgColor      = bkgColor;
         command.borderColor   = borderColor;
@@ -3981,7 +4462,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgCol
         return FALSE;
     }
     
-    if(MouseInRect(xPos, yPos, button->w, button->h-1))// && ls_uiInFocus(cxt, 0))
+    if(MouseInRect(xPos, yPos, button->bmp.w, button->bmp.h-1))// && ls_uiInFocus(cxt, 0))
     { 
         button->isHot = TRUE;
         bkgColor = c->highliteColor;
@@ -4005,7 +4486,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgCol
         }
     }
     
-    RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->w, button->h };
+    RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->bmp.w, button->bmp.h };
     command.button        = button;
     command.bkgColor      = bkgColor;
     command.borderColor   = borderColor;
@@ -4033,7 +4514,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
         textColor = ls_uiDarkenRGB(textColor, 0.50f);
         bkgColor  = ls_uiDarkenRGB(bkgColor, 0.50f);
         
-        RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->w, button->h };
+        RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->bmp.w, button->bmp.h };
         command.button        = button;
         command.bkgColor      = bkgColor;
         command.borderColor   = borderColor;
@@ -4043,7 +4524,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
         return FALSE;
     }
     
-    if(MouseInRect(xPos, yPos, button->w, button->h-1))// && ls_uiInFocus(cxt, 0))
+    if(MouseInRect(xPos, yPos, button->bmp.w, button->bmp.h-1))// && ls_uiInFocus(cxt, 0))
     { 
         button->isHot = TRUE;
         bkgColor = c->highliteColor;
@@ -4067,7 +4548,7 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
         }
     }
     
-    RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->w, button->h };
+    RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->bmp.w, button->bmp.h };
     command.button        = button;
     command.bkgColor      = bkgColor;
     command.borderColor   = borderColor;
@@ -5033,9 +5514,6 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
 {
 #ifdef LS_UI_OPENGL_BACKEND
     
-    s32 xPos = x-1;
-    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
-    
     //TODO: Customize color?
     Color col = c->borderColor;
     
@@ -5055,9 +5533,9 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
             
             glColor4ub(col.r, col.g, col.b, col.a);
             glBegin(GL_TRIANGLES);
-            glVertex2f(norm.leftX, norm.topY);
-            glVertex2f(norm.rightX, norm.topY);
-            glVertex2f(botX, norm.botY);
+            glVertex3f(norm.leftX, norm.topY, c->zLayer);
+            glVertex3f(norm.rightX, norm.topY, c->zLayer);
+            glVertex3f(botX, norm.botY, c->zLayer);
             glEnd();
             
         } break;
@@ -5076,9 +5554,9 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
             
             glColor4ub(col.r, col.g, col.b, col.a);
             glBegin(GL_TRIANGLES);
-            glVertex2f(norm.leftX, norm.botY);
-            glVertex2f(norm.leftX, norm.topY);
-            glVertex2f(norm.rightX, rightY);
+            glVertex3f(norm.leftX, norm.botY, c->zLayer);
+            glVertex3f(norm.leftX, norm.topY, c->zLayer);
+            glVertex3f(norm.rightX, rightY, c->zLayer);
             glEnd();
             
         } break;
@@ -5097,13 +5575,17 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
             
             glColor4ub(col.r, col.g, col.b, col.a);
             glBegin(GL_TRIANGLES);
-            glVertex2f(norm.rightX, norm.botY);
-            glVertex2f(norm.rightX, norm.topY);
-            glVertex2f(norm.leftX, leftY);
+            glVertex3f(norm.rightX, norm.botY, c->zLayer);
+            glVertex3f(norm.rightX, norm.topY, c->zLayer);
+            glVertex3f(norm.leftX, leftY, c->zLayer);
             glEnd();
             
         } break;
     }
+    
+    //NOTE: The rect is drawn later since in ImmediateMode OpenGL the lastest drawn element is on top
+    ls_uiBorderedRect(c, x-1, yPos, w, h, threadRect, scissor, bkgColor);
+    
 #else
     
     //TODO: Scissor???
@@ -5542,9 +6024,18 @@ UIButton ls_uiMenuButton(UICallback onClick, u8 *bitmapData, s32 width, s32 heig
 {
     UIButton result  = {};
     result.style     = UIBUTTON_BMP;
-    result.bmpData   = bitmapData;
-    result.w         = width;
-    result.h         = height;
+    result.bmp.data  = bitmapData;
+    result.bmp.w     = width;
+    result.bmp.h     = height;
+    result.callback1 = onClick;
+    return result;
+}
+
+UIButton ls_uiMenuButton(UICallback onClick, UIBitmap bmp)
+{
+    UIButton result  = {};
+    result.style     = UIBUTTON_BMP;
+    result.bmp       = bmp;
     result.callback1 = onClick;
     return result;
 }
@@ -5628,8 +6119,8 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     s32 subCount  = menu->subMenus.count;
     s32 itemCount = menu->items.count;
     
-    s32 closeX    = x + w - menu->closeWindow.w - 6;
-    s32 minimizeX = closeX - menu->closeWindow.w - 6;
+    s32 closeX    = x + w - menu->closeWindow.bmp.w - 6;
+    s32 minimizeX = closeX - menu->closeWindow.bmp.w - 6;
     
     s32 dragX = x + ((subCount+itemCount)*subW);
     
@@ -5728,11 +6219,11 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     
     
     //NOTE: Only render when the bitmap is set!
-    if(menu->closeWindow.bmpData)
-        inputUse |= ls_uiButton(c, &menu->closeWindow, closeX, y + 2, 2);
+    if(menu->closeWindow.bmp.data)
+        inputUse |= ls_uiButton(c, &menu->closeWindow, closeX, y + 2, 3);
     
-    if(menu->minimize.bmpData)
-        inputUse |= ls_uiButton(c, &menu->minimize, minimizeX, y + 2, 2);
+    if(menu->minimize.bmp.data)
+        inputUse |= ls_uiButton(c, &menu->minimize, minimizeX, y + 2, 3);
     
     
     RenderCommand command = { UI_RC_MENU, x, y, w, h };
@@ -5768,16 +6259,16 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
     
     glBegin(GL_TRIANGLES);
     glColor4ub(0, 0, 0, 0xFF);
-    glVertex2f(normRect.leftX,  normRect.botY);
-    glVertex2f(normRect.rightX, normRect.botY);
+    glVertex3f(normRect.leftX,  normRect.botY, c->zLayer);
+    glVertex3f(normRect.rightX, normRect.botY, c->zLayer);
     
     glColor4ub(0xFF, 0xFF, 0xFF, 0xFF);
-    glVertex2f(normRect.leftX,  normRect.topY);
-    glVertex2f(normRect.leftX,  normRect.topY);
-    glVertex2f(normRect.rightX, normRect.topY);
+    glVertex3f(normRect.leftX,  normRect.topY, c->zLayer);
+    glVertex3f(normRect.leftX,  normRect.topY, c->zLayer);
+    glVertex3f(normRect.rightX, normRect.topY, c->zLayer);
     
     glColor4ub(0, 0, 0, 0xFF);
-    glVertex2f(normRect.rightX, normRect.botY);
+    glVertex3f(normRect.rightX, normRect.botY, c->zLayer);
     glEnd();
 #else
     
@@ -5945,11 +6436,11 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
     glBegin(GL_TRIANGLE_FAN);
     
     glColor4ub(0xFF*value, 0xFF*value, 0xFF*value, 0xFF);
-    glVertex2f(normCx, normCy);
+    glVertex3f(normCx, normCy, c->zLayer);
     for(s32 i = 0; i < triangleCount+1; i++)
     {
         glColor4ub(baseR*0xFF, baseG*0xFF, baseB*0xFF, 0xFF);
-        glVertex2f(p1X, p1Y);
+        glVertex3f(p1X, p1Y, c->zLayer);
         p1X = normCx+normRadX * cos(i*angleStep);
         p1Y = normCy+normRadY * sin(i*angleStep);
         
@@ -5966,7 +6457,7 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
             baseB -= step; if(baseB < 0.0005f) { baseB = 0.0f; }
         }
     }
-    glVertex2f(normCx+normRadX, normCy);
+    glVertex3f(normCx+normRadX, normCy, c->zLayer);
     glEnd();
     
 #else
@@ -6037,13 +6528,13 @@ b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 w, s
     s32 valueRectW = w*0.1f;
     s32 valueRectH = h*0.8f;
     
-    s32 buttonH = picker->apply.h;
+    s32 buttonH = picker->apply.bmp.h;
     
     s32 radius  = w*0.30f;
     s32 centerX = x + 2*xMargin + valueRectW + radius;
     s32 centerY = y + 3*yMargin + buttonH + radius;
     
-    s32 buttonX = centerX - picker->apply.w/2;
+    s32 buttonX = centerX - picker->apply.bmp.w/2;
     s32 buttonY = y + yMargin;
     
     if(ls_uiHasCapture(c, picker) && LeftClickIn(centerX - radius, centerY - radius, radius*2, radius*2))
@@ -6158,7 +6649,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     };
     
     //NOTE: All Thread Rects are inclusive on the left/bot, exclusive on the right/top
-    switch(THREAD_COUNT)
+    switch(__LS_UI_THREAD_COUNT)
     {
         case 0:
         case 1:
@@ -6176,7 +6667,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
         case 4:
         case 8:
         {
-            for(s32 i = 0; i < THREAD_COUNT; i++)
+            for(s32 i = 0; i < __LS_UI_THREAD_COUNT; i++)
             {
                 if(ls_uiRectIntersects(commandRect, c->renderUIRects[i]))
                 {
@@ -6217,7 +6708,17 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     command.selectedFont    = c->currFont;
     command.pixelHeight     = c->currPixelHeight;
     
+    //NOTETODO: This is done to keep using the same zLayer logic in the Software Renderer,
+    // But make it work for OpenGL Immediate Mode
+    f64 inpStart = 0.0;
+    f64 inpEnd   = (f64)(UI_Z_LAYERS-1);
+    f64 outStart =  0.999;
+    f64 outEnd   = -0.999;
+    
+    f64 slope = (outEnd - outStart) / (inpEnd - inpStart);
+    c->zLayer = outStart + slope * ((f64)zLayer - inpStart); //NOTETODO: Would be better to round but meh
     ls_uiRenderSingleCommand(c, &command);
+    c->zLayer = 0;
     
     return;
 }
@@ -6228,7 +6729,7 @@ void ls_uiRender(UIContext *c)
 #ifndef LS_UI_OPENGL_BACKEND
     AssertMsg(c->drawBuffer != NULL, "Trying to Call ls_uiRender on a Fake UIContext "
               "which doesn't have a draw buffer allocated!\n");
-    if(THREAD_COUNT == 0)
+    if(__LS_UI_THREAD_COUNT == 0)
     {
         ls_uiRender__(c, 0);
         c->renderFunc(c);
@@ -6241,7 +6742,7 @@ void ls_uiRender(UIContext *c)
     while(areAllDone == FALSE)
     {
         volatile b32 allDone = TRUE;
-        for(u32 i = 0; i < THREAD_COUNT; i++)
+        for(u32 i = 0; i < __LS_UI_THREAD_COUNT; i++)
         {
             allDone = allDone && c->renderGroups[i].isDone;
         }
@@ -6249,7 +6750,7 @@ void ls_uiRender(UIContext *c)
         areAllDone = allDone;
     }
     
-    for(u32 i = 0; i < THREAD_COUNT; i++)
+    for(u32 i = 0; i < __LS_UI_THREAD_COUNT; i++)
     {
         c->renderGroups[i].isDone = FALSE;
     }
@@ -6303,16 +6804,22 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
         
         case UI_RC_TEXTBOX:
         {
+            //TODO: I hate these include guards. I'd prefer the rendering order of immediate elements
+            //      was the same among all backends...
+#ifdef LS_UI_OPENGL_BACKEND
+#else
+            ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
+#endif
             UITextBox *box = curr->textBox;
             
             Color caretColor = textColor;
             const s32 horzOff = 4;
             
-            ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
-            
             s32 strX = xPos + horzOff;
             s32 strY = yPos + h - pixelHeight;
             
+            //TODO: There should only be 1 method. RenderStringOnRect which takes an `alignment` param.
+            //      Or each widget should have a `style`, and the textbox tells how to align things.
             if(box->align == UI_TB_ALIGN_RIGHT || box->align == UI_TB_ALIGN_CENTER)
             {
                 ls_uiRenderAlignedStringOnRect(c, font, box, strX, strY, w, h, threadRect, scissor, textColor, c->invTextColor);
@@ -6323,7 +6830,9 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                 ls_uiRenderStringOnRect(c, font, pixelHeight, box, strX, strY, w, h, threadRect, scissor, 
                                         textColor, c->invTextColor);
             }
-            
+#ifdef LS_UI_OPENGL_BACKEND
+            ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
+#endif
         } break;
         
         case UI_RC_LISTBOX:
@@ -6333,11 +6842,13 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
             s32 h = curr->layout.minY;
             s32 maxHeight = curr->rect.h;
             s32 origY     = yPos+maxHeight-h;
+#ifdef LS_UI_OPENGL_BACKEND
+#else
+            ls_uiBorderedRect(c, xPos, origY, w, h, threadRect, scissor);
+#endif
             
             s32 strHeight = pixelHeight; 
             s32 vertOff = ((h - strHeight) / 2) + 4; //TODO: @FontDescent
-            
-            ls_uiBorderedRect(c, xPos, origY, w, h, threadRect, scissor);
             
             if(list->list.count)
             {
@@ -6364,14 +6875,23 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                     s32 currY = origY - (h*(i+1));
                     UIListBoxItem *currItem = list->list + i;
                     
+#ifdef LS_UI_OPENGL_BACKEND
+                    ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff - (h*(i+1)),
+                                     threadRect, scissor, currItem->name, currItem->textColor);
+                    ls_uiRect(c, xPos+1, currY, w-2, h, threadRect, scissor, currItem->bkgColor);
+#else
                     ls_uiRect(c, xPos+1, currY, w-2, h, threadRect, scissor, currItem->bkgColor);
                     ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff - (h*(i+1)),
                                      threadRect, scissor, currItem->name, currItem->textColor);
+#endif
                     
                 }
                 
-                ls_uiBorder(c, xPos, yPos, w, maxHeight+1, threadRect, scissor);
+                ls_uiBorder(c, xPos, yPos, w, maxHeight, threadRect, scissor);
             }
+#ifdef LS_UI_OPENGL_BACKEND
+            ls_uiBorderedRect(c, xPos, origY, w, h, threadRect, scissor);
+#endif
             
         } break;
         
@@ -6388,7 +6908,10 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
             
             if(button->style == UIBUTTON_CLASSIC)
             {
+#ifdef LS_UI_OPENGL_BACKEND
+#else
                 ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor, borderColor);
+#endif
                 
                 if(button->name.data)
                 {
@@ -6400,6 +6923,11 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                     ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor, 
                                      button->name, textColor);
                 }
+                
+#ifdef LS_UI_OPENGL_BACKEND
+                ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor, borderColor);
+#endif
+                
             }
             else if(button->style == UIBUTTON_LINK)
             {
@@ -6416,8 +6944,10 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
             }
             else if(button->style == UIBUTTON_TEXT_NOBORDER)
             {
+#ifdef LS_UI_OPENGL_BACKEND
+#else
                 ls_uiRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
-                
+#endif
                 if(button->name.data)
                 {
                     s32 strHeight = pixelHeight;
@@ -6428,6 +6958,9 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                     ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor, 
                                      button->name, textColor);
                 }
+#ifdef LS_UI_OPENGL_BACKEND
+                ls_uiRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
+#endif
             }
             else if(button->style == UIBUTTON_NO_TEXT)
             {
@@ -6435,8 +6968,7 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
             }
             else if(button->style == UIBUTTON_BMP)
             {
-                UIBitmap bmp = { button->bmpData, button->w, button->h };
-                ls_uiBitmap(c, bmp, xPos, yPos, threadRect);
+                ls_uiBitmap(c, button->bmp, xPos, yPos, threadRect);
             }
             else { AssertMsg(FALSE, "Unhandled button style\n"); }
             
@@ -6469,7 +7001,16 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                         if(check->addH > check->h) { addY -= (check->addH - check->h) / 2; }
                         
                         UIBitmap additive = { check->bmpAdditive, check->w, check->h };
+                        //NOTE: If the additive goes on top of the base bitmap, it would be rendered
+                        // below in OpenGL (because render ordering is opposed to the Software Backend
+                        // To avoid it, we artificially increase the zLayer
+#ifdef LS_UI_OPENGL_BACKEND
+                        c->zLayer += 1;
+#endif
                         ls_uiBitmap(c, additive, addX, addY, threadRect);
+#ifdef LS_UI_OPENGL_BACKEND
+                        c->zLayer -= 1;
+#endif
                     }
                 }
                 else { AssertMsg(FALSE, "Unhandled check bmp collection\n"); }
@@ -6499,10 +7040,11 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                 s32 slidePos = w*slider->currPos;
                 s32 lColorW = slidePos == w ? slidePos-2 : slidePos;
                 s32 rColorW = w-slidePos-2;
+#ifdef LS_UI_OPENGL_BACKEND
+#else
                 ls_uiFillRect(c, xPos+1, yPos+1, lColorW, h-2, threadRect, scissor, slider->lColor);
-                ls_uiFillRect(c, xPos+slidePos+1, yPos+1, rColorW, h-2,
-                              threadRect, scissor, slider->rColor);
-                
+                ls_uiFillRect(c, xPos+slidePos+1, yPos+1, rColorW, h-2, threadRect, scissor, slider->rColor);
+#endif
                 u32 valBuf[32] = {};
                 utf32 val = { valBuf, 0, 32};
                 ls_utf32FromInt_t(&val, slider->currValue);
@@ -6525,44 +7067,52 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                     s32 actualX = (xPos + slidePos) - 1;
                     s32 actualY = yPos - 2;
                     
-                    s32 actualWidth  = slideWidth+2;
-                    s32 actualHeight = 4 + h;
+                    s32 actualW = slideWidth+2;
+                    s32 actualH = 4 + h;
                     
-                    ls_uiFillRect(c, actualX, actualY, actualWidth, actualHeight,
-                                  threadRect, scissor, c->borderColor);
+                    ls_uiFillRect(c, actualX, actualY, actualW, actualH, threadRect, scissor, c->borderColor);
                 }
                 else
-                {
-                    ls_uiFillRect(c, xPos+slidePos, yPos, slideWidth, h,
-                                  threadRect, scissor, c->borderColor);
-                }
+                { ls_uiFillRect(c, xPos+slidePos, yPos, slideWidth, h, threadRect, scissor, c->borderColor); }
                 
+                //NOTE: Draw the displayed text, and hide through Alpha the slider info.
+                Color rectColor = c->widgetColor;
+                ls_log("[BEFORE] R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
+                rectColor = SetAlpha(rectColor, opacity);
+                ls_log("[AFTER]  R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
+#ifdef LS_UI_OPENGL_BACKEND
+#else
+                ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, rectColor, borderColor);
+#endif
+                s32 strWidth  = ls_uiGlyphStringRect(c, font, slider->text, pixelHeight).w;
+                s32 xOff      = (w - strWidth) / 2;
+                s32 yOff      = (h - strHeight) + 3; //TODO: @FontDescent
+                
+                Color textColor = c->textColor;
+                textColor = SetAlpha(textColor, opacity);
+                
+                ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos + yOff, threadRect, scissor,
+                                 slider->text, textColor);
+                
+#ifdef LS_UI_OPENGL_BACKEND
+                //rectColor = {.b = 69, .g = 69, .r = 69, .a = 192 };
+                rectColor.a = 0;
+                ls_log("[EFFECTIVE]  R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
+                
+                ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, rectColor, borderColor);
+                ls_uiFillRect(c, xPos+1, yPos+1, lColorW, h-2, threadRect, scissor, slider->lColor);
+                ls_uiFillRect(c, xPos+slidePos+1, yPos+1, rColorW, h-2, threadRect, scissor, slider->rColor);
+#endif
             }
             else if(slider->style == SL_LINE)
             { AssertMsg(FALSE, "Slider style line is not implemented\n"); }
             
-            //NOTE: Draw the displayed text, and hide through Alpha the slider info.
-            
-            Color rectColor = c->widgetColor;
-            rectColor = SetAlpha(rectColor, opacity);
-            ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, rectColor, borderColor);
-            
-            s32 strHeight = pixelHeight;
-            s32 strWidth  = ls_uiGlyphStringRect(c, font, slider->text, pixelHeight).w;
-            s32 xOff      = (w - strWidth) / 2;
-            s32 yOff      = (h - strHeight) + 3; //TODO: @FontDescent
-            
-            Color textColor = c->textColor;
-            textColor = SetAlpha(textColor, opacity);
-            
-            ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos + yOff, threadRect, scissor,
-                             slider->text, textColor);
         } break;
         
         case UI_RC_MENU:
         {
             UIMenu *menu = curr->menu;
-            ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor, c->widgetColor);
+            ls_uiBorderedRect(c, xPos, yPos, w+1, h, threadRect, scissor, bkgColor, c->widgetColor);
             
             s32 subY = yPos;
             s32 subW = menu->itemWidth;
@@ -6769,7 +7319,7 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
 void ls_uiRender__(UIContext *c, u32 threadID)
 {
     //NOTE: First clear the background
-    switch(THREAD_COUNT)
+    switch(__LS_UI_THREAD_COUNT)
     {
         case 0:
         case 1:
