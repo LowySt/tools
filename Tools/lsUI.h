@@ -1573,9 +1573,12 @@ layout(location = 1) in vec2 inTexCoord;   // Texture coordinates
 
 out vec2 TexCoord;
 
+uniform mat4 transform;
+
 void main() {
 
     gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
+//gl_Position = vec4(inPosition, 0.0, 1.0);  // Transform into clip space
     TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
 
 }
@@ -2226,6 +2229,11 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     f32 *glyphVertexMap = (f32 *)ls_alloc(sizeOfVertexMap);
     s32 glyphVertMapIdx = 0;
     
+    //NOTE: Since the viewport's dimensions are different from the atlas's dimensions, we need to get a scaling
+    // factor to properly size the glyphs!
+    const f32 scaleW = (f32)font->atlasWidth / (f32)c->width;
+    const f32 scaleH = (f32)font->atlasHeight / (f32)c->height;
+    
     for (; !ls_uiAtlasIterDone(atlasIt); ls_uiAtlasIterNext(&atlasIt))
     {
         UIAtlasEntry *map = atlasIt.curr;
@@ -2235,13 +2243,13 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
         f32 texelBot   = (f32)map->pixelY / (f32)font->atlasHeight;
         f32 texelTop   = (f32)(map->pixelY+map->height) / (f32)font->atlasHeight;
         
-        //NOTE: Basically this scale doesn't matter... Since we scale and translate
-        //      inside the shader, to position the glyph on the screen.
-        f32 scale = 12.0;
-        f32 xPos = -0.125;
-        f32 yPos = -0.125;
-        f32 w = (f32)map->width / (f32)font->atlasWidth * scale;
-        f32 h = (f32)map->height / (f32)font->atlasHeight * scale;
+        //NOTE: To avoid headaches, all glyphs are positioned in the center of the unit square
+        // the x/y coordinates of the final glyph would have needed to be mapped to floats anyway,
+        // so going from 0..c->width/c->height -> -1..1 is not that big of a deal.
+        f32 xPos = 0.0;
+        f32 yPos = 0.0;
+        f32 w = (f32)map->width / (f32)c->width * scaleW;
+        f32 h = (f32)map->height / (f32)c->height * scaleH;
         
         //Vertex Data (posX, posY, texU, texV)
         f32 verticesCurrent[6][4] =
@@ -2657,12 +2665,6 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, xPos, yPos, w, h);
     
     Color srgb = ls_uiAlphaUnmultiply(col);
-    if(col.a != 255)
-    {
-        ls_log("ORIGINAL: {Color}", col);
-        ls_log("CONVERTED: {Color}", srgb);
-        srgb.a = 10;
-    }
     col = srgb;
     glColor4ub(col.r, col.g, col.b, col.a);
     glBegin(GL_TRIANGLES);
@@ -3270,7 +3272,7 @@ void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, UIRect threadRect, UIRect scis
 }
 
 #ifdef LS_UI_OPENGL_BACKEND
-void ls_uiSDFGlyph(UIContext *c, UIFont *font, u32 codepoint, s32 xPos, s32 yPos, s32 stride, f64 scaling, 
+void ls_uiSDFGlyph(UIContext *c, UIFont *font, u32 codepoint, s32 xPos, s32 yPos, f64 scaling, 
                    UIRect threadRect, UIRect scissor, Color textColor)
 #else
 void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride, f64 scaling, 
@@ -3278,76 +3280,11 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
 #endif
 {
 #ifdef LS_UI_OPENGL_BACKEND
-#if 0
-    UIAtlasEntry *map = ls_uiGetAtlasEntry(font, codepoint);
-    
-    f64 texelLeft  = (f64)map->pixelX / (f64)font->atlasWidth;
-    f64 texelRight = (f64)(map->pixelX+map->width) / (f64)font->atlasWidth;
-    f64 texelBot   = (f64)map->pixelY / (f64)font->atlasHeight;
-    f64 texelTop   = (f64)(map->pixelY+map->height) / (f64)font->atlasHeight;
-    
-    //TODOf32 limitAlpha = (f32)map->onEdgeValue / 255.0f;
-    f32 limitAlpha = 160.0f / 255.0f;
-    
-    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
-    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
-    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
-    //   ----> https://github.com/nothings/stb/issues/450
-    // Proper vertical positioning of a glyph requires this y1 computation.
-    // Basically, (y1 - y0) == Height of the bounding box
-    // y1 represents the portion of the glyph below the baseline (usually positive)
-    // y0 represents the portion of the glyph above the baseline (usually negative)
-    // The font ascent represents the highest point from the baseline a glyph will draw (usually positive)
-    // The descent represent the lowest point from the baseline a glyph will draw (usually negative)
-    // The line gap is simply the distance between two separate lines (usually positive)
-    // Thus to compute the distance between 2 consecutive lines baselines you do:
-    //  linespace = ascent - descent + linegap
-    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
-    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
-    //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
-    s32 y1 = map->height*scaling + map->yOff*scaling;
-    s32 realY = yPos - y1;
-    
-    UIRect norm = ls_uiScreenCoordsToUnitSquare(c, xPos, realY, 
-                                                map->width*scaling, map->height*scaling);
-    
-    glEnable(GL_ALPHA_TEST);
-    glAlphaFunc(GL_GREATER, limitAlpha);
-    
-    glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, font->texID);
-    //TODO: We will care about these kinda stuff in the near future
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    
-    f32 colorRed   = (f32)textColor.r / 255.0f;
-    f32 colorGreen = (f32)textColor.g / 255.0f;
-    f32 colorBlue  = (f32)textColor.b / 255.0f;
-    f32 colorAlpha = (f32)textColor.a / 255.0f;
-    glColor4f(colorRed, colorGreen, colorBlue, colorAlpha);
-    glBegin(GL_TRIANGLES);
-    
-    glTexCoord2f(texelLeft,  texelBot); glVertex3f(norm.leftX,  norm.topY, c->zLayer);
-    glTexCoord2f(texelLeft,  texelTop); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
-    glTexCoord2f(texelRight, texelBot); glVertex3f(norm.rightX, norm.topY, c->zLayer);
-    glTexCoord2f(texelRight, texelBot); glVertex3f(norm.rightX, norm.topY, c->zLayer);
-    glTexCoord2f(texelLeft,  texelTop); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
-    glTexCoord2f(texelRight, texelTop); glVertex3f(norm.rightX, norm.botY, c->zLayer);
-    
-    glEnd();
-    glDisable(GL_TEXTURE_2D);
-    glDisable(GL_ALPHA_TEST);
-    
-#else
     
     //TODO: Seems inefficient, but whatever... Maybe create a jumptable from codepoint to index
     // baked directly in the atlas?
     UIAtlasGlyph glyph = ls_uiGetAtlasGlyph(font, codepoint);
     const s32 verticesPerGlyph = 6;
-    
-    //NOTE: These should have been set at initialization, and we use them everywhere... ostensibly
-    //glEnable(GL_BLEND);
-    //glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     
     glUseProgram(c->defaultShaderProgram);
     
@@ -3362,20 +3299,38 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     glUniform4ui(glGetUniformLocation(c->defaultShaderProgram, "textColor"), col.r, col.g, col.b, col.a);
     glUniform1f(glGetUniformLocation(c->defaultShaderProgram, "smoothing"), smoothingValue);
     
+    
+    // offsetX: (xPos - width/2) -> [-width/2...width/2]
+    // mappedX: offsetX / width  -> [-0.5...0.5]
+    //          mappedX*2        -> [-1.0...1.0]
+    f64 xf = (f64)xPos;
+    f64 yf = (f64)yPos;
+    f64 wf = (f64)c->width;
+    f64 hf = (f64)c->height;
+    f64 xp = ((xf - wf/2.0) / wf)*2;
+    f64 yp = ((yf - hf/2.0) / hf)*2;
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    
+    //f64 atlasScale = (f64)font->atlasHeight / c->height;
+    
+    Mat4 scale = Scale4(vec4(scaling, scaling, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+    
+    glUniformMatrix4fv(glGetUniformLocation(c->defaultShaderProgram, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    
     glBindVertexArray(font->atlasVAO);
     glDrawArrays(GL_TRIANGLES, glyph.idxInAtlas * verticesPerGlyph, verticesPerGlyph);
     
     glBindVertexArray(0);
     glUseProgram(0);
     
-#if 0
+    /*
     GLenum err = glGetError();
     while(err != GL_NO_ERROR) {
         AssertMsgF(FALSE, "Coldn't Gen Textures for Font Atlas, Error: %d", err);
         err = glGetError();
     }
-#endif
-#endif
+    */
     
 #else
     
@@ -3742,7 +3697,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
             if(font->isAtlas)
             {
 #ifdef LS_UI_OPENGL_BACKEND
-                ls_uiSDFGlyph(c, font, code, currXPos, currYPos+vertGlyphOff, font->atlasWidth, scaling,
+                ls_uiSDFGlyph(c, font, code, currXPos, currYPos+vertGlyphOff, scaling,
                               threadRect, scissor, actualColor);
 #else
                 ls_uiSDFGlyph(c, &currGlyph, currXPos, currYPos+vertGlyphOff, font->atlasWidth, scaling,
@@ -3766,7 +3721,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
             if(font->isAtlas)
             {
 #ifdef LS_UI_OPENGL_BACKEND
-                ls_uiSDFGlyph(c, font, (u32)'|', caretX, currYPos+vertGlyphOff, font->atlasWidth, scaling,
+                ls_uiSDFGlyph(c, font, (u32)'|', caretX, currYPos+vertGlyphOff, scaling,
                               threadRect, scissor, textColor);
 #else
                 UIGlyph caretGlyph = ls_uiGetGlyphFromAtlas(font, (u32)'|');
@@ -3799,16 +3754,14 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
     s32 currXPos = xPos;
     s32 currYPos = yPos;
     f64 scaling = (f64)pixelHeight / (f64)font->pixelHeight;
+    //TODO: The code that positions the text expects it to be scaled much differently than
+    // the actual scaling... why???
+    // The scaling should be 1.0, instead the code wants 0.35...
     s32 lineSpace = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
     
 #ifdef LS_UI_OPENGL_BACKEND
     
     AssertMsg(font->isAtlas == TRUE, "Using a glyph array with the OpenGL Backend is currently not supported\n");
-    
-    f32 colorRed   = (f32)textColor.r / 255.0f;
-    f32 colorGreen = (f32)textColor.g / 255.0f;
-    f32 colorBlue  = (f32)textColor.b / 255.0f;
-    f32 colorAlpha = (f32)textColor.a / 255.0f;
     
     for(u32 i = 0; i < text.len; i++)
     {
@@ -3822,75 +3775,15 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         AssertMsgF(codepoint <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
         
         UIAtlasEntry *map = ls_uiGetAtlasGlyph(font, codepoint).map;
-        ls_uiSDFGlyph(c, font, codepoint, xPos, yPos, 0, 0, threadRect, scissor, textColor);
-#if 0
-        UIAtlasEntry *map = ls_uiGetAtlasGlyph(font, codepoint).map;
         
-        f64 texelLeft  = (f64)map->pixelX / (f64)font->atlasWidth;
-        f64 texelRight = (f64)(map->pixelX+map->width) / (f64)font->atlasWidth;
-        f64 texelBot   = (f64)map->pixelY / (f64)font->atlasHeight;
-        f64 texelTop   = (f64)(map->pixelY+map->height) / (f64)font->atlasHeight;
-        
-        //TODOf32 limitAlpha = (f32)map->onEdgeValue / 255.0f;
-        //f32 limitAlpha = 160.0f / 255.0f;
-        f32 limitAlpha = 120.0f / 255.0f;
-        
-        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
-        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
-        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
-        //   ----> https://github.com/nothings/stb/issues/450
-        // Proper vertical positioning of a glyph requires this y1 computation.
-        // Basically, (y1 - y0) == Height of the bounding box
-        // y1 represents the portion of the glyph below the baseline (usually positive)
-        // y0 represents the portion of the glyph above the baseline (usually negative)
-        // The font ascent represents the highest point from the baseline a glyph will draw (usually positive)
-        // The descent represent the lowest point from the baseline a glyph will draw (usually negative)
-        // The line gap is simply the distance between two separate lines (usually positive)
-        // Thus to compute the distance between 2 consecutive lines baselines you do:
-        //  linespace = ascent - descent + linegap
-        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
-        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
-        //NOTE: HOW THE FUCK TO POSITION GLYPHS!!!
         s32 y1 = map->height*scaling + map->yOff*scaling;
         s32 realY = currYPos - y1;
-        
-        UIRect norm = ls_uiScreenCoordsToUnitSquare(c, currXPos, realY, 
-                                                    map->width*scaling, map->height*scaling);
-        
-        //NOTE: Escape the whitespace drawing because for some reason the fonts render it as the null glyph?
-        if(ls_UTF32IsWhitespace(codepoint)) {
-            currXPos += map->xAdv*scaling;
-            if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
-            continue;
-        }
-        
-        glEnable(GL_ALPHA_TEST);
-        glAlphaFunc(GL_GREATER, limitAlpha);
-        
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, font->texID);
-        //TODO: We will care about these kinda stuff in the near future
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        
-        glColor4f(colorRed, colorGreen, colorBlue, colorAlpha);
-        glBegin(GL_TRIANGLES);
-        
-        glTexCoord2f(texelLeft,  texelBot); glVertex3f(norm.leftX,  norm.topY, c->zLayer);
-        glTexCoord2f(texelLeft,  texelTop); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
-        glTexCoord2f(texelRight, texelBot); glVertex3f(norm.rightX, norm.topY, c->zLayer);
-        glTexCoord2f(texelRight, texelBot); glVertex3f(norm.rightX, norm.topY, c->zLayer);
-        glTexCoord2f(texelLeft,  texelTop); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
-        glTexCoord2f(texelRight, texelTop); glVertex3f(norm.rightX, norm.botY, c->zLayer);
-        
-        glEnd();
-        glDisable(GL_TEXTURE_2D);
-        glDisable(GL_ALPHA_TEST);
+        ls_uiSDFGlyph(c, font, codepoint, currXPos, realY, scaling, threadRect, scissor, textColor);
         
         currXPos += map->xAdv*scaling;
         if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
-#endif
     }
+    
 #else
     
     for(u32 i = 0; i < text.len; i++)
@@ -7077,9 +6970,9 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                 
                 //NOTE: Draw the displayed text, and hide through Alpha the slider info.
                 Color rectColor = c->widgetColor;
-                ls_log("[BEFORE] R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
+                //ls_log("[BEFORE] R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
                 rectColor = SetAlpha(rectColor, opacity);
-                ls_log("[AFTER]  R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
+                //ls_log("[AFTER]  R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
 #ifdef LS_UI_OPENGL_BACKEND
 #else
                 ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, rectColor, borderColor);
@@ -7096,8 +6989,8 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                 
 #ifdef LS_UI_OPENGL_BACKEND
                 //rectColor = {.b = 69, .g = 69, .r = 69, .a = 192 };
-                rectColor.a = 0;
-                ls_log("[EFFECTIVE]  R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
+                //rectColor.a = 0;
+                //ls_log("[EFFECTIVE]  R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
                 
                 ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, rectColor, borderColor);
                 ls_uiFillRect(c, xPos+1, yPos+1, lColorW, h-2, threadRect, scissor, slider->lColor);
