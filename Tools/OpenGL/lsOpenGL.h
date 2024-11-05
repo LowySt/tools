@@ -1,6 +1,7 @@
 #ifndef LS_OPENGL_H
 #define LS_OPENGL_H
 
+#include "lsLog.h"
 #include "win32.h"
 #include "lsWindows.h"
 #include "OpenGL\glCoreARB.h"
@@ -832,6 +833,48 @@ void ls_glLoadFunc(HDC DeviceContext)
     }
 }
 
+u32 ls_glCreateShader(const char *vs, const char *fs)
+{
+    u32 vertShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertShader, 1, &vs, NULL);
+    glCompileShader(vertShader);
+    
+    s32 success;
+    char infoLog[512];
+    glGetShaderiv(vertShader, GL_COMPILE_STATUS, &success);
+    if(!success)
+    {
+        glGetShaderInfoLog(vertShader, 512, NULL, infoLog);
+        ls_log("[ERROR] Default Vertex Shader Compilation Failed\n{char*}", infoLog);
+    }
+    
+    u32 fragShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragShader, 1, &fs, NULL);
+    glCompileShader(fragShader);
+    
+    glGetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
+    if(!success)
+    {
+        glGetShaderInfoLog(fragShader, 512, NULL, infoLog);
+        ls_log("[ERROR] Default Fragment Shader Compilation Failed\n{char*}", infoLog);
+    }
+    
+    u32 shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, fragShader);
+    glAttachShader(shaderProgram, vertShader);
+    glLinkProgram(shaderProgram);
+    
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+        ls_log("[ERROR] Default Shader Program Link Failed\n{char*}", infoLog);
+    }
+    
+    glDeleteShader(vertShader);
+    glDeleteShader(fragShader);
+    
+    return shaderProgram;
+}
 
 #endif //LS_PLAT_WINDOWS
 

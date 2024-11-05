@@ -682,7 +682,9 @@ struct UIContext
     
 #ifdef LS_UI_OPENGL_BACKEND
     f64 zLayer; //TODO: Temporary to make passing zLayer to primitive drawing funcs easier
-    u32 defaultShaderProgram; //TODO: Temporary to understand this shit.
+    u32 sdfTextShader;
+    u32 rectShader;
+    u32 rectVAO;
 #endif
     
     HDC  WindowDC;
@@ -1565,7 +1567,10 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     
     ls_glLoadFunc(c->WindowDC);
     
-    const char *defaultVertexShader = R"LONGLONG(
+    // --------------------------------
+    //NOTE: SDF Shader Compilation
+    //
+    const char *sdfVertShader = R"LONGLONG(
 #version 330 core
 
 layout(location = 0) in vec2 inPosition;   // Vertex position
@@ -1578,27 +1583,12 @@ uniform mat4 transform;
 void main() {
 
     gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
-//gl_Position = vec4(inPosition, 0.0, 1.0);  // Transform into clip space
-    TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
+TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
 
 }
 )LONGLONG";
     
-    u32 vertShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertShader, 1, &defaultVertexShader, NULL);
-    glCompileShader(vertShader);
-    
-    s32 success;
-    char infoLog[512];
-    glGetShaderiv(vertShader, GL_COMPILE_STATUS, &success);
-    if(!success)
-    {
-        glGetShaderInfoLog(vertShader, 512, NULL, infoLog);
-        ls_log("[ERROR] Default Vertex Shader Compilation Failed\n{char*}", infoLog);
-    }
-    
-    //TODO: This is temporary... ok?
-    const char *defaultFragShader = R"LONGLONG(
+    const char *sdfFragShader = R"LONGLONG(
 #version 330 core
 
 in vec2 TexCoord;
@@ -1633,41 +1623,92 @@ FragColor = result;
 }
   )LONGLONG";
     
-    u32 fragShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragShader, 1, &defaultFragShader, NULL);
-    glCompileShader(fragShader);
+    c->sdfTextShader = ls_glCreateShader(sdfVertShader, sdfFragShader);
     
-    glGetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
-    if(!success)
+    // --------------------------------
+    //NOTE: Rect Shader Compilation
+    //
+    const char *rectVertShader = R"LONGLONG(
+#version 330 core
+
+layout(location = 0) in vec2 inPosition;   // Vertex position
+layout(location = 1) in vec2 inTexCoord;   // Texture coordinates
+
+out vec2 TexCoord;
+
+uniform mat4 transform;
+
+void main() {
+
+    gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
+TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
+
+}
+)LONGLONG";
+    
+    const char *rectFragShader = R"LONGLONG(
+#version 330 core
+
+in vec2 TexCoord;
+out vec4 FragColor;
+
+uniform uvec4 color;        // Premultiplied RGBA color
+
+vec4 convertIntColToFloat(uvec4 inC) {
+
+vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+result.rgba /= 255.0;
+return result;
+}
+
+void main() {
+vec4 converted = convertIntColToFloat(color);
+if(converted.a < 0.01) { discard; }
+FragColor = converted;
+}
+)LONGLONG";
+    
+    c->rectShader = ls_glCreateShader(rectVertShader, rectFragShader);
+    
+    f32 rectVertices[6][4] =
     {
-        glGetShaderInfoLog(fragShader, 512, NULL, infoLog);
-        ls_log("[ERROR] Default Fragment Shader Compilation Failed\n{char*}", infoLog);
-    }
+        {-1.0, -1.0, 0.0, 1.0},  // Bottom-left
+        {-1.0,  1.0, 0.0, 0.0},  // Top-left
+        { 1.0, -1.0, 1.0, 1.0},  // Bot-right
+        
+        { 1.0, -1.0, 1.0, 1.0},  // Bot-right
+        {-1.0,  1.0, 0.0, 0.0},  // Top-left
+        { 1.0,  1.0, 1.0, 0.0}   // Top-right
+    };
     
-    u32 shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, fragShader);
-    glAttachShader(shaderProgram, vertShader);
-    glLinkProgram(shaderProgram);
+    GLuint VBO;
+    glGenVertexArrays(1, &c->rectVAO);
+    glGenBuffers(1, &VBO);
+    glBindVertexArray(c->rectVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
     
-    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
-        ls_log("[ERROR] Default Shader Program Link Failed\n{char*}", infoLog);
-    }
-    glDeleteShader(fragShader);
+    //NOTE: Since you can free the underling buffer after the call to glBufferData, this means
+    // that glBufferData will copy over the data right here. I'm not sure if it uploads it to the gpu
+    // or create a temporary copy in RAM (which would be undesirable)
+    // TODO: Look into glMapBufferRange() which apparently does things a little different
+    glBufferData(GL_ARRAY_BUFFER, sizeof(rectVertices), rectVertices, GL_STATIC_DRAW);
     
-    c->defaultShaderProgram = shaderProgram;
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+    
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    
+    
+    //
+    // --------------------------------
     
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    
-    //NOTE: This should be better since I'm passing premultiplied alpha colors.
-    //  I *think* this means: Assume destination is a flat color,
-    //                        and cosider the source a premultiplied alpha source
-    //glBlendFunc(GL_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA);
-    
     glEnable(GL_DEPTH_TEST);
-    //glDepthFunc();
     
 #else
     
@@ -2662,19 +2703,29 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
 {
 #ifdef LS_UI_OPENGL_BACKEND
     
-    UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, xPos, yPos, w, h);
+    glUseProgram(c->rectShader);
     
-    Color srgb = ls_uiAlphaUnmultiply(col);
-    col = srgb;
-    glColor4ub(col.r, col.g, col.b, col.a);
-    glBegin(GL_TRIANGLES);
-    glVertex3f(normRect.leftX,  normRect.topY, c->zLayer);
-    glVertex3f(normRect.leftX,  normRect.botY, c->zLayer);
-    glVertex3f(normRect.rightX, normRect.topY, c->zLayer);
-    glVertex3f(normRect.rightX, normRect.topY, c->zLayer);
-    glVertex3f(normRect.leftX,  normRect.botY, c->zLayer);
-    glVertex3f(normRect.rightX, normRect.botY, c->zLayer);
-    glEnd();
+    glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
+    
+    f64 xf = (f64)xPos;
+    f64 yf = (f64)yPos;
+    f64 wf = (f64)c->width;
+    f64 hf = (f64)c->height;
+    
+    // Positions need to be adjusted by the width and height... for some reason?
+    f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
+    f64 yp = ((yf + (f64)h / 2.0) / (hf / 2.0)) - 1.0;
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+    
+    glUniformMatrix4fv(glGetUniformLocation(c->rectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    
+    glBindVertexArray(c->rectVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    
+    glBindVertexArray(0);
+    glUseProgram(0);
     
 #else
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
@@ -3286,7 +3337,7 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     UIAtlasGlyph glyph = ls_uiGetAtlasGlyph(font, codepoint);
     const s32 verticesPerGlyph = 6;
     
-    glUseProgram(c->defaultShaderProgram);
+    glUseProgram(c->sdfTextShader);
     
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, c->fonts[0].texID);
@@ -3295,9 +3346,9 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     
     Color col = textColor;
     f64 smoothingValue = 0.05;
-    glUniform1i(glGetUniformLocation(c->defaultShaderProgram, "sdfTexture"), 0); // Texture unit 0
-    glUniform4ui(glGetUniformLocation(c->defaultShaderProgram, "textColor"), col.r, col.g, col.b, col.a);
-    glUniform1f(glGetUniformLocation(c->defaultShaderProgram, "smoothing"), smoothingValue);
+    glUniform1i(glGetUniformLocation(c->sdfTextShader, "sdfTexture"), 0); // Texture unit 0
+    glUniform4ui(glGetUniformLocation(c->sdfTextShader, "textColor"), col.r, col.g, col.b, col.a);
+    glUniform1f(glGetUniformLocation(c->sdfTextShader, "smoothing"), smoothingValue);
     
     
     // offsetX: (xPos - width/2) -> [-width/2...width/2]
@@ -3310,17 +3361,15 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     f64 xp = ((xf - wf/2.0) / wf)*2;
     f64 yp = ((yf - hf/2.0) / hf)*2;
     Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
-    
-    //f64 atlasScale = (f64)font->atlasHeight / c->height;
-    
     Mat4 scale = Scale4(vec4(scaling, scaling, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
     
-    glUniformMatrix4fv(glGetUniformLocation(c->defaultShaderProgram, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniformMatrix4fv(glGetUniformLocation(c->sdfTextShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
     
     glBindVertexArray(font->atlasVAO);
     glDrawArrays(GL_TRIANGLES, glyph.idxInAtlas * verticesPerGlyph, verticesPerGlyph);
     
+    glBindTexture(GL_TEXTURE_2D, 0);
     glBindVertexArray(0);
     glUseProgram(0);
     

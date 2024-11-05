@@ -83,6 +83,7 @@ b32 isVal(f32 x, f32 val);
 v2  vec2(f32 x, f32 y);
 v3  vec3(f32 x, f32 y, f32 z);
 v4  vec4(f32 x, f32 y, f32 z, f32 w);
+v4  vec4(f64 x, f64 y, f64 z, f64 w);
 v2i vec2i(s32 x, s32 y);
 v3i vec3i(s32 x, s32 y, s32 z);
 v4i vec4i(s32 x, s32 y, s32 z, s32 w);
@@ -186,6 +187,8 @@ extern "C"
     Mat3 ls_mat3Mulf32(Mat3 m, f32 value);
     
     Mat4 ls_mat4Mulf32(Mat4 m, f32 value);
+    
+    Mat4 ls_mat4x4Mul(Mat4 m, Mat4 n);
 #if 0
     Mat2 operator+(Mat2 m, f32 value); Mat3 operator+(Mat3 m, f32 value); Mat4 operator+(Mat4 m, f32 value);
     Mat2 operator+(Mat2 n, Mat2 m); Mat3 operator+(Mat3 n, Mat3 m); Mat4 operator+(Mat4 n, Mat4 m);
@@ -628,6 +631,12 @@ v4 vec4(f32 x, f32 y, f32 z, f32 w)
 	return Result;
 }
 
+v4 vec4(f64 x, f64 y, f64 z, f64 w)
+{
+    v4 Result = { (f32)x, (f32)y, (f32)z, (f32)w };
+	return Result;
+}
+
 v2i vec2(s32 x, s32 y)
 {
 	v2i Result = { x, y };
@@ -874,6 +883,34 @@ Mat4 ls_mat4Mulf32(Mat4 m, f32 value)
 		m.values[1][0] * value, m.values[1][1] * value, m.values[1][2] * value, m.values[1][3] * value,
 		m.values[2][0] * value, m.values[2][1] * value, m.values[2][2] * value, m.values[2][3] * value,
 		m.values[3][0] * value, m.values[3][1] * value, m.values[3][2] * value, m.values[3][3] * value
+	};
+    
+	return Result;
+}
+
+Mat4 ls_mat4x4Mul(Mat4 m, Mat4 n)
+{
+    Mat4 Result =
+	{
+		(n.values[0][0] * m.values[0][0]) + (n.values[0][1] * m.values[1][0]) + (n.values[0][2] * m.values[2][0]) + (n.values[0][3] * m.values[3][0]),
+		(n.values[0][0] * m.values[0][1]) + (n.values[0][1] * m.values[1][1]) + (n.values[0][2] * m.values[2][1]) + (n.values[0][3] * m.values[3][1]),
+		(n.values[0][0] * m.values[0][2]) + (n.values[0][1] * m.values[1][2]) + (n.values[0][2] * m.values[2][2]) + (n.values[0][3] * m.values[3][2]),
+		(n.values[0][0] * m.values[0][3]) + (n.values[0][1] * m.values[1][3]) + (n.values[0][2] * m.values[2][3]) + (n.values[0][3] * m.values[3][3]),
+        
+		(n.values[1][0] * m.values[0][0]) + (n.values[1][1] * m.values[1][0]) + (n.values[1][2] * m.values[2][0]) + (n.values[1][3] * m.values[3][0]),
+		(n.values[1][0] * m.values[0][1]) + (n.values[1][1] * m.values[1][1]) + (n.values[1][2] * m.values[2][1]) + (n.values[1][3] * m.values[3][1]),
+		(n.values[1][0] * m.values[0][2]) + (n.values[1][1] * m.values[1][2]) + (n.values[1][2] * m.values[2][2]) + (n.values[1][3] * m.values[3][2]),
+		(n.values[1][0] * m.values[0][3]) + (n.values[1][1] * m.values[1][3]) + (n.values[1][2] * m.values[2][3]) + (n.values[1][3] * m.values[3][3]),
+        
+		(n.values[2][0] * m.values[0][0]) + (n.values[2][1] * m.values[1][0]) + (n.values[2][2] * m.values[2][0]) + (n.values[2][3] * m.values[3][0]),
+		(n.values[2][0] * m.values[0][1]) + (n.values[2][1] * m.values[1][1]) + (n.values[2][2] * m.values[2][1]) + (n.values[2][3] * m.values[3][1]),
+		(n.values[2][0] * m.values[0][2]) + (n.values[2][1] * m.values[1][2]) + (n.values[2][2] * m.values[2][2]) + (n.values[2][3] * m.values[3][2]),
+		(n.values[2][0] * m.values[0][3]) + (n.values[2][1] * m.values[1][3]) + (n.values[2][2] * m.values[2][3]) + (n.values[2][3] * m.values[3][3]),
+        
+		(n.values[3][0] * m.values[0][0]) + (n.values[3][1] * m.values[1][0]) + (n.values[3][2] * m.values[2][0]) + (n.values[3][3] * m.values[3][0]),
+		(n.values[3][0] * m.values[0][1]) + (n.values[3][1] * m.values[1][1]) + (n.values[3][2] * m.values[2][1]) + (n.values[3][3] * m.values[3][1]),
+		(n.values[3][0] * m.values[0][2]) + (n.values[3][1] * m.values[1][2]) + (n.values[3][2] * m.values[2][2]) + (n.values[3][3] * m.values[3][2]),
+		(n.values[3][0] * m.values[0][3]) + (n.values[3][1] * m.values[1][3]) + (n.values[3][2] * m.values[2][3]) + (n.values[3][3] * m.values[3][3])
 	};
     
 	return Result;
