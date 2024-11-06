@@ -1712,8 +1712,57 @@ FragColor = converted;
     // --------------------------------
     //NOTE: Circle Shader Compilation
     //
+    const char *circleVertShader = R"LONGLONG(
+#version 330 core
+
+layout(location = 0) in vec2 inPosition;   // Vertex position
+layout(location = 1) in vec2 inTexCoord;   // Texture coordinates
+
+out vec2 TexCoord;
+
+uniform mat4 transform;
+
+void main() {
+
+    gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
+TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
+
+}
+)LONGLONG";
     
-    c->circleShader = ls_glCreateShader(rectVertShader, rectFragShader);
+    const char *circleFragShader = R"LONGLONG(
+#version 330 core
+
+in vec2 TexCoord;
+out vec4 FragColor;
+
+uniform uvec4 color;        // Premultiplied RGBA color
+uniform float thickness;    // Thickness of the outline
+
+vec4 convertIntColToFloat(uvec4 inC) {
+
+vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+result.rgba /= 255.0;
+return result;
+}
+
+void main() {
+vec2 center = vec2(0.5, 0.5);
+float dist = distance(TexCoord, center);
+float innerRadius = 0.5 - thickness;
+
+if (dist > 0.5 || dist < innerRadius) {
+ discard;
+}
+
+vec4 converted = convertIntColToFloat(color);
+if(converted.a < 0.01) { discard; }
+
+FragColor = converted;
+}
+)LONGLONG";
+    
+    c->circleShader = ls_glCreateShader(circleVertShader, circleFragShader);
     
     constexpr s32 circleVertCount = 80;
     f32 circleVertices[circleVertCount][4] = {};
@@ -2897,13 +2946,13 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
 #endif //LS_UI_OPENGL_BACKEND
 }
 
-void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
-                     UIRect threadRect, UIRect scissor, Color col)
+
+void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness,
+                 UIRect threadRect, UIRect scissor, Color col)
 {
 #ifdef LS_UI_OPENGL_BACKEND
     
     glUseProgram(c->circleShader);
-    glUniform4ui(glGetUniformLocation(c->circleShader, "color"), col.r, col.g, col.b, col.a);
     
     s32 leftCornerX = centerX;// - radius;
     s32 leftCornerY = centerY;// - radius;
@@ -2918,17 +2967,74 @@ void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
     
     f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
     f64 yp = ((yf + (f64)h / 2.0) / (hf / 2.0)) - 1.0;
+    
+    f64 aspectRatio = wf/hf;
     Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
     Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
     
+    
     glUniformMatrix4fv(glGetUniformLocation(c->circleShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniform4ui(glGetUniformLocation(c->circleShader, "color"), col.r, col.g, col.b, col.a);
+    
+    f32 uvThickness = (f32)thickness / (f32)radius;
+    glUniform1f(glGetUniformLocation(c->circleShader, "thickness"), uvThickness); // Full circle in [0..1]
     
     glBindVertexArray(c->circleVAO);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, c->circleVertCount); //TODO: Vertices count is hardcoded....
+    glDrawArrays(GL_TRIANGLE_FAN, 0, c->circleVertCount);
     
     glBindVertexArray(0);
     glUseProgram(0);
+    
+#else
+    //TODO: Change with better rasterizer
+    s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
+    s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
+    s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
+    s32 maxY = threadRect.maxY < scissor.y+scissor.h ? threadRect.maxY : scissor.y+scissor.h;
+    
+    s32 startX = centerX - radius;
+    s32 startY = centerY - radius;
+    
+    if(startX < minX) { startX = minX; }
+    if(startY < minY) { startY = minY; }
+    
+    s32 endX   = centerX + radius + 1;
+    s32 endY   = centerY + radius + 1;
+    
+    if(endX > maxX) { endX = maxX+1; }
+    if(endY > maxY) { endY = maxY+1; }
+    
+    u32 *At = (u32 *)c->drawBuffer;
+    for(s32 y = startY; y < endY; y++)
+    {
+        for(s32 x = startX; x < endX; x++)
+        {
+            s32 cX = x - centerX;
+            s32 cY = y - centerY;
+            
+            b32 cond1 = (cY*cY + cX*cX) <= (radius*radius);
+            b32 cond2 = (cY*cY + cX*cX) >= ((radius-thickness)*(radius-thickness));
+            
+            if(cond1 && cond2)
+            {
+                Color base         = { .value = At[y*c->width + x] };
+                Color blendedColor = ls_uiAlphaBlend(col, base);
+                At[y*c->width + x] = blendedColor.value;
+            }
+        }
+    }
+#endif
+}
+
+
+void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
+                     UIRect threadRect, UIRect scissor, Color col)
+{
+#ifdef LS_UI_OPENGL_BACKEND
+    
+    ls_uiCircle(c, centerX, centerY, radius, radius, threadRect, scissor, col);
+    return;
     
 #else
     
@@ -2968,93 +3074,6 @@ void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
         }
     }
     
-#endif
-}
-
-//TODO: Change with better rasterizer
-void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness,
-                 UIRect threadRect, UIRect scissor, Color col)
-{
-#ifdef LS_UI_OPENGL_BACKEND
-    const s32 linesCount = 30;
-    
-    //NOTE: Make sure we don't overflow the drawing stupidly
-    AssertMsg(thickness <= radius, "Thickness overflows the radius\n");
-    if(thickness > radius) { thickness = radius; }
-    
-    f32 normCx   = (2.0f*(f32)centerX / (f32)c->width)-1.0f;
-    f32 normCy   = (2.0f*(f32)centerY / (f32)c->height)-1.0f;
-    f32 normRadX = ((f32)radius / (f32)c->width);
-    f32 normRadY = ((f32)radius / (f32)c->height);
-    
-    //NOTE: We start at angle 0, and create triangles by moving one angle step at a time
-    f32 angleStep = TAU / linesCount;
-    f32 p1X = normCx+normRadX;
-    f32 p1Y = normCy;
-    f32 p2X = normCx+normRadX * cos(angleStep);
-    f32 p2Y = normCy+normRadY * sin(angleStep);
-    
-    glColor4ub(col.r, col.g, col.b, col.a);
-    glBegin(GL_LINE_STRIP);
-    
-    for(s32 th = 0; th < thickness; th++)
-    {
-        glVertex3f(p1X, p1Y, c->zLayer);
-        for(s32 i = 0; i < linesCount+1; i++)
-        {
-            glVertex3f(p2X, p2Y, c->zLayer);
-            p2X = normCx+normRadX * cos((i+1)*angleStep);
-            p2Y = normCy+normRadY * sin((i+1)*angleStep);
-        }
-        glVertex3f(p1X, p1Y, c->zLayer);
-        
-        radius -= 1;
-        normRadX = ((f32)radius / (f32)c->width);
-        normRadY = ((f32)radius / (f32)c->height);
-        p1X = normCx+normRadX;
-        p1Y = normCy;
-        p2X = normCx+normRadX * cos(angleStep);
-        p2Y = normCy+normRadY * sin(angleStep);
-    }
-    glEnd();
-    
-#else
-    s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
-    s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
-    s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
-    s32 maxY = threadRect.maxY < scissor.y+scissor.h ? threadRect.maxY : scissor.y+scissor.h;
-    
-    s32 startX = centerX - radius;
-    s32 startY = centerY - radius;
-    
-    if(startX < minX) { startX = minX; }
-    if(startY < minY) { startY = minY; }
-    
-    s32 endX   = centerX + radius + 1;
-    s32 endY   = centerY + radius + 1;
-    
-    if(endX > maxX) { endX = maxX+1; }
-    if(endY > maxY) { endY = maxY+1; }
-    
-    u32 *At = (u32 *)c->drawBuffer;
-    for(s32 y = startY; y < endY; y++)
-    {
-        for(s32 x = startX; x < endX; x++)
-        {
-            s32 cX = x - centerX;
-            s32 cY = y - centerY;
-            
-            b32 cond1 = (cY*cY + cX*cX) <= (radius*radius);
-            b32 cond2 = (cY*cY + cX*cX) >= ((radius-thickness)*(radius-thickness));
-            
-            if(cond1 && cond2)
-            {
-                Color base         = { .value = At[y*c->width + x] };
-                Color blendedColor = ls_uiAlphaBlend(col, base);
-                At[y*c->width + x] = blendedColor.value;
-            }
-        }
-    }
 #endif
 }
 
