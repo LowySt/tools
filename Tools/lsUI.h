@@ -685,6 +685,9 @@ struct UIContext
     u32 sdfTextShader;
     u32 rectShader;
     u32 rectVAO;
+    u32 circleShader;
+    u32 circleVAO;
+    s32 circleVertCount;
 #endif
     
     HDC  WindowDC;
@@ -1702,9 +1705,61 @@ FragColor = converted;
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
     
-    
     //
     // --------------------------------
+    
+    
+    // --------------------------------
+    //NOTE: Circle Shader Compilation
+    //
+    
+    c->circleShader = ls_glCreateShader(rectVertShader, rectFragShader);
+    
+    constexpr s32 circleVertCount = 80;
+    f32 circleVertices[circleVertCount][4] = {};
+    c->circleVertCount = circleVertCount;
+    
+    //NOTE: Radius is 1.0f, so it's implicit in the calculations.
+    f32 angleStep = TAU / circleVertCount;
+    f32 pX = 1.0f;
+    f32 pY = 0.0f;
+    f32 u  = 1.0f;
+    f32 v  = 0.5f;
+    for (s32 cvIdx = 0; cvIdx < circleVertCount; cvIdx++)
+    {
+        circleVertices[cvIdx][0] = pX;
+        circleVertices[cvIdx][1] = pY;
+        circleVertices[cvIdx][2] = u;
+        circleVertices[cvIdx][3] = v;
+        pX = cos(cvIdx*angleStep);
+        pY = sin(cvIdx*angleStep);
+        u  = (cos(cvIdx*angleStep) + 1.0f) * 0.5f;
+        v  = (sin(cvIdx*angleStep) + 1.0f) * 0.5f;
+    }
+    
+    GLuint circleVBO;
+    glGenVertexArrays(1, &c->circleVAO);
+    glGenBuffers(1, &circleVBO);
+    glBindVertexArray(c->circleVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, circleVBO);
+    
+    //NOTE: Since you can free the underling buffer after the call to glBufferData, this means
+    // that glBufferData will copy over the data right here. I'm not sure if it uploads it to the gpu
+    // or create a temporary copy in RAM (which would be undesirable)
+    // TODO: Look into glMapBufferRange() which apparently does things a little different
+    glBufferData(GL_ARRAY_BUFFER, sizeof(circleVertices), circleVertices, GL_STATIC_DRAW);
+    
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+    
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    //
+    // --------------------------------
+    
     
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -2704,7 +2759,6 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
 #ifdef LS_UI_OPENGL_BACKEND
     
     glUseProgram(c->rectShader);
-    
     glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
     
     f64 xf = (f64)xPos;
@@ -2848,33 +2902,33 @@ void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
 {
 #ifdef LS_UI_OPENGL_BACKEND
     
-    const s32 triangleCount = 30;
+    glUseProgram(c->circleShader);
+    glUniform4ui(glGetUniformLocation(c->circleShader, "color"), col.r, col.g, col.b, col.a);
     
-    f32 normCx   = (2.0f*(f32)centerX / (f32)c->width)-1.0f;
-    f32 normCy   = (2.0f*(f32)centerY / (f32)c->height)-1.0f;
-    f32 normRadX = ((f32)radius / (f32)c->width);
-    f32 normRadY = ((f32)radius / (f32)c->height);
+    s32 leftCornerX = centerX;// - radius;
+    s32 leftCornerY = centerY;// - radius;
     
-    //NOTE: We start at angle 0, and create triangles by moving one angle step at a time
-    f32 angleStep = TAU / triangleCount;
-    f32 p1X = normCx+normRadX;
-    f32 p1Y = normCy;
-    f32 p2X = normCx+normRadX * cos(angleStep);
-    f32 p2Y = normCy+normRadY * sin(angleStep);
+    f64 xf = (f64)leftCornerX;
+    f64 yf = (f64)leftCornerY;
+    f64 wf = (f64)c->width;
+    f64 hf = (f64)c->height;
     
-    glColor4ub(col.r, col.g, col.b, col.a);
-    glBegin(GL_TRIANGLE_FAN);
+    s32 w = radius*2;
+    s32 h = radius*2;
     
-    glVertex3f(normCx, normCy, c->zLayer);
-    for(s32 i = 0; i < triangleCount+1; i++)
-    {
-        glVertex3f(p1X, p1Y, c->zLayer);
-        p1X = normCx+normRadX * cos(i*angleStep);
-        p1Y = normCy+normRadY * sin(i*angleStep);
-    }
-    glVertex3f(normCx+normRadX, normCy, c->zLayer);
+    f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
+    f64 yp = ((yf + (f64)h / 2.0) / (hf / 2.0)) - 1.0;
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
     
-    glEnd();
+    glUniformMatrix4fv(glGetUniformLocation(c->circleShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    
+    glBindVertexArray(c->circleVAO);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, c->circleVertCount); //TODO: Vertices count is hardcoded....
+    
+    glBindVertexArray(0);
+    glUseProgram(0);
     
 #else
     
