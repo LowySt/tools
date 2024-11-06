@@ -685,6 +685,7 @@ struct UIContext
     u32 sdfTextShader;
     u32 rectShader;
     u32 rectVAO;
+    u32 texturedRectShader;
     u32 circleShader;
     u32 circleVAO;
     s32 circleVertCount;
@@ -1675,13 +1676,13 @@ FragColor = converted;
     
     f32 rectVertices[6][4] =
     {
-        {-1.0, -1.0, 0.0, 1.0},  // Bottom-left
-        {-1.0,  1.0, 0.0, 0.0},  // Top-left
-        { 1.0, -1.0, 1.0, 1.0},  // Bot-right
+        {-1.0, -1.0, 0.0, 0.0},  // Bottom-left
+        {-1.0,  1.0, 0.0, 1.0},  // Top-left
+        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
         
-        { 1.0, -1.0, 1.0, 1.0},  // Bot-right
-        {-1.0,  1.0, 0.0, 0.0},  // Top-left
-        { 1.0,  1.0, 1.0, 0.0}   // Top-right
+        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
+        {-1.0,  1.0, 0.0, 1.0},  // Top-left
+        { 1.0,  1.0, 1.0, 1.0}   // Top-right
     };
     
     GLuint VBO;
@@ -1707,6 +1708,55 @@ FragColor = converted;
     
     //
     // --------------------------------
+    
+    // --------------------------------
+    //NOTE: Textured Rect Shader Compilation
+    //
+    const char *texRectVertShader = R"LONGLONG(
+#version 330 core
+
+layout(location = 0) in vec2 inPosition;   // Vertex position
+layout(location = 1) in vec2 inTexCoord;   // Texture coordinates
+
+out vec2 TexCoord;
+
+uniform mat4 transform;
+
+void main() {
+
+    gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
+TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
+
+}
+)LONGLONG";
+    
+    const char *texRectFragShader = R"LONGLONG(
+#version 330 core
+
+in vec2 TexCoord;
+out vec4 FragColor;
+
+uniform sampler2D tex;
+uniform uvec4 color;        // Premultiplied RGBA color
+
+vec4 convertIntColToFloat(uvec4 inC) {
+
+vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+result.rgba /= 255.0;
+return result;
+}
+
+void main() {
+ vec4 texColor = texture(tex, TexCoord);
+vec4 converted = convertIntColToFloat(color);
+
+vec4 finalColor = texColor * converted;
+if(finalColor.a < 0.01) { discard; }
+FragColor = finalColor;
+}
+)LONGLONG";
+    
+    c->texturedRectShader = ls_glCreateShader(texRectVertShader, texRectFragShader);
     
     
     // --------------------------------
@@ -2449,6 +2499,11 @@ UIBitmap ls_uiBitmapFromRGBAPixelData(UIContext *c, s32 w, s32 h, void *data)
     glBindTexture(GL_TEXTURE_2D, result.texID);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
     GLenum err = glGetError();
     if(err != GL_NO_ERROR)
     {
@@ -3185,26 +3240,35 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
 {
 #ifdef LS_UI_OPENGL_BACKEND
     
-    UIRect norm = ls_uiScreenCoordsToUnitSquare(c, dst.x, dst.y, dst.w, dst.h);
+    glUseProgram(c->texturedRectShader);
     
-    glEnable(GL_TEXTURE_2D);
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, bmp->texID);
-    //TODO: We will care about these kinda stuff in the near future
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-    glBegin(GL_TRIANGLES);
+    f64 xf = (f64)dst.x;
+    f64 yf = (f64)dst.y;
+    f64 wf = (f64)c->width;
+    f64 hf = (f64)c->height;
     
-    glTexCoord2f(0.0, 1.0); glVertex3f(norm.leftX,  norm.topY, c->zLayer);
-    glTexCoord2f(0.0, 0.0); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
-    glTexCoord2f(1.0, 1.0); glVertex3f(norm.rightX, norm.topY, c->zLayer);
-    glTexCoord2f(1.0, 1.0); glVertex3f(norm.rightX, norm.topY, c->zLayer);
-    glTexCoord2f(0.0, 0.0); glVertex3f(norm.leftX,  norm.botY, c->zLayer);
-    glTexCoord2f(1.0, 0.0); glVertex3f(norm.rightX, norm.botY, c->zLayer);
+    // Positions need to be adjusted by the width and height... for some reason?
+    f64 xp = ((xf + (f64)dst.w / 2.0) / (wf / 2.0)) - 1.0;
+    f64 yp = ((yf + (f64)dst.h / 2.0) / (hf / 2.0)) - 1.0;
     
-    glEnd();
-    glDisable(GL_TEXTURE_2D);
+    f64 scaleW = (f64)dst.w / wf;
+    f64 scaleH = (f64)dst.h / hf;
+    
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale = Scale4(vec4(scaleW, scaleH, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+    glUniformMatrix4fv(glGetUniformLocation(c->texturedRectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniform4ui(glGetUniformLocation(c->texturedRectShader, "color"), 255, 255, 255, 255);
+    
+    glBindVertexArray(c->rectVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindVertexArray(0);
+    glUseProgram(0);
     
 #else
     
