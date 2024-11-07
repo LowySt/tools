@@ -1674,15 +1674,36 @@ FragColor = converted;
     
     c->rectShader = ls_glCreateShader(rectVertShader, rectFragShader);
     
-    f32 rectVertices[6][4] =
+    f32 rectVertices[18][4] =
     {
-        {-1.0, -1.0, 0.0, 0.0},  // Bottom-left
+        {-1.0, -1.0, 0.0, 0.0},  // Bot-left
         {-1.0,  1.0, 0.0, 1.0},  // Top-left
         { 1.0, -1.0, 1.0, 0.0},  // Bot-right
         
         { 1.0, -1.0, 1.0, 0.0},  // Bot-right
         {-1.0,  1.0, 0.0, 1.0},  // Top-left
-        { 1.0,  1.0, 1.0, 1.0}   // Top-right
+        { 1.0,  1.0, 1.0, 1.0},  // Top-right
+        
+        //NOTE: This is just for arrows in ls_uiDrawArrows
+        // TOP
+        {-1.0, -1.0, 0.0, 0.0},  // Bot-left
+        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
+        { 0.0,  1.0, 0.5, 1.0},  // Top-center
+        
+        // RIGHT
+        {-1.0, -1.0, 0.0, 0.0},  // Bot-left
+        {-1.0,  1.0, 0.0, 1.0},  // Top-left
+        { 1.0,  0.0, 1.0, 0.5},  // Center-right
+        
+        // DOWN
+        {-1.0,  1.0, 0.0, 1.0},  // Top-left
+        { 1.0,  1.0, 1.0, 1.0},  // Top-right
+        { 0.0, -1.0, 0.5, 0.0},  // Bot-center
+        
+        // LEFT
+        { 1.0,  1.0, 1.0, 1.0},  // Top-right
+        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
+        {-1.0,  0.0, 0.0, 0.5},  // Center-left
     };
     
     GLuint VBO;
@@ -5596,71 +5617,61 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
     //TODO: Customize color?
     Color col = c->borderColor;
     
+    f64 arrowWidth  = 0.0;
+    f64 arrowHeight = 0.0;
+    s32 vaoOffset   = 0;
+    
     switch(s)
     {
         case UIA_DOWN:
         {
-            s32 arrowWidth  = 0.50f*w;
-            s32 arrowHeight = 0.40f*h;
-            
-            s32 startX = x + (w - arrowWidth)/2 - 1;
-            s32 startY = (yPos + (h-arrowHeight)/2) - 1;
-            s32 midX = (startX + arrowWidth/2);
-            
-            UIRect norm = ls_uiScreenCoordsToUnitSquare(c, startX, startY, arrowWidth, arrowHeight);
-            f32 botX = (2.0f*(f32)midX / (f32)c->width)-1.0f;
-            
-            glColor4ub(col.r, col.g, col.b, col.a);
-            glBegin(GL_TRIANGLES);
-            glVertex3f(norm.leftX, norm.topY, c->zLayer);
-            glVertex3f(norm.rightX, norm.topY, c->zLayer);
-            glVertex3f(botX, norm.botY, c->zLayer);
-            glEnd();
-            
+            arrowWidth  = 0.58f*(f64)w;
+            arrowHeight = 0.52f*(f64)h;
+            vaoOffset   = 12;
         } break;
         
         case UIA_RIGHT:
         {
-            s32 arrowWidth  = 0.40f*w;
-            s32 arrowHeight = 0.50f*h;
-            
-            s32 startX = x + (w - arrowWidth)/2 + 1;
-            s32 startY = (yPos + (h-arrowHeight)/2);
-            s32 midY = (startY + arrowHeight/2);
-            
-            UIRect norm = ls_uiScreenCoordsToUnitSquare(c, startX, startY, arrowWidth, arrowHeight);
-            f32 rightY = (2.0f*(f32)midY / (f32)c->height)-1.0f;
-            
-            glColor4ub(col.r, col.g, col.b, col.a);
-            glBegin(GL_TRIANGLES);
-            glVertex3f(norm.leftX, norm.botY, c->zLayer);
-            glVertex3f(norm.leftX, norm.topY, c->zLayer);
-            glVertex3f(norm.rightX, rightY, c->zLayer);
-            glEnd();
-            
+            arrowWidth  = 0.52f*w;
+            arrowHeight = 0.58f*h;
+            vaoOffset   = 9;
         } break;
         
         case UIA_LEFT:
         {
-            s32 arrowWidth  = 0.40f*w;
-            s32 arrowHeight = 0.50f*h;
-            
-            s32 startX = x + (w - arrowWidth)/2 - 1;
-            s32 startY = (yPos + (h-arrowHeight)/2);
-            s32 midY = (startY + arrowHeight/2);
-            
-            UIRect norm = ls_uiScreenCoordsToUnitSquare(c, startX, startY, arrowWidth, arrowHeight);
-            f32 leftY = (2.0f*(f32)midY / (f32)c->height)-1.0f;
-            
-            glColor4ub(col.r, col.g, col.b, col.a);
-            glBegin(GL_TRIANGLES);
-            glVertex3f(norm.rightX, norm.botY, c->zLayer);
-            glVertex3f(norm.rightX, norm.topY, c->zLayer);
-            glVertex3f(norm.leftX, leftY, c->zLayer);
-            glEnd();
-            
+            arrowWidth  = 0.52f*w;
+            arrowHeight = 0.58f*h;
+            vaoOffset   = 15;
         } break;
     }
+    
+    s32 startX = x + (w - (s32)arrowWidth)/2 - 1;
+    s32 startY = (yPos + (h-(s32)arrowHeight)/2) - 1;
+    
+    glUseProgram(c->rectShader);
+    glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
+    
+    f64 xf = (f64)startX;
+    f64 yf = (f64)startY;
+    f64 wf = (f64)c->width;
+    f64 hf = (f64)c->height;
+    
+    // Positions need to be adjusted by the width and height... for some reason?
+    f64 xp = ((xf + (f64)arrowWidth / 2.0) / (wf / 2.0)) - 1.0;
+    f64 yp = ((yf + (f64)arrowHeight / 2.0) / (hf / 2.0)) - 1.0;
+    
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale = Scale4(vec4((f64)arrowWidth / wf, (f64)arrowHeight / hf, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+    
+    glUniformMatrix4fv(glGetUniformLocation(c->rectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    
+    glBindVertexArray(c->rectVAO);
+    glDrawArrays(GL_TRIANGLES, vaoOffset, 3);
+    
+    glBindVertexArray(0);
+    glUseProgram(0);
+    
     
     //NOTE: The rect is drawn later since in ImmediateMode OpenGL the lastest drawn element is on top
     ls_uiBorderedRect(c, x-1, yPos, w, h, threadRect, scissor, bkgColor);
