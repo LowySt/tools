@@ -3922,7 +3922,11 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
             if(font->isAtlas)
             {
 #ifdef LS_UI_OPENGL_BACKEND
-                ls_uiSDFGlyph(c, font, code, currXPos, currYPos+vertGlyphOff, scaling,
+                UIAtlasEntry *map = ls_uiGetAtlasGlyph(font, code).map;
+                s32 y1 = map->height*scaling + map->yOff*scaling;
+                s32 realY = currYPos - y1;
+                
+                ls_uiSDFGlyph(c, font, code, currXPos, realY, scaling,
                               threadRect, scissor, actualColor);
 #else
                 ls_uiSDFGlyph(c, &currGlyph, currXPos, currYPos+vertGlyphOff, font->atlasWidth, scaling,
@@ -3946,7 +3950,11 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
             if(font->isAtlas)
             {
 #ifdef LS_UI_OPENGL_BACKEND
-                ls_uiSDFGlyph(c, font, (u32)'|', caretX, currYPos+vertGlyphOff, scaling,
+                UIAtlasEntry *map = ls_uiGetAtlasGlyph(font, (u32)'|').map;
+                s32 y1 = map->height*scaling + map->yOff*scaling;
+                s32 realY = currYPos - y1;
+                
+                ls_uiSDFGlyph(c, font, (u32)'|', caretX, realY+vertGlyphOff, scaling,
                               threadRect, scissor, textColor);
 #else
                 UIGlyph caretGlyph = ls_uiGetGlyphFromAtlas(font, (u32)'|');
