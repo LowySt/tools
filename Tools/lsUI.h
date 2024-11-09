@@ -6,6 +6,8 @@
 
 -@Alpha-Un-Multiply
 -Fix pre-multiplied alpha for LightenRGB and DarkenRGB
+
+-When not finding a glyph in Release, we should return an empty/error glyph.
 */
 
 #include "lsWindows.h"
@@ -1599,8 +1601,9 @@ in vec2 TexCoord;
 out vec4 FragColor;
 
 uniform sampler2D sdfTexture;  // SDF font texture
-uniform uvec4 textColor;        // Premultiplied RGBA color
+uniform uvec4 textColor;       // Premultiplied RGBA color
 uniform float smoothing;       // Smoothing factor for the SDF edge
+uniform float zLayer;          // zLayer used to determine frag depth
 
 vec4 convertIntColToFloat(uvec4 inC) {
 
@@ -1623,6 +1626,8 @@ vec4 fColor = convertIntColToFloat(textColor);
     // Output color with pre-multiplied alpha
 vec4 result = vec4(fColor.rgb * alpha, fColor.a * alpha);
 if(result.a < 0.01) { discard; }
+
+gl_FragDepth = zLayer;
 FragColor = result;
 }
   )LONGLONG";
@@ -1657,6 +1662,7 @@ in vec2 TexCoord;
 out vec4 FragColor;
 
 uniform uvec4 color;        // Premultiplied RGBA color
+uniform float zLayer;       // zLayer used to determine frag depth
 
 vec4 convertIntColToFloat(uvec4 inC) {
 
@@ -1668,6 +1674,8 @@ return result;
 void main() {
 vec4 converted = convertIntColToFloat(color);
 if(converted.a < 0.01) { discard; }
+
+gl_FragDepth = zLayer;
 FragColor = converted;
 }
 )LONGLONG";
@@ -1759,6 +1767,7 @@ out vec4 FragColor;
 
 uniform sampler2D tex;
 uniform uvec4 color;        // Premultiplied RGBA color
+uniform float zLayer;       // zLayer used to determine frag depth
 
 vec4 convertIntColToFloat(uvec4 inC) {
 
@@ -1773,6 +1782,8 @@ vec4 converted = convertIntColToFloat(color);
 
 vec4 finalColor = texColor * converted;
 if(finalColor.a < 0.01) { discard; }
+
+gl_FragDepth = zLayer;
 FragColor = finalColor;
 }
 )LONGLONG";
@@ -1809,6 +1820,7 @@ out vec4 FragColor;
 
 uniform uvec4 color;        // Premultiplied RGBA color
 uniform float thickness;    // Thickness of the outline
+uniform float zLayer;       // zLayer used to determine frag depth
 
 vec4 convertIntColToFloat(uvec4 inC) {
 
@@ -1829,6 +1841,7 @@ if (dist > 0.5 || dist < innerRadius) {
 vec4 converted = convertIntColToFloat(color);
 if(converted.a < 0.01) { discard; }
 
+gl_FragDepth = zLayer;
 FragColor = converted;
 }
 )LONGLONG";
@@ -1884,6 +1897,7 @@ FragColor = converted;
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
     
 #else
     
@@ -2886,6 +2900,9 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     glUseProgram(c->rectShader);
     glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
     
+    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->rectShader, "zLayer"), normZ);
+    
     f64 xf = (f64)xPos;
     f64 yf = (f64)yPos;
     f64 wf = (f64)c->width;
@@ -3052,6 +3069,9 @@ void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickne
     
     glUniformMatrix4fv(glGetUniformLocation(c->circleShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
     glUniform4ui(glGetUniformLocation(c->circleShader, "color"), col.r, col.g, col.b, col.a);
+    
+    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->circleShader, "zLayer"), normZ);
     
     f32 uvThickness = (f32)thickness / (f32)radius;
     glUniform1f(glGetUniformLocation(c->circleShader, "thickness"), uvThickness); // Full circle in [0..1]
@@ -3284,6 +3304,9 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
     glUniformMatrix4fv(glGetUniformLocation(c->texturedRectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
     glUniform4ui(glGetUniformLocation(c->texturedRectShader, "color"), 255, 255, 255, 255);
     
+    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->texturedRectShader, "zLayer"), normZ);
+    
     glBindVertexArray(c->rectVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     
@@ -3508,6 +3531,9 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     glUniform4ui(glGetUniformLocation(c->sdfTextShader, "textColor"), col.r, col.g, col.b, col.a);
     glUniform1f(glGetUniformLocation(c->sdfTextShader, "smoothing"), smoothingValue);
     
+    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->sdfTextShader, "zLayer"), normZ);
+    
     
     // offsetX: (xPos - width/2) -> [-width/2...width/2]
     // mappedX: offsetX / width  -> [-0.5...0.5]
@@ -3530,14 +3556,6 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindVertexArray(0);
     glUseProgram(0);
-    
-    /*
-    GLenum err = glGetError();
-    while(err != GL_NO_ERROR) {
-        AssertMsgF(FALSE, "Coldn't Gen Textures for Font Atlas, Error: %d", err);
-        err = glGetError();
-    }
-    */
     
 #else
     
@@ -4420,7 +4438,7 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, UI
     //Add margin on each side
     s32 width = ls_uiGlyphStringRect(c, c->currFont, name, pixelHeight).w + 16;
 #else
-    s32 height = pixelHeight + 2; //Add Margin above and below text
+    s32 height = c->currPixelHeight + 2; //Add Margin above and below text
     //Add margin on each side
     s32 width = ls_uiGlyphStringRect(c, c->currFont, name, pixelHeight).w + 16;
 #endif
@@ -5614,6 +5632,8 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
 {
 #ifdef LS_UI_OPENGL_BACKEND
     
+    ls_uiBorderedRect(c, x-1, yPos, w, h, threadRect, scissor, bkgColor);
+    
     //TODO: Customize color?
     Color col = c->borderColor;
     
@@ -5651,6 +5671,9 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
     glUseProgram(c->rectShader);
     glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
     
+    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->rectShader, "zLayer"), normZ);
+    
     f64 xf = (f64)startX;
     f64 yf = (f64)startY;
     f64 wf = (f64)c->width;
@@ -5671,10 +5694,6 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
     
     glBindVertexArray(0);
     glUseProgram(0);
-    
-    
-    //NOTE: The rect is drawn later since in ImmediateMode OpenGL the lastest drawn element is on top
-    ls_uiBorderedRect(c, x-1, yPos, w, h, threadRect, scissor, bkgColor);
     
 #else
     
@@ -6800,13 +6819,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     
     //NOTETODO: This is done to keep using the same zLayer logic in the Software Renderer,
     // But make it work for OpenGL Immediate Mode
-    f64 inpStart = 0.0;
-    f64 inpEnd   = (f64)(UI_Z_LAYERS-1);
-    f64 outStart =  0.999;
-    f64 outEnd   = -0.999;
-    
-    f64 slope = (outEnd - outStart) / (inpEnd - inpStart);
-    c->zLayer = outStart + slope * ((f64)zLayer - inpStart); //NOTETODO: Would be better to round but meh
+    c->zLayer = zLayer;
     ls_uiRenderSingleCommand(c, &command);
     c->zLayer = 0;
     
@@ -6894,12 +6907,8 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
         
         case UI_RC_TEXTBOX:
         {
-            //TODO: I hate these include guards. I'd prefer the rendering order of immediate elements
-            //      was the same among all backends...
-#ifdef LS_UI_OPENGL_BACKEND
-#else
             ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
-#endif
+            
             UITextBox *box = curr->textBox;
             
             Color caretColor = textColor;
@@ -6920,9 +6929,6 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                 ls_uiRenderStringOnRect(c, font, pixelHeight, box, strX, strY, w, h, threadRect, scissor, 
                                         textColor, c->invTextColor);
             }
-#ifdef LS_UI_OPENGL_BACKEND
-            ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
-#endif
         } break;
         
         case UI_RC_LISTBOX:
@@ -6932,10 +6938,8 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
             s32 h = curr->layout.minY;
             s32 maxHeight = curr->rect.h;
             s32 origY     = yPos+maxHeight-h;
-#ifdef LS_UI_OPENGL_BACKEND
-#else
+            
             ls_uiBorderedRect(c, xPos, origY, w, h, threadRect, scissor);
-#endif
             
             s32 strHeight = pixelHeight; 
             s32 vertOff = ((h - strHeight) / 2) + 4; //TODO: @FontDescent
@@ -6965,23 +6969,13 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                     s32 currY = origY - (h*(i+1));
                     UIListBoxItem *currItem = list->list + i;
                     
-#ifdef LS_UI_OPENGL_BACKEND
-                    ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff - (h*(i+1)),
-                                     threadRect, scissor, currItem->name, currItem->textColor);
-                    ls_uiRect(c, xPos+1, currY, w-2, h, threadRect, scissor, currItem->bkgColor);
-#else
                     ls_uiRect(c, xPos+1, currY, w-2, h, threadRect, scissor, currItem->bkgColor);
                     ls_uiGlyphString(c, font, pixelHeight, xPos+10, origY + vertOff - (h*(i+1)),
                                      threadRect, scissor, currItem->name, currItem->textColor);
-#endif
-                    
                 }
                 
                 ls_uiBorder(c, xPos, yPos, w, maxHeight, threadRect, scissor);
             }
-#ifdef LS_UI_OPENGL_BACKEND
-            ls_uiBorderedRect(c, xPos, origY, w, h, threadRect, scissor);
-#endif
             
         } break;
         
@@ -6998,10 +6992,7 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
             
             if(button->style == UIBUTTON_CLASSIC)
             {
-#ifdef LS_UI_OPENGL_BACKEND
-#else
                 ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor, borderColor);
-#endif
                 
                 if(button->name.data)
                 {
@@ -7013,11 +7004,6 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                     ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor, 
                                      button->name, textColor);
                 }
-                
-#ifdef LS_UI_OPENGL_BACKEND
-                ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor, borderColor);
-#endif
-                
             }
             else if(button->style == UIBUTTON_LINK)
             {
@@ -7034,10 +7020,8 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
             }
             else if(button->style == UIBUTTON_TEXT_NOBORDER)
             {
-#ifdef LS_UI_OPENGL_BACKEND
-#else
                 ls_uiRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
-#endif
+                
                 if(button->name.data)
                 {
                     s32 strHeight = pixelHeight;
@@ -7048,9 +7032,6 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                     ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos+yOff, threadRect, scissor, 
                                      button->name, textColor);
                 }
-#ifdef LS_UI_OPENGL_BACKEND
-                ls_uiRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
-#endif
             }
             else if(button->style == UIBUTTON_NO_TEXT)
             {
@@ -7130,11 +7111,10 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                 s32 slidePos = w*slider->currPos;
                 s32 lColorW = slidePos == w ? slidePos-2 : slidePos;
                 s32 rColorW = w-slidePos-2;
-#ifdef LS_UI_OPENGL_BACKEND
-#else
+                
                 ls_uiFillRect(c, xPos+1, yPos+1, lColorW, h-2, threadRect, scissor, slider->lColor);
                 ls_uiFillRect(c, xPos+slidePos+1, yPos+1, rColorW, h-2, threadRect, scissor, slider->rColor);
-#endif
+                
                 u32 valBuf[32] = {};
                 utf32 val = { valBuf, 0, 32};
                 ls_utf32FromInt_t(&val, slider->currValue);
@@ -7167,13 +7147,10 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                 
                 //NOTE: Draw the displayed text, and hide through Alpha the slider info.
                 Color rectColor = c->widgetColor;
-                //ls_log("[BEFORE] R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
                 rectColor = SetAlpha(rectColor, opacity);
-                //ls_log("[AFTER]  R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
-#ifdef LS_UI_OPENGL_BACKEND
-#else
+                
                 ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, rectColor, borderColor);
-#endif
+                
                 s32 strWidth  = ls_uiGlyphStringRect(c, font, slider->text, pixelHeight).w;
                 s32 xOff      = (w - strWidth) / 2;
                 s32 yOff      = (h - strHeight) + 3; //TODO: @FontDescent
@@ -7183,16 +7160,6 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                 
                 ls_uiGlyphString(c, font, pixelHeight, xPos+xOff, yPos + yOff, threadRect, scissor,
                                  slider->text, textColor);
-                
-#ifdef LS_UI_OPENGL_BACKEND
-                //rectColor = {.b = 69, .g = 69, .r = 69, .a = 192 };
-                //rectColor.a = 0;
-                //ls_log("[EFFECTIVE]  R: {u8}, G: {u8}, B: {u8}, A: {u8}", rectColor.r, rectColor.g, rectColor.b, rectColor.a);
-                
-                ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, rectColor, borderColor);
-                ls_uiFillRect(c, xPos+1, yPos+1, lColorW, h-2, threadRect, scissor, slider->lColor);
-                ls_uiFillRect(c, xPos+slidePos+1, yPos+1, rColorW, h-2, threadRect, scissor, slider->rColor);
-#endif
             }
             else if(slider->style == SL_LINE)
             { AssertMsg(FALSE, "Slider style line is not implemented\n"); }
