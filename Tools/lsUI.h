@@ -1597,6 +1597,10 @@ TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
     const char *sdfFragShader = R"LONGLONG(
 #version 330 core
 
+//#define SUPERSAMPLED_SUBPIXEL_AA
+//#define SUBPIXELAA
+//#define SUPERSAMPLING
+
 in vec2 TexCoord;
 out vec4 FragColor;
 
@@ -1604,6 +1608,8 @@ uniform sampler2D sdfTexture;  // SDF font texture
 uniform uvec4 textColor;       // Premultiplied RGBA color
 uniform float smoothing;       // Smoothing factor for the SDF edge
 uniform float zLayer;          // zLayer used to determine frag depth
+
+const float gamma = 2.2;
 
 vec4 convertIntColToFloat(uvec4 inC) {
 
@@ -1614,19 +1620,118 @@ return result;
 
 void main() {
 
-    // Sample the SDF texture, values range from 0 to 1
-    float sdfValue = texture(sdfTexture, TexCoord).r;
+// Convert color from integer to float and apply alpha
+vec4 fColor = convertIntColToFloat(textColor);
+
+#ifdef SUPERSAMPLING
+
+//2X Supersampling
+vec2 offset = vec2(0.5) / textureSize(sdfTexture, 0);
+
+float sdfValues[4];
+sdfValues[0] = texture(sdfTexture, TexCoord + vec2(-offset.x, -offset.y)).r;
+sdfValues[1] = texture(sdfTexture, TexCoord + vec2( offset.x, -offset.y)).r;
+sdfValues[2] = texture(sdfTexture, TexCoord + vec2(-offset.x,  offset.y)).r;
+sdfValues[3] = texture(sdfTexture, TexCoord + vec2( offset.x,  offset.y)).r;
 
     // Compute the alpha value using a threshold (0.5 is the middle distance)
-float base = 0.7;
-    float alpha = smoothstep(base - smoothing, base + smoothing, sdfValue);
+float base  = 0.65;
+float alpha = 0.0;
+for (int i = 0; i < 4; ++i) {
+alpha += smoothstep(base - smoothing, base + smoothing, sdfValues[i]);
+}
 
-vec4 fColor = convertIntColToFloat(textColor);
+alpha /= 4.0; // Average the alphas
 
     // Output color with pre-multiplied alpha
 vec4 result = vec4(fColor.rgb * alpha, fColor.a * alpha);
-if(result.a < 0.01) { discard; }
 
+#elif defined(SUBPIXELAA)
+
+vec2 redOff = vec2(-0.33, 0.0) / textureSize(sdfTexture, 0); // Left of Pixel
+vec2 greOff = vec2(  0.0, 0.0) / textureSize(sdfTexture, 0); // Center
+vec2 bluOff = vec2( 0.33, 0.0) / textureSize(sdfTexture, 0); // Right of Pixel
+
+// Sample the Texture at each subpixel offset and calc alpha
+float base = 0.65;
+float alphaRed = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, TexCoord + redOff).r);
+float alphaGre = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, TexCoord + greOff).r);
+float alphaBlu = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, TexCoord + bluOff).r);
+
+// Gamma-correct
+alphaRed = pow(alphaRed, 1.0 / gamma);
+alphaGre = pow(alphaGre, 1.0 / gamma);
+ alphaBlu = pow(alphaBlu, 1.0 / gamma);
+
+// Blend to reduce noticeable fringing
+alphaRed = mix(alphaRed, alphaGre, 0.3);
+alphaBlu = mix(alphaBlu, alphaGre, 0.3);
+
+// Set each channel to its corresponding subpixel alpha intensity
+vec3 subpixelColor = vec3(fColor.r * alphaRed, fColor.g * alphaGre, fColor.b * alphaBlu);
+
+// Average alpha value for visibility control (not premultiplied alpha)
+float finalAlpha = (alphaRed + alphaGre + alphaBlu) / 3.0;
+
+vec4 result = vec4(subpixelColor, finalAlpha);
+
+#elif defined(SUPERSAMPLED_SUBPIXEL_AA)
+
+//2X Supersampling
+ vec2 offset = vec2(0.5) / textureSize(sdfTexture, 0);
+
+ vec2 redOff = vec2(-0.33, 0.0) / textureSize(sdfTexture, 0); // Left of Pixel
+ vec2 greOff = vec2(  0.0, 0.0) / textureSize(sdfTexture, 0); // Center
+ vec2 bluOff = vec2( 0.33, 0.0) / textureSize(sdfTexture, 0); // Right of Pixel
+
+ vec2 offsetFrags[4];
+offsetFrags[0] = TexCoord + vec2(-offset.x, -offset.y);
+offsetFrags[1] = TexCoord + vec2( offset.x, -offset.y);
+offsetFrags[2] = TexCoord + vec2(-offset.x,  offset.y);
+offsetFrags[3] = TexCoord + vec2( offset.x,  offset.y);
+
+float base = 0.65;
+float red;
+float green;
+float blue;
+vec3 subpix;
+float finalAlpha;
+for (int i = 0; i < 4; ++i) {
+  red   = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, offsetFrags[i] + redOff).r);
+ green = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, offsetFrags[i] + greOff).r);
+ blue  = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, offsetFrags[i] + bluOff).r);
+
+red = pow(red, 1.0 / gamma);
+green = pow(green, 1.0 / gamma);
+ blue = pow(blue, 1.0 / gamma);
+
+red = mix(red, green, 0.3);
+blue = mix(blue, green, 0.3);
+
+  subpix += vec3(fColor.r * red, fColor.g * green, fColor.b * blue);
+
+// Average alpha value for visibility control (not premultiplied alpha)
+ finalAlpha += (red + green + blue) / 3.0;
+}
+
+finalAlpha /= 4.0;
+subpix /= 4.0;
+
+vec4 result = vec4(subpix * finalAlpha, finalAlpha);
+
+#else //NO FILTERS
+
+// Sample the SDF texture, values range from 0 to 1
+    float sdfValue = texture(sdfTexture, TexCoord).r;
+float base  = 0.58;
+float alpha = smoothstep(base - smoothing, base + smoothing, sdfValue);
+
+    // Output color with pre-multiplied alpha
+vec4 result = vec4(fColor.rgb * alpha, fColor.a * alpha);
+
+#endif
+
+if(result.a < 0.01) { discard; }
 gl_FragDepth = zLayer;
 FragColor = result;
 }
@@ -2461,8 +2566,11 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     
     //NOTE: Since the viewport's dimensions are different from the atlas's dimensions, we need to get a scaling
     // factor to properly size the glyphs!
-    const f32 scaleW = (f32)font->atlasWidth / (f32)c->width;
-    const f32 scaleH = (f32)font->atlasHeight / (f32)c->height;
+    f32 scaleW = (f32)font->atlasWidth / (f32)c->width;
+    f32 scaleH = (f32)font->atlasHeight / (f32)c->height;
+    
+    if (scaleW < 1.0) { scaleW = 1.0 / scaleW; }
+    if (scaleH < 1.0) { scaleH = 1.0 / scaleH; }
     
     for (; !ls_uiAtlasIterDone(atlasIt); ls_uiAtlasIterNext(&atlasIt))
     {
@@ -3591,7 +3699,8 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     s32 startY = yPos-glyph->y1*scaling;
     s32 startX = xPos+glyph->x0*scaling;
     
-    const s32 todoOnEdgeValue = 160;
+    //const s32 todoOnEdgeValue = 160;
+    const s32 todoOnEdgeValue = 180;
     const f64 todoFractOnEdge = (f64)todoOnEdgeValue/255.0;
     
     //NOTE: Scaled dimensions for the glyph
@@ -3641,6 +3750,15 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
                 .r = (u8)(textColor.r*realAlpha),
                 .a = (u8)(textColor.a*realAlpha)
             };
+            
+            //NOTE: Dynamically adjust the aliasing around the edge
+            // This is important since we want a sharp glyph at large pixel sizes
+            // and an aliased glyph at small pixels sizes to make them more readable and less
+            // jagged!
+            f32 t = (f32)(scaling*64.0) / ((f32)c->height * 0.26);
+            if (t > 1.0) { t = 1.0f; }
+            u8 alphaCheck = (u8)(255.0 * t);
+            if(actual.a < alphaCheck) { actual = {}; }
             
             Color base  = { .value = At[backbufferY*c->width + backbufferX] };
             Color final = ls_uiAlphaBlend(actual, base);
@@ -3987,9 +4105,6 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
     s32 currXPos = xPos;
     s32 currYPos = yPos;
     f64 scaling = (f64)pixelHeight / (f64)font->pixelHeight;
-    //TODO: The code that positions the text expects it to be scaled much differently than
-    // the actual scaling... why???
-    // The scaling should be 1.0, instead the code wants 0.35...
     s32 lineSpace = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
     
 #ifdef LS_UI_OPENGL_BACKEND
