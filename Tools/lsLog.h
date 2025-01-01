@@ -7,6 +7,28 @@
 #include "lsArray.h"
 #include "lsString.h"
 
+/* TODO: Do this to check at compile/run-time if passed arguments is the correct amount!
+#define VA_NUM_ARGS(...) VA_NUM_ARGS_IMPL(__VA_ARGS__, 5,4,3,2,1)
+#define VA_NUM_ARGS_IMPL(_1,_2,_3,_4,_5,N,...) N
+
+#define log(fmt, ...) __internal_log(VA_NUM_ARGS(__VA_ARGS__), fmt, __VA_ARGS__)
+
+void __internal_log(int count, const char *fmt, ...)
+{
+    va_list list;
+    va_list copied;
+    va_start(list, fmt);
+    va_copy(copied, list);
+    printf("Count: %d\n", count);
+    vprintf(fmt, copied);
+    int first = va_arg(list, int);
+    printf("%d ", first);
+    int second = va_arg(list, int);
+    printf("%d", second);
+    va_end(list);
+}
+*/
+
 //TODO: How to deal with modifiers?
 typedef s32(*LogFormatTypeProc)(char *, va_list *);
 typedef s32(*LogFormatTypeModProc)(char *, char *mods, s32 numMods, s32 lenMod, va_list *);
@@ -373,6 +395,7 @@ s32 ls_vlogFormatM128I(char *dst, va_list *argList)
     return bytesWritten;
 }
 
+#ifdef LS_ARENA_H
 s32 ls_vlogFormatArena(char *dst, va_list *argList)
 {
     Arena tmp = va_arg(*argList, Arena);
@@ -387,6 +410,7 @@ s32 ls_vlogFormatArena(char *dst, va_list *argList)
     ls_memcpy(buff, dst, bytesWritten);
     return bytesWritten;
 }
+#endif
 
 
 void ls_vlogRegister(const char *typeName, LogFormatTypeProc proc)
@@ -444,7 +468,10 @@ void ls_logDefaultTypesRegister()
         ls_vlogRegister("utf32",  ls_vlogFormatUTF32);
         
         ls_vlogRegister("__m128i", ls_vlogFormatM128I);
+        
+#ifdef LS_ARENA_H
         ls_vlogRegister("Arena", ls_vlogFormatArena);
+#endif
         
         __ls_log__initialize = TRUE;
     }
