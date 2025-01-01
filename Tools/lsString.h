@@ -1363,7 +1363,7 @@ void ls_itosOn(s64 x, string *out)
         out->data[i++] = value % 10 + '0';
         value = value / 10;
         
-        AssertMsg(out->len > i, "Out string is not large enough to contain the number");
+        AssertMsg(out->size > i, "Out string is not large enough to contain the number");
     }
     
     if (isNegative) { out->data[i++] = '-'; }
