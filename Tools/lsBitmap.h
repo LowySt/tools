@@ -38,7 +38,8 @@ struct Bitmap
 //NOTE: Interface
 Bitmap ls_bitmapLoad(string Path);
 Bitmap ls_bitmapLoad(string Path, u8 rMask, u8 gMask, u8 bMask, u8 aMask);
-void ls_bitmapWrite(string Path, u8 *data, s32 width, s32 height);
+//void ls_bitmapWrite(string Path, u8 *data, s32 width, s32 height);
+void ls_bitmapWrite(string Path, u8 *pixelData, s32 width, s32 height, u32 bytesPerPixel, b32 hasColorPalette);
 
 
 #endif //LS_BITMAP_H
@@ -135,6 +136,7 @@ Bitmap ls_bitmapLoad(string Path, BitmapPixelFormat desired)
     return bmp;
 }
 
+/*
 void ls_bitmapWrite(string Path, u8 *data, s32 width, s32 height)
 {
     const u32 bytesPerPixel = 4;
@@ -184,6 +186,88 @@ void ls_bitmapWrite(string Path, u8 *data, s32 width, s32 height)
     ls_bufferAddDataClean(&buff, data, sizeOfData);
     
     ls_writeFile(Path.data, buff.data, buff.cursor, FALSE);
+}
+*/
+
+void ls_bitmapWrite(string path, u8 *pixelData, s32 width, s32 height, u32 bytesPerPixel=4, b32 hasColorPalette=FALSE)
+{
+    AssertMsg((width*bytesPerPixel) % 4 == 0, "Rows (width*bytesPerPixel) is not aligned to 4\n");
+    
+    //TODO: 4 byte alignment can be obtained like this branchless,
+    // BUT the alignment should be on width*bytesPerPixel
+    // which means, this would actually be wrong on different bpp than 1 or 4?
+    //width += (4 - (width % 4)) % 4;
+    
+    
+    const u32 sizeOfData    = width*height*bytesPerPixel;
+    const u32 sizeOfDIB     = sizeof(BITMAPV5HEADER);
+    const u32 sizeOfHeader  = 14;
+    
+    u32 sizeOfColorPalette = 0;
+    u32 countOfColorPalette = (1 << (bytesPerPixel*8));
+    if (hasColorPalette) { sizeOfColorPalette = sizeof(u32)*countOfColorPalette; }
+    
+    const u32 sizeInFile = sizeOfHeader + sizeOfDIB + sizeOfColorPalette + sizeOfData;
+    const u32 dataOffset = sizeOfHeader + sizeOfDIB + sizeOfColorPalette;
+    
+    BITMAPV5HEADER bmpH = {};
+    
+    bmpH.bV5Size          = sizeof(BITMAPV5HEADER);
+    bmpH.bV5Width         = width;
+    bmpH.bV5Height        = -height;
+    bmpH.bV5Planes        = 1;
+    bmpH.bV5BitCount      = (bytesPerPixel*8);
+    bmpH.bV5Compression   = BI_RGB;
+    bmpH.bV5SizeImage     = sizeOfData; //May be set to 0 for BI_RGB
+    bmpH.bV5XPelsPerMeter = 0;
+    bmpH.bV5YPelsPerMeter = 0;
+    bmpH.bV5ClrUsed       = countOfColorPalette;
+    bmpH.bV5ClrImportant  = 0;
+    bmpH.bV5RedMask       = 0;
+    bmpH.bV5GreenMask     = 0;
+    bmpH.bV5BlueMask      = 0;
+    bmpH.bV5AlphaMask     = 0;
+    bmpH.bV5CSType        = 0;
+    bmpH.bV5Endpoints     = {};
+    bmpH.bV5GammaRed      = 0;
+    bmpH.bV5GammaGreen    = 0;
+    bmpH.bV5GammaBlue     = 0;
+    bmpH.bV5Intent        = 0;
+    bmpH.bV5ProfileData   = 0;
+    bmpH.bV5ProfileSize   = 0;
+    bmpH.bV5Reserved      = 0;
+    
+    buffer buff = ls_bufferInit(MBytes(4));
+    
+    ls_bufferAddByte(&buff, 'B');
+    ls_bufferAddByte(&buff, 'M');
+    ls_bufferAddDWord(&buff, sizeInFile);
+    ls_bufferAddDWord(&buff, 0);
+    ls_bufferAddDWord(&buff, dataOffset);
+    ls_bufferAddDataClean(&buff, &bmpH, sizeof(BITMAPV5HEADER));
+    
+    //NOTE: Add color palette entries
+    //TODO: THIS DOES NOT WORK FOR sizeOfCOlorPalette > 256!!
+    //      but... it shouldn't be a problem...
+    for(s32 i = 0; i < countOfColorPalette; i++)
+    {
+        union internal__Color
+        {
+            struct { u32 value; };
+            struct { u8 b, g, r, a; };
+        };
+        
+        internal__Color curr = { .b = (u8)i, .g = (u8)i, .r = (u8)i, .a = 0xFF };
+        curr.a = 0;
+        ls_bufferAddByte(&buff, curr.r);
+        ls_bufferAddByte(&buff, curr.g);
+        ls_bufferAddByte(&buff, curr.b);
+        ls_bufferAddByte(&buff, curr.a);
+    }
+    
+    ls_bufferAddDataClean(&buff, pixelData, sizeOfData);
+    
+    ls_writeFile(path.data, buff.data, buff.cursor, FALSE);
 }
 
 #endif //IMPLEMENTATION
