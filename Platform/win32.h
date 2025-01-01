@@ -1135,6 +1135,8 @@ SYNCHRONIZE)
             SHORT y;
         } POINTS, *PPOINTS;
         
+#define MAKEPOINTS(l)  (*((POINTS *)&(l)))
+        
         typedef struct tagMSG {
             HWND        hwnd;
             UINT        message;
@@ -3598,6 +3600,40 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
 #pragma endregion
         
         /*
+* Hit test macros used in WM_NCHITTEST
+*/
+#define HTERROR         (-2)    // Error condition
+#define HTTRANSPARENT   (-1)    // Transparent area (event should pass to a window beneath)
+#define HTNOWHERE       0       // No particular area
+#define HTCLIENT        1       // Client area
+#define HTCAPTION       2       // Title bar
+#define HTSYSMENU       3       // System menu (top-left corner or Alt key)
+#define HTGROWBOX       4       // Size box (same as HTSIZE for compatibility)
+#define HTSIZE          HTGROWBOX // Size box
+#define HTMENU          5       // Menu
+#define HTHSCROLL       6       // Horizontal scroll bar
+#define HTVSCROLL       7       // Vertical scroll bar
+#define HTMINBUTTON     8       // Minimize button (same as HTREDUCE for compatibility)
+#define HTREDUCE        HTMINBUTTON // Minimize button
+#define HTMAXBUTTON     9       // Maximize button (same as HTZOOM for compatibility)
+#define HTZOOM          HTMAXBUTTON // Maximize button
+#define HTLEFT          10      // Left border for resizing
+#define HTRIGHT         11      // Right border for resizing
+#define HTTOP           12      // Top border for resizing
+#define HTTOPLEFT       13      // Top-left corner for resizing
+#define HTTOPRIGHT      14      // Top-right corner for resizing
+#define HTBOTTOM        15      // Bottom border for resizing
+#define HTBOTTOMLEFT    16      // Bottom-left corner for resizing
+#define HTBOTTOMRIGHT   17      // Bottom-right corner for resizing
+#define HTBORDER        18      // Border (same as HTSIZE for compatibility)
+#define HTCLOSE         20      // Close button on the title bar
+#define HTHELP          21      // Help button on the title bar
+        
+        // Additional hit-test constants:
+#define HTMIDDLE        22      // Middle button on the title bar
+#define HTDISABLED      23      // Disabled area (no interaction possible)
+        
+        /*
  * System Menu Command Values
  */
 #define SC_SIZE         0xF000
@@ -4822,6 +4858,7 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         WINGDIAPI    BOOL         WINAPI        BeginPath(HDC hdc);
         WINGDIAPI    BOOL         WINAPI        EndPath(HDC hdc);
         WINGDIAPI	int		  WINAPI		ChoosePixelFormat(HDC hdc, CONST PIXELFORMATDESCRIPTOR *ppfd);
+        WINGDIAPI    int          WINAPI        DescribePixelFormat(HDC hdc, int iPixelFormat, UINT nBytes, LPPIXELFORMATDESCRIPTOR ppfd);
         WINGDIAPI	BOOL		 WINAPI		SetPixelFormat(HDC hdc, int format, CONST PIXELFORMATDESCRIPTOR * ppfd);
         WINGDIAPI	int		  WINAPI		StretchDIBits(HDC hdc, int xDest, int yDest, int DestWidth, int DestHeight, int xSrc, int ySrc, int SrcWidth, int SrcHeight, CONST VOID *lpBits, CONST BITMAPINFO *lpbmi, UINT iUsage, DWORD rop);
         WINGDIAPI    HRGN         WINAPI        CreateRectRgn(int x1, int y1, int x2, int y2);
