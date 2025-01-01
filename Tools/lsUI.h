@@ -173,45 +173,46 @@ struct UILayoutRect
     s32 startX, startY;
 };
 
-//TODO: Hate how UIGlyph, UIAtlasEntry and UIAtlasGlyph are all separate entities...
 struct UIGlyph
 {
     u8 *data;
-    //u32 size;
     
-    u32 width;
-    u32 height;
+    u32 codepoint;
     
-    s32 x0, x1;
-    s32 y0, y1;
+    s32 width;
+    s32 height;
+    
+    s32 atlasX;
+    s32 atlasY;
+    s32 x0;
+    s32 y0;
+    s32 x1;
+    s32 y1;
     
     s32 xAdv;
     s32 yAdv;
+    s32 leftSB;
 };
 
-struct UIAtlasEntry
+struct UIAtlasMapEntry
 {
+    //NOTE: Since the Atlas goes from codepoint 0..N
+    // the codepoint counts as an index in the Atlas.
     u32 codepoint;
-    s32 pixelX;
-    s32 pixelY;
+    s32 atlasX;
+    s32 atlasY;
     s32 width;
     s32 height;
-    s32 xOff;
-    s32 yOff;
+    s32 x0;
+    s32 y0;
     s32 xAdv;
     s32 leftSB;
 };
 
-struct UIAtlasGlyph
-{
-    UIAtlasEntry *map;
-    s32 idxInAtlas;
-};
-
 struct UIAtlasIterator
 {
-    UIAtlasEntry *curr;
-    UIAtlasEntry *last;
+    UIAtlasMapEntry *curr;
+    UIAtlasMapEntry *last;
     s32 count;
     s32 idx;
 };
@@ -231,7 +232,7 @@ struct UIFont
     //      Or it's loaded as a single large bitmap, the font atlas, which right now can only be in SDF format
     union {
         UIGlyph *glyph;
-        u8 *fontAtlasSDF;
+        u8 *fontAtlas;
     };
     
     u32 pixelHeight;
@@ -240,6 +241,9 @@ struct UIFont
     s32 descent;
     s32 lineGap;
     s32 cpCount;
+    b32 isSDF;
+    
+    s32 baselineOffset;
     
     //NOTE: The kernAdvanceTable may be null!
     s32 **kernAdvanceTable;
@@ -685,6 +689,7 @@ struct UIContext
 #ifdef LS_UI_OPENGL_BACKEND
     f64 zLayer; //TODO: Temporary to make passing zLayer to primitive drawing funcs easier
     u32 sdfTextShader;
+    u32 textShader;
     u32 rectShader;
     u32 rectVAO;
     u32 texturedRectShader;
@@ -756,9 +761,9 @@ void         ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs);
 void         ls_uiLoadPackedFontAtlas(UIContext *c, char *path);
 UIBitmap     ls_uiBitmapFromRGBAPixelData(UIContext *c, s32 w, s32 h, void *data);
 
-UIGlyph      ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint);
-UIAtlasGlyph ls_uiGetAtlasGlyph(UIFont *font, u32 codepoint);
-UIAtlasIterator ls_uiAtlasIterStart(UIFont *font);
+UIGlyph          ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint);
+UIAtlasMapEntry *ls_uiGetAtlasMapEntry(UIFont *font, u32 codepoint);
+UIAtlasIterator  ls_uiAtlasIterStart(UIFont *font);
 void         ls_uiAtlasIterNext(UIAtlasIterator *iter);
 b32          ls_uiAtlasIterDone(UIAtlasIterator iter);
 
@@ -1739,6 +1744,62 @@ FragColor = result;
     
     c->sdfTextShader = ls_glCreateShader(sdfVertShader, sdfFragShader);
     
+    
+    // --------------------------------
+    //NOTE: Text Shader Compilation
+    //
+    const char *textVertShader = R"LONGLONG(
+#version 330 core
+
+layout(location = 0) in vec2 inPosition;   // Vertex position
+layout(location = 1) in vec2 inTexCoord;   // Texture coordinates
+
+out vec2 TexCoord;
+
+uniform mat4 transform;
+
+void main() {
+
+    gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
+TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
+
+}
+)LONGLONG";
+    
+    const char *textFragShader = R"LONGLONG(
+#version 330 core
+
+in vec2 TexCoord;
+out vec4 FragColor;
+
+uniform sampler2D tex;  // Atlas font texture
+uniform uvec4 textColor;    // Premultiplied RGBA color
+uniform float zLayer;       // zLayer used to determine frag depth
+
+const float gamma = 2.2;
+
+vec4 convertIntColToFloat(uvec4 inC) {
+
+vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+result.rgba /= 255.0;
+return result;
+}
+
+void main() {
+vec4 texColor = texture(tex, TexCoord);
+vec4 converted = convertIntColToFloat(textColor);
+
+vec4 finalColor = texColor * converted;
+if(finalColor.a < 0.01) { discard; }
+
+gl_FragDepth = zLayer;
+FragColor = finalColor;
+}
+  )LONGLONG";
+    
+    c->textShader = ls_glCreateShader(textVertShader, textFragShader);
+    
+    
     // --------------------------------
     //NOTE: Rect Shader Compilation
     //
@@ -2494,16 +2555,19 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     u32 PixelBufferSize = *((u32 *)((char *)bitmapFile + 34));
     
     c->fonts = (UIFont *)ls_alloc(sizeof(UIFont)*1);
-    c->fonts[0].fontAtlasSDF = (u8 *)((char *)bitmapFile + PixelOffset);
+    c->fonts[0].fontAtlas = (u8 *)((char *)bitmapFile + PixelOffset);
     c->fonts[0].atlasWidth  = Width;
     c->fonts[0].atlasHeight = Height;
     
-    s32 *metaInfo = ((s32*)(c->fonts->fontAtlasSDF + ((c->fonts->atlasWidth*c->fonts->atlasHeight) - sizeof(s32))));
-    c->fonts[0].ascent      = metaInfo[-5];
-    c->fonts[0].descent     = metaInfo[-4];
-    c->fonts[0].lineGap     = metaInfo[-3];
-    c->fonts[0].pixelHeight = metaInfo[-2];
-    c->fonts[0].cpCount     = metaInfo[-1];
+    s32 *metaInfo = ((s32*)(c->fonts->fontAtlas + ((c->fonts->atlasWidth*c->fonts->atlasHeight) - sizeof(s32))));
+    
+    c->fonts[0].ascent      = metaInfo[-7];
+    c->fonts[0].descent     = metaInfo[-6];
+    c->fonts[0].lineGap     = metaInfo[-5];
+    c->fonts[0].pixelHeight = metaInfo[-4];
+    s32 fontMaxGlyphHeight  = metaInfo[-3];
+    c->fonts[0].cpCount     = metaInfo[-2];
+    c->fonts[0].isSDF       = metaInfo[-1];
     
     c->currFont                   = c->fonts;
     c->currPixelHeight            = c->fonts[0].pixelHeight;
@@ -2533,7 +2597,7 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     //NOTE: This is not available past OpenGL 3.0, since INTENSITY AND LUMINANCE formats are deprecated
     //glTexImage2D(GL_TEXTURE_2D, 0, GL_INTENSITY, Width, Height, 0, GL_RED, GL_UNSIGNED_BYTE, c->fonts[0].fontAtlasSDF);
     
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, Width, Height, 0, GL_RED, GL_UNSIGNED_BYTE, c->fonts[0].fontAtlasSDF);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, Width, Height, 0, GL_RED, GL_UNSIGNED_BYTE, c->fonts[0].fontAtlas);
     
     err = glGetError();
     if(err != GL_NO_ERROR) {
@@ -2564,30 +2628,45 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     f32 *glyphVertexMap = (f32 *)ls_alloc(sizeOfVertexMap);
     s32 glyphVertMapIdx = 0;
     
-    //NOTE: Since the viewport's dimensions are different from the atlas's dimensions, we need to get a scaling
-    // factor to properly size the glyphs!
-    f32 scaleW = (f32)font->atlasWidth / (f32)c->width;
-    f32 scaleH = (f32)font->atlasHeight / (f32)c->height;
+    f32 glyphReferenceHeight = (f32)fontMaxGlyphHeight;
+    f32 scaleFactor          = glyphReferenceHeight / (f32)font->pixelHeight;
+    f32 scaledAscent         = (f32)font->ascent * scaleFactor;
+    f32 scaledDescent        = (f32)font->descent * scaleFactor;
+    f32 refBaseline          = (scaledAscent - scaledDescent) / 2.0f;
+    f32 baselineOffset       = refBaseline - scaledAscent;
     
-    if (scaleW < 1.0) { scaleW = 1.0 / scaleW; }
-    if (scaleH < 1.0) { scaleH = 1.0 / scaleH; }
-    
+    //TODO: Real rounding. This always goes towards zero, but it shouldn't...
+    font->baselineOffset     = (s32)baselineOffset;
     for (; !ls_uiAtlasIterDone(atlasIt); ls_uiAtlasIterNext(&atlasIt))
     {
-        UIAtlasEntry *map = atlasIt.curr;
+        UIAtlasMapEntry *map = atlasIt.curr;
         
-        f32 texelLeft  = (f32)map->pixelX / (f32)font->atlasWidth;
-        f32 texelRight = (f32)(map->pixelX+map->width) / (f32)font->atlasWidth;
-        f32 texelBot   = (f32)map->pixelY / (f32)font->atlasHeight;
-        f32 texelTop   = (f32)(map->pixelY+map->height) / (f32)font->atlasHeight;
+        f32 texelLeft  = (f32)map->atlasX / (f32)font->atlasWidth;
+        f32 texelRight = (f32)(map->atlasX+map->width) / (f32)font->atlasWidth;
+        f32 texelBot   = (f32)map->atlasY / (f32)font->atlasHeight;
+        f32 texelTop   = (f32)(map->atlasY+map->height) / (f32)font->atlasHeight;
         
         //NOTE: To avoid headaches, all glyphs are positioned in the center of the unit square
         // the x/y coordinates of the final glyph would have needed to be mapped to floats anyway,
         // so going from 0..c->width/c->height -> -1..1 is not that big of a deal.
-        f32 xPos = 0.0;
-        f32 yPos = 0.0;
-        f32 w = (f32)map->width / (f32)c->width * scaleW;
-        f32 h = (f32)map->height / (f32)c->height * scaleH;
+        f32 scaledW = (f32)map->width * scaleFactor;
+        f32 scaledH = (f32)map->height * scaleFactor;
+        
+        //TODO: elements whose size is larger than the viewport?
+        //TODO: Since these values are computed once, rather than in the shader, they will not
+        // be Aspect Ratio Indipendent once the viewport dimensions are re-computed.
+        f32 w = scaledW / (f32)c->width;
+        f32 h = scaledH / (f32)c->height;
+        f32 xPos = -(w/2.0f);
+        f32 yPos = -(h/2.0f);
+        
+        /*
+        if(map->codepoint == (u32)'!')
+        {
+            ls_log("Width: {s32}, Height: {s32}", map->width, map->height);
+            ls_log("w: {f32}, h: {f32}\nx: {f32}, y: {f32}", w, h, xPos, yPos); 
+        }
+        */
         
         //Vertex Data (posX, posY, texU, texV)
         f32 verticesCurrent[6][4] =
@@ -3560,8 +3639,50 @@ void ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, UIRect threadRe
 }
 
 //TODO: I don't like that uiGlyph and SDFGlyph are separate functions...
-void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, UIRect threadRect, UIRect scissor, UIGlyph *glyph, Color textColor)
+void ls_uiGlyph(UIContext *c, UIFont *font, s32 xPos, s32 yPos, f64 scaling, UIRect threadRect, UIRect scissor, UIGlyph *glyph, Color textColor)
 {
+#ifdef LS_UI_OPENGL_BACKEND
+    
+    const s32 verticesPerGlyph = 6;
+    
+    glUseProgram(c->textShader);
+    
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, c->fonts[0].texID);
+    GLint swizzleMask[] = {GL_RED, GL_RED, GL_RED, GL_RED}; // Map red to R, G, B, A
+    glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask);
+    
+    Color col = textColor;
+    f64 smoothingValue = 0.05;
+    glUniform1i(glGetUniformLocation(c->textShader, "tex"), 0); // Texture unit 0
+    glUniform4ui(glGetUniformLocation(c->textShader, "textColor"), col.r, col.g, col.b, col.a);
+    
+    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->textShader, "zLayer"), normZ);
+    
+    // offsetX: (xPos - width/2) -> [-width/2...width/2]
+    // mappedX: offsetX / width  -> [-0.5...0.5]
+    //          mappedX*2        -> [-1.0...1.0]
+    f64 xf = (f64)xPos;
+    f64 yf = (f64)yPos;
+    f64 wf = (f64)c->width;
+    f64 hf = (f64)c->height;
+    f64 xp = ((xf - wf/2.0) / wf)*2;
+    f64 yp = ((yf - hf/2.0) / hf)*2;
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale = Scale4(vec4(scaling, scaling, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+    
+    glUniformMatrix4fv(glGetUniformLocation(c->textShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    
+    glBindVertexArray(font->atlasVAO);
+    glDrawArrays(GL_TRIANGLES, glyph->codepoint * verticesPerGlyph, verticesPerGlyph);
+    
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindVertexArray(0);
+    glUseProgram(0);
+    
+#else
     AssertNonNull(c);
     AssertNonNull(glyph);
     if(glyph->width == 0 || glyph->height == 0) { return; }
@@ -3609,6 +3730,7 @@ void ls_uiGlyph(UIContext *c, s32 xPos, s32 yPos, UIRect threadRect, UIRect scis
             At[y*c->width + x] = blendedColor.value;
         }
     }
+#endif
 }
 
 #ifdef LS_UI_OPENGL_BACKEND
@@ -3623,7 +3745,7 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     
     //TODO: Seems inefficient, but whatever... Maybe create a jumptable from codepoint to index
     // baked directly in the atlas?
-    UIAtlasGlyph glyph = ls_uiGetAtlasGlyph(font, codepoint);
+    UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(font, codepoint);
     const s32 verticesPerGlyph = 6;
     
     glUseProgram(c->sdfTextShader);
@@ -3659,7 +3781,7 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     glUniformMatrix4fv(glGetUniformLocation(c->sdfTextShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
     
     glBindVertexArray(font->atlasVAO);
-    glDrawArrays(GL_TRIANGLES, glyph.idxInAtlas * verticesPerGlyph, verticesPerGlyph);
+    glDrawArrays(GL_TRIANGLES, map->codepoint * verticesPerGlyph, verticesPerGlyph);
     
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindVertexArray(0);
@@ -3890,7 +4012,7 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
                               threadRect, scissor, c->invWidgetColor);
             }
             
-            ls_uiGlyph(c, currXPos, currYPos+vertGlyphOff, threadRect, scissor, currGlyph, actualColor);
+            ls_uiGlyph(c, font, currXPos, currYPos+vertGlyphOff, 1.0, threadRect, scissor, currGlyph, actualColor);
             
             s32 kernAdvance = 0;
             if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
@@ -3903,7 +4025,7 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
         if(box->isCaretOn && (c->currentFocus == (u64 *)box) && (lineIdx == box->caretLineIdx))
         {
             UIGlyph *currGlyph = &font->glyph[(char32_t)'|'];
-            ls_uiGlyph(c, caretX, currYPos+vertGlyphOff, threadRect, scissor, currGlyph, textColor);
+            ls_uiGlyph(c, font, caretX, currYPos+vertGlyphOff, 1.0, threadRect, scissor, currGlyph, textColor);
         }
         
         currYPos -= lineHeight;
@@ -4040,9 +4162,9 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
             if(font->isAtlas)
             {
 #ifdef LS_UI_OPENGL_BACKEND
-                UIAtlasEntry *map = ls_uiGetAtlasGlyph(font, code).map;
-                s32 y1 = map->height*scaling + map->yOff*scaling;
-                s32 realY = currYPos - y1;
+                UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(font, code);
+                s32 y1 = map->height*scaling + map->y0*scaling;
+                s32 realY = (currYPos - y1) - (font->baselineOffset*scaling);
                 
                 ls_uiSDFGlyph(c, font, code, currXPos, realY, scaling,
                               threadRect, scissor, actualColor);
@@ -4053,7 +4175,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
                 currXPos += currGlyph.xAdv*scaling;
             }
             else {
-                ls_uiGlyph(c, currXPos, currYPos+vertGlyphOff, threadRect, scissor, &currGlyph, actualColor);
+                ls_uiGlyph(c, font, currXPos, currYPos+vertGlyphOff, scaling, threadRect, scissor, &currGlyph, actualColor);
                 
                 s32 kernAdvance = 0;
                 if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
@@ -4068,9 +4190,9 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
             if(font->isAtlas)
             {
 #ifdef LS_UI_OPENGL_BACKEND
-                UIAtlasEntry *map = ls_uiGetAtlasGlyph(font, (u32)'|').map;
-                s32 y1 = map->height*scaling + map->yOff*scaling;
-                s32 realY = currYPos - y1;
+                UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(font, (u32)'|');
+                s32 y1 = map->height*scaling + map->y0*scaling;
+                s32 realY = (currYPos - y1) - (font->baselineOffset*scaling);
                 
                 ls_uiSDFGlyph(c, font, (u32)'|', caretX, realY+vertGlyphOff, scaling,
                               threadRect, scissor, textColor);
@@ -4083,7 +4205,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
             else
             {
                 UIGlyph *currGlyph = &c->currFont->glyph[(char32_t)'|'];
-                ls_uiGlyph(c, caretX, currYPos+vertGlyphOff, threadRect, scissor, currGlyph, textColor);
+                ls_uiGlyph(c, font, caretX, currYPos+vertGlyphOff, scaling, threadRect, scissor, currGlyph, textColor);
             }
             
         }
@@ -4102,9 +4224,9 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
     LogMsg(font, "Passed font is null\n");
     if(!font) { return; }
     
-    s32 currXPos = xPos;
-    s32 currYPos = yPos;
-    f64 scaling = (f64)pixelHeight / (f64)font->pixelHeight;
+    s32 currXPos  = xPos;
+    s32 currYPos  = yPos;
+    f64 scaling   = (f64)pixelHeight / (f64)font->pixelHeight;
     s32 lineSpace = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
     
 #ifdef LS_UI_OPENGL_BACKEND
@@ -4122,11 +4244,16 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
         AssertMsgF(codepoint <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
         
-        UIAtlasEntry *map = ls_uiGetAtlasGlyph(font, codepoint).map;
+        UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(font, codepoint);
         
-        s32 y1 = map->height*scaling + map->yOff*scaling;
-        s32 realY = currYPos - y1;
-        ls_uiSDFGlyph(c, font, codepoint, currXPos, realY, scaling, threadRect, scissor, textColor);
+        s32 y1 = map->height*scaling + map->y0*scaling;
+        s32 realY = (currYPos - y1) - (font->baselineOffset*scaling);
+        if (font->isSDF) { ls_uiSDFGlyph(c, font, codepoint, currXPos, realY, scaling, threadRect, scissor, textColor); }
+        else {
+            //TODO: this uses ls_uiGetAtlasMapEntry as well, so we are redoing the same thing
+            UIGlyph glyph = ls_uiGetGlyphFromAtlas(font, codepoint);
+            ls_uiGlyph(c, font, currXPos, realY, scaling, threadRect, scissor, &glyph, textColor);
+        }
         
         currXPos += map->xAdv*scaling;
         if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
@@ -4160,7 +4287,7 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         else
         {
             UIGlyph *currGlyph = &font->glyph[codepoint];
-            ls_uiGlyph(c, currXPos, currYPos, threadRect, scissor, currGlyph, textColor);
+            ls_uiGlyph(c, font, currXPos, currYPos, scaling, threadRect, scissor, currGlyph, textColor);
             
             s32 kernAdvance = 0;
             if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
@@ -4197,7 +4324,7 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UILayoutRect layout,
         }
         
         UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
-        ls_uiGlyph(c, currXPos, currYPos, threadRect, scissor, currGlyph, textColor);
+        ls_uiGlyph(c, font, currXPos, currYPos, 1.0, threadRect, scissor, currGlyph, textColor);
         
         s32 kernAdvance = 0;
         if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
@@ -4220,29 +4347,6 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UILayoutRect layout,
 template<typename T>
 UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, T text, s32 pixelHeight)
 {
-    struct MapEntry
-    { //NOTE: I'm gonna assume this will be packed, being a multiple of 32 bits in size...
-        u32 codepoint;
-        s32 pixelX;
-        s32 pixelY;
-        s32 width;
-        s32 height;
-        s32 xOff;
-        s32 yOff;
-        s32 xAdv;
-        s32 leftSB;
-    };
-    
-    //NOTE: Look for the glyph pixel data in the map
-    auto getMapEntryFromAtlas = [](UIFont *font, u32 codepoint) -> MapEntry *{
-        s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
-        s32 glyphCount = font->cpCount;
-        MapEntry *map  = (MapEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
-        while(glyphCount-- && map->codepoint != codepoint) { map += 1; }
-        AssertMsg(map->codepoint == codepoint, "Glyph Codepoint is not present in Atlas");
-        return map;
-    };
-    
     AssertMsg(c, "Context is null\n");
     LogMsg(font, "Passed font is null\n");
     if(!font) { return {}; }
@@ -4270,7 +4374,8 @@ UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, T text, s32 pixelHeight)
         //      the branch predictor should get it though...
         if(font->isAtlas)
         {
-            MapEntry *map = getMapEntryFromAtlas(font, codepoint);
+            UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(font, codepoint);
+            
             totalWidth += map->xAdv*scaling;
             if(codepoint == (u32)'\n') { totalWidth = 0; totalHeight += lineSpace; }
             if(totalWidth > maxWidth) { maxWidth = totalWidth; }
@@ -4302,30 +4407,6 @@ UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, T text, s32 pixelHeight)
 //      So, maybe either find a way to remove this, or just fit it inside ls_uiTextBox() instead!
 s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
 {
-    //TODO: Copypasted from ls_uiGlyphString()
-    struct MapEntry
-    { //NOTE: I'm gonna assume this will be packed, being a multiple of 32 bits in size...
-        u32 codepoint;
-        s32 pixelX;
-        s32 pixelY;
-        s32 width;
-        s32 height;
-        s32 xOff;
-        s32 yOff;
-        s32 xAdv;
-        s32 leftSB;
-    };
-    
-    //NOTE: Look for the glyph pixel data in the map
-    auto getMapEntryFromAtlas = [](UIFont *font, u32 codepoint) -> MapEntry *{
-        s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
-        s32 glyphCount = font->cpCount;
-        MapEntry *map  = (MapEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
-        while(glyphCount-- && map->codepoint != codepoint) { map += 1; }
-        AssertMsg(map->codepoint == codepoint, "Glyph Codepoint is not present in Atlas");
-        return map;
-    };
-    
     AssertMsg(c, "Context is null\n");
     LogMsg(font, "Passed font is null\n");
     if(!font) { return 0; }
@@ -4340,7 +4421,7 @@ s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
         {
             //TODO: Annoying c->currPixelHeight
             f64 scaling = (f64)c->currPixelHeight / (f64)font->pixelHeight;
-            MapEntry *map = getMapEntryFromAtlas(font, codepoint);
+            UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(font, codepoint);
             totalLen += map->xAdv*scaling;
         }
         else
@@ -4382,6 +4463,8 @@ s32 ls_uiMonoGlyphMaxIndexDiff(UIContext *c, UIFont *font, s32 width)
 //      This is done to allow automatic layout of multiple strings inside a given rect (UILayoutRect).
 UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, UILayoutRect layout, utf32 text)
 {
+    TODO;
+    
     //TODO: Only one quirk remains, the y offset is determined based on the font height of the current element, 
     //      which obviously generates too large gaps when the font becomes smaller from one call to the 
     //      other and too small gaps when the font becomes bigger. The solution to this is to consider 
@@ -4423,35 +4506,42 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, UILayoutRect layout, u
     return finalLayout;
 }
 
-UIAtlasGlyph ls_uiGetAtlasGlyph(UIFont *font, u32 codepoint)
+UIAtlasMapEntry *ls_uiGetAtlasMapEntry(UIFont *font, u32 codepoint)
 {
     AssertNonNull(font);
-    AssertNonNull(font->fontAtlasSDF);
+    AssertNonNull(font->fontAtlas);
     
-    s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
+    s32 mapSize    = *((s32*)(font->fontAtlas + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
     s32 glyphCount = font->cpCount;
     s32 index = 0;
-    UIAtlasEntry *map  = (UIAtlasEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
-    while(glyphCount-- && map->codepoint != codepoint) { map += 1; index += 1; }
-    AssertMsg(map->codepoint == codepoint, "Glyph Codepoint is not present in Atlas");
     
-    UIAtlasGlyph result = { map, index };
-    return result;
+    //TODO: The looping doesn't make much sense. Currently, I'm not using sparse atlases, but rather
+    // a 0..N codepoint atlas. Which means, since the size of the map is constant, I can always get to the correct
+    // map in a single ADD...
+    UIAtlasMapEntry *map  = (UIAtlasMapEntry *)(font->fontAtlas + ((font->atlasWidth*font->atlasHeight) - mapSize));
+    while(glyphCount-- && map->codepoint != codepoint) {
+        map += 1;
+        index += 1;
+    }
+    AssertMsgF(map->codepoint == codepoint, "Glyph Codepoint %d is not present in Atlas", codepoint);
+    
+    return map;
 }
 
 UIGlyph ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint)
 {
     AssertNonNull(font);
-    AssertNonNull(font->fontAtlasSDF);
+    AssertNonNull(font->fontAtlas);
     
-    UIAtlasEntry *map = ls_uiGetAtlasGlyph(font, codepoint).map;
+    UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(font, codepoint);
     UIGlyph result = { 
-        .data = &font->fontAtlasSDF[map->pixelY*font->atlasWidth + map->pixelX],
-        .width = (u32)map->width,
-        .height = (u32)map->height,
-        .x0 = map->xOff,
-        .y0 = map->yOff,
-        .y1 = map->height + map->yOff,
+        .data = &font->fontAtlas[map->atlasY*font->atlasWidth + map->atlasX],
+        .codepoint = codepoint,
+        .width = map->width,
+        .height = map->height,
+        .x0 = map->x0,
+        .y0 = map->y0,
+        .y1 = map->height + map->y0,
         .xAdv = map->xAdv,
         .yAdv = 0
     };
@@ -4462,12 +4552,12 @@ UIGlyph ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint)
 UIAtlasIterator ls_uiAtlasIterStart(UIFont *font)
 {
     AssertNonNull(font);
-    AssertNonNull(font->fontAtlasSDF);
+    AssertNonNull(font->fontAtlas);
     
-    s32 mapSize    = *((s32*)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
+    s32 mapSize    = *((s32*)(font->fontAtlas + ((font->atlasWidth*font->atlasHeight) - sizeof(s32))));
     s32 glyphCount = font->cpCount;
-    UIAtlasEntry *map  = (UIAtlasEntry *)(font->fontAtlasSDF + ((font->atlasWidth*font->atlasHeight) - mapSize));
-    UIAtlasEntry *last = map + glyphCount;
+    UIAtlasMapEntry *map  = (UIAtlasMapEntry *)(font->fontAtlas + ((font->atlasWidth*font->atlasHeight) - mapSize));
+    UIAtlasMapEntry *last = map + glyphCount;
     UIAtlasIterator iter = { map, last, glyphCount, 0 };
     return iter;
 }
@@ -4515,7 +4605,7 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
         { if(c->fonts[i].pixelHeight == pixelHeight) { c->currFont = &c->fonts[i]; return; } }
     }
     
-    AssertMsg(FALSE, "Asked pixelHeight not available\n");
+    AssertMsgF(FALSE, "Asked pixelHeight %d not available\n", pixelHeight);
 #endif
 }
 
