@@ -265,6 +265,8 @@ u16 ByteSwap16(u16 value);
 u32 ByteSwap32(u32 value);
 u64 ByteSwap64(u64 value);
 f64 Ceil(f64 v);
+u64 RotLeft(u64 a, s32 shift);
+u64 RotRight(u64 a, s32 shift);
 
 
 #endif //End of header
@@ -2081,5 +2083,34 @@ f64 Ceil(f64 v)
     
     return res;
 }
+
+u64 RotLeft(u64 a, s32 shift)
+{
+#ifdef LS_PLAT_WINDOWS
+    return _lrotl(a, shift);
+#ifdef __GNUG__
+#else
+#endif
+    
+#endif
+    
+#ifdef LS_PLAT_LINUX
+#endif
+}
+
+u64 RotRight(u64 a, s32 shift)
+{
+#ifdef LS_PLAT_WINDOWS
+    return _lrotr(a, shift);
+#ifdef __GNUG__
+#else
+#endif
+    
+#endif
+    
+#ifdef LS_PLAT_LINUX
+#endif
+}
+
 
 #endif
