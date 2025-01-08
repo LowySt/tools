@@ -1582,9 +1582,9 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     ls_glLoadFunc(c->WindowDC);
     
     // --------------------------------
-    //NOTE: SDF Shader Compilation
+    //NOTE: SHARED Vertex Shader
     //
-    const char *sdfVertShader = R"LONGLONG(
+    const char *vertShader = R"LONGLONG(
 #version 330 core
 
 layout(location = 0) in vec2 inPosition;   // Vertex position
@@ -1598,6 +1598,241 @@ void main() {
 
     gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
 TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
+
+}
+)LONGLONG";
+    
+    
+    // --------------------------------
+    //NOTE: Rect Shader Compilation
+    //
+    
+    const char *rectFragShader = R"LONGLONG(
+#version 330 core
+
+in vec2 TexCoord;
+out vec4 FragColor;
+
+uniform uvec4 color;        // Premultiplied RGBA color
+uniform float zLayer;       // zLayer used to determine frag depth
+
+vec4 convertIntColToFloat(uvec4 inC) {
+
+vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+result.rgba /= 255.0;
+return result;
+}
+
+void main() {
+vec4 converted = convertIntColToFloat(color);
+if(converted.a < 0.01) { discard; }
+
+gl_FragDepth = zLayer;
+FragColor = converted;
+}
+)LONGLONG";
+    
+    c->rectShader = ls_glCreateShader(vertShader, rectFragShader);
+    
+    f32 rectVertices[18][4] =
+    {
+        {-1.0, -1.0, 0.0, 0.0},  // Bot-left
+        {-1.0,  1.0, 0.0, 1.0},  // Top-left
+        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
+        
+        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
+        {-1.0,  1.0, 0.0, 1.0},  // Top-left
+        { 1.0,  1.0, 1.0, 1.0},  // Top-right
+        
+        //NOTE: This is just for arrows in ls_uiDrawArrows
+        // TOP
+        {-1.0, -1.0, 0.0, 0.0},  // Bot-left
+        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
+        { 0.0,  1.0, 0.5, 1.0},  // Top-center
+        
+        // RIGHT
+        {-1.0, -1.0, 0.0, 0.0},  // Bot-left
+        {-1.0,  1.0, 0.0, 1.0},  // Top-left
+        { 1.0,  0.0, 1.0, 0.5},  // Center-right
+        
+        // DOWN
+        {-1.0,  1.0, 0.0, 1.0},  // Top-left
+        { 1.0,  1.0, 1.0, 1.0},  // Top-right
+        { 0.0, -1.0, 0.5, 0.0},  // Bot-center
+        
+        // LEFT
+        { 1.0,  1.0, 1.0, 1.0},  // Top-right
+        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
+        {-1.0,  0.0, 0.0, 0.5},  // Center-left
+    };
+    
+    GLuint VBO;
+    glGenVertexArrays(1, &c->rectVAO);
+    glGenBuffers(1, &VBO);
+    glBindVertexArray(c->rectVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    
+    //NOTE: Since you can free the underling buffer after the call to glBufferData, this means
+    // that glBufferData will copy over the data right here. I'm not sure if it uploads it to the gpu
+    // or create a temporary copy in RAM (which would be undesirable)
+    // TODO: Look into glMapBufferRange() which apparently does things a little different
+    glBufferData(GL_ARRAY_BUFFER, sizeof(rectVertices), rectVertices, GL_STATIC_DRAW);
+    
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+    
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    
+    //
+    // --------------------------------
+    
+    // --------------------------------
+    //NOTE: Textured Rect Shader Compilation
+    //
+    
+    const char *texRectFragShader = R"LONGLONG(
+#version 330 core
+
+in vec2 TexCoord;
+out vec4 FragColor;
+
+uniform sampler2D tex;
+uniform uvec4 color;        // Premultiplied RGBA color
+uniform float zLayer;       // zLayer used to determine frag depth
+
+vec4 convertIntColToFloat(uvec4 inC) {
+
+vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+result.rgba /= 255.0;
+return result;
+}
+
+void main() {
+ vec4 texColor = texture(tex, TexCoord);
+vec4 converted = convertIntColToFloat(color);
+
+vec4 finalColor = texColor * converted;
+if(finalColor.a < 0.01) { discard; }
+
+gl_FragDepth = zLayer;
+FragColor = finalColor;
+}
+)LONGLONG";
+    
+    c->texturedRectShader = ls_glCreateShader(vertShader, texRectFragShader);
+    
+    
+    // --------------------------------
+    //NOTE: Circle Shader Compilation
+    //
+    
+    const char *circleFragShader = R"LONGLONG(
+#version 330 core
+
+in vec2 TexCoord;
+out vec4 FragColor;
+
+uniform uvec4 color;        // Premultiplied RGBA color
+uniform float thickness;    // Thickness of the outline
+uniform float zLayer;       // zLayer used to determine frag depth
+
+vec4 convertIntColToFloat(uvec4 inC) {
+
+vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+result.rgba /= 255.0;
+return result;
+}
+
+void main() {
+vec2 center = vec2(0.5, 0.5);
+float dist = distance(TexCoord, center);
+float innerRadius = 0.5 - thickness;
+
+if (dist > 0.5 || dist < innerRadius) {
+ discard;
+}
+
+vec4 converted = convertIntColToFloat(color);
+if(converted.a < 0.01) { discard; }
+
+gl_FragDepth = zLayer;
+FragColor = converted;
+}
+)LONGLONG";
+    
+    c->circleShader = ls_glCreateShader(vertShader, circleFragShader);
+    
+    constexpr s32 circleVertCount = 80;
+    f32 circleVertices[circleVertCount][4] = {};
+    c->circleVertCount = circleVertCount;
+    
+    //NOTE: Radius is 1.0f, so it's implicit in the calculations.
+    f32 angleStep = TAU / circleVertCount;
+    f32 pX = 1.0f;
+    f32 pY = 0.0f;
+    f32 u  = 1.0f;
+    f32 v  = 0.5f;
+    for (s32 cvIdx = 0; cvIdx < circleVertCount; cvIdx++)
+    {
+        circleVertices[cvIdx][0] = pX;
+        circleVertices[cvIdx][1] = pY;
+        circleVertices[cvIdx][2] = u;
+        circleVertices[cvIdx][3] = v;
+        pX = cos(cvIdx*angleStep);
+        pY = sin(cvIdx*angleStep);
+        u  = (cos(cvIdx*angleStep) + 1.0f) * 0.5f;
+        v  = (sin(cvIdx*angleStep) + 1.0f) * 0.5f;
+    }
+    
+    GLuint circleVBO;
+    glGenVertexArrays(1, &c->circleVAO);
+    glGenBuffers(1, &circleVBO);
+    glBindVertexArray(c->circleVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, circleVBO);
+    
+    //NOTE: Since you can free the underling buffer after the call to glBufferData, this means
+    // that glBufferData will copy over the data right here. I'm not sure if it uploads it to the gpu
+    // or create a temporary copy in RAM (which would be undesirable)
+    // TODO: Look into glMapBufferRange() which apparently does things a little different
+    glBufferData(GL_ARRAY_BUFFER, sizeof(circleVertices), circleVertices, GL_STATIC_DRAW);
+    
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+    
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    
+    // --------------------------------
+    //NOTE: SDF Shader Compilation
+    //
+    
+    const char *textVertShader = R"LONGLONG(
+#version 330 core
+
+layout(location = 0) in vec2 localPositions;   // Vertex position (0 to glyph pixel's Width/Height)
+layout(location = 1) in vec2 inTexCoord;       // Texture coordinates
+layout(location = 2) in vec2 yOffset;          // y0,y1 font pixel offsets
+
+uniform vec2 viewportSize; // Screen pixel dimensions
+uniform mat4 transform;
+
+out vec2 TexCoord;
+
+void main() {
+float scaledY1 = yOffset.y / viewportSize.y;
+
+vec2 realPos = localPositions / viewportSize;
+realPos.y   -= scaledY1;
+
+    gl_Position = transform * vec4(realPos, 0.0, 1.0);  // Transform into clip space
+TexCoord    = inTexCoord;                           // Pass texture coordinates to fragment shader
 
 }
 )LONGLONG";
@@ -1745,29 +1980,12 @@ FragColor = result;
 }
   )LONGLONG";
     
-    c->sdfTextShader = ls_glCreateShader(sdfVertShader, sdfFragShader);
+    c->sdfTextShader = ls_glCreateShader(textVertShader, sdfFragShader);
     
     
     // --------------------------------
     //NOTE: Text Shader Compilation
     //
-    const char *textVertShader = R"LONGLONG(
-#version 330 core
-
-layout(location = 0) in vec2 inPosition;   // Vertex position
-layout(location = 1) in vec2 inTexCoord;   // Texture coordinates
-
-out vec2 TexCoord;
-
-uniform mat4 transform;
-
-void main() {
-
-    gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
-TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
-
-}
-)LONGLONG";
     
     const char *textFragShader = R"LONGLONG(
 #version 330 core
@@ -1775,11 +1993,9 @@ TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
 in vec2 TexCoord;
 out vec4 FragColor;
 
-uniform sampler2D tex;  // Atlas font texture
-uniform uvec4 textColor;    // Premultiplied RGBA color
-uniform float zLayer;       // zLayer used to determine frag depth
-
-const float gamma = 2.2;
+uniform sampler2D tex;   // Atlas font texture
+uniform uvec4 textColor; // Premultiplied RGBA color
+uniform float zLayer;    // zLayer used to determine frag depth
 
 vec4 convertIntColToFloat(uvec4 inC) {
 
@@ -1802,266 +2018,8 @@ FragColor = finalColor;
     
     c->textShader = ls_glCreateShader(textVertShader, textFragShader);
     
-    
-    // --------------------------------
-    //NOTE: Rect Shader Compilation
-    //
-    const char *rectVertShader = R"LONGLONG(
-#version 330 core
-
-layout(location = 0) in vec2 inPosition;   // Vertex position
-layout(location = 1) in vec2 inTexCoord;   // Texture coordinates
-
-out vec2 TexCoord;
-
-uniform mat4 transform;
-
-void main() {
-
-    gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
-TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
-
-}
-)LONGLONG";
-    
-    const char *rectFragShader = R"LONGLONG(
-#version 330 core
-
-in vec2 TexCoord;
-out vec4 FragColor;
-
-uniform uvec4 color;        // Premultiplied RGBA color
-uniform float zLayer;       // zLayer used to determine frag depth
-
-vec4 convertIntColToFloat(uvec4 inC) {
-
-vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
-result.rgba /= 255.0;
-return result;
-}
-
-void main() {
-vec4 converted = convertIntColToFloat(color);
-if(converted.a < 0.01) { discard; }
-
-gl_FragDepth = zLayer;
-FragColor = converted;
-}
-)LONGLONG";
-    
-    c->rectShader = ls_glCreateShader(rectVertShader, rectFragShader);
-    
-    f32 rectVertices[18][4] =
-    {
-        {-1.0, -1.0, 0.0, 0.0},  // Bot-left
-        {-1.0,  1.0, 0.0, 1.0},  // Top-left
-        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
-        
-        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
-        {-1.0,  1.0, 0.0, 1.0},  // Top-left
-        { 1.0,  1.0, 1.0, 1.0},  // Top-right
-        
-        //NOTE: This is just for arrows in ls_uiDrawArrows
-        // TOP
-        {-1.0, -1.0, 0.0, 0.0},  // Bot-left
-        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
-        { 0.0,  1.0, 0.5, 1.0},  // Top-center
-        
-        // RIGHT
-        {-1.0, -1.0, 0.0, 0.0},  // Bot-left
-        {-1.0,  1.0, 0.0, 1.0},  // Top-left
-        { 1.0,  0.0, 1.0, 0.5},  // Center-right
-        
-        // DOWN
-        {-1.0,  1.0, 0.0, 1.0},  // Top-left
-        { 1.0,  1.0, 1.0, 1.0},  // Top-right
-        { 0.0, -1.0, 0.5, 0.0},  // Bot-center
-        
-        // LEFT
-        { 1.0,  1.0, 1.0, 1.0},  // Top-right
-        { 1.0, -1.0, 1.0, 0.0},  // Bot-right
-        {-1.0,  0.0, 0.0, 0.5},  // Center-left
-    };
-    
-    GLuint VBO;
-    glGenVertexArrays(1, &c->rectVAO);
-    glGenBuffers(1, &VBO);
-    glBindVertexArray(c->rectVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    
-    //NOTE: Since you can free the underling buffer after the call to glBufferData, this means
-    // that glBufferData will copy over the data right here. I'm not sure if it uploads it to the gpu
-    // or create a temporary copy in RAM (which would be undesirable)
-    // TODO: Look into glMapBufferRange() which apparently does things a little different
-    glBufferData(GL_ARRAY_BUFFER, sizeof(rectVertices), rectVertices, GL_STATIC_DRAW);
-    
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
-    glEnableVertexAttribArray(0);
-    
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-    
     //
     // --------------------------------
-    
-    // --------------------------------
-    //NOTE: Textured Rect Shader Compilation
-    //
-    const char *texRectVertShader = R"LONGLONG(
-#version 330 core
-
-layout(location = 0) in vec2 inPosition;   // Vertex position
-layout(location = 1) in vec2 inTexCoord;   // Texture coordinates
-
-out vec2 TexCoord;
-
-uniform mat4 transform;
-
-void main() {
-
-    gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
-TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
-
-}
-)LONGLONG";
-    
-    const char *texRectFragShader = R"LONGLONG(
-#version 330 core
-
-in vec2 TexCoord;
-out vec4 FragColor;
-
-uniform sampler2D tex;
-uniform uvec4 color;        // Premultiplied RGBA color
-uniform float zLayer;       // zLayer used to determine frag depth
-
-vec4 convertIntColToFloat(uvec4 inC) {
-
-vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
-result.rgba /= 255.0;
-return result;
-}
-
-void main() {
- vec4 texColor = texture(tex, TexCoord);
-vec4 converted = convertIntColToFloat(color);
-
-vec4 finalColor = texColor * converted;
-if(finalColor.a < 0.01) { discard; }
-
-gl_FragDepth = zLayer;
-FragColor = finalColor;
-}
-)LONGLONG";
-    
-    c->texturedRectShader = ls_glCreateShader(texRectVertShader, texRectFragShader);
-    
-    
-    // --------------------------------
-    //NOTE: Circle Shader Compilation
-    //
-    const char *circleVertShader = R"LONGLONG(
-#version 330 core
-
-layout(location = 0) in vec2 inPosition;   // Vertex position
-layout(location = 1) in vec2 inTexCoord;   // Texture coordinates
-
-out vec2 TexCoord;
-
-uniform mat4 transform;
-
-void main() {
-
-    gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
-TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
-
-}
-)LONGLONG";
-    
-    const char *circleFragShader = R"LONGLONG(
-#version 330 core
-
-in vec2 TexCoord;
-out vec4 FragColor;
-
-uniform uvec4 color;        // Premultiplied RGBA color
-uniform float thickness;    // Thickness of the outline
-uniform float zLayer;       // zLayer used to determine frag depth
-
-vec4 convertIntColToFloat(uvec4 inC) {
-
-vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
-result.rgba /= 255.0;
-return result;
-}
-
-void main() {
-vec2 center = vec2(0.5, 0.5);
-float dist = distance(TexCoord, center);
-float innerRadius = 0.5 - thickness;
-
-if (dist > 0.5 || dist < innerRadius) {
- discard;
-}
-
-vec4 converted = convertIntColToFloat(color);
-if(converted.a < 0.01) { discard; }
-
-gl_FragDepth = zLayer;
-FragColor = converted;
-}
-)LONGLONG";
-    
-    c->circleShader = ls_glCreateShader(circleVertShader, circleFragShader);
-    
-    constexpr s32 circleVertCount = 80;
-    f32 circleVertices[circleVertCount][4] = {};
-    c->circleVertCount = circleVertCount;
-    
-    //NOTE: Radius is 1.0f, so it's implicit in the calculations.
-    f32 angleStep = TAU / circleVertCount;
-    f32 pX = 1.0f;
-    f32 pY = 0.0f;
-    f32 u  = 1.0f;
-    f32 v  = 0.5f;
-    for (s32 cvIdx = 0; cvIdx < circleVertCount; cvIdx++)
-    {
-        circleVertices[cvIdx][0] = pX;
-        circleVertices[cvIdx][1] = pY;
-        circleVertices[cvIdx][2] = u;
-        circleVertices[cvIdx][3] = v;
-        pX = cos(cvIdx*angleStep);
-        pY = sin(cvIdx*angleStep);
-        u  = (cos(cvIdx*angleStep) + 1.0f) * 0.5f;
-        v  = (sin(cvIdx*angleStep) + 1.0f) * 0.5f;
-    }
-    
-    GLuint circleVBO;
-    glGenVertexArrays(1, &c->circleVAO);
-    glGenBuffers(1, &circleVBO);
-    glBindVertexArray(c->circleVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, circleVBO);
-    
-    //NOTE: Since you can free the underling buffer after the call to glBufferData, this means
-    // that glBufferData will copy over the data right here. I'm not sure if it uploads it to the gpu
-    // or create a temporary copy in RAM (which would be undesirable)
-    // TODO: Look into glMapBufferRange() which apparently does things a little different
-    glBufferData(GL_ARRAY_BUFFER, sizeof(circleVertices), circleVertices, GL_STATIC_DRAW);
-    
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
-    glEnableVertexAttribArray(0);
-    
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-    //
-    // --------------------------------
-    
     
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -2632,11 +2590,13 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     UIAtlasIterator atlasIt = ls_uiAtlasIterStart(font);
     s32 glyphCount = atlasIt.count;
     const s32 verticesPerGlyph = 6;
-    const s32 floatsPerVertex = 4;
+    const s32 floatsPerVertex = 6;
     const s32 sizeOfSingleGlyphVertex = verticesPerGlyph * floatsPerVertex * sizeof(f32);
     s32 sizeOfVertexMap = glyphCount * sizeOfSingleGlyphVertex;
     f32 *glyphVertexMap = (f32 *)ls_alloc(sizeOfVertexMap);
     s32 glyphVertMapIdx = 0;
+    
+    //TODO: Investigate on LiberationMono glyphs like `o` and `T` having the top cut off?!?!?!
     
     //NOTE: @GlyphMapping
     // To reduce the amount of computation done each frame, we are mapping each glyphs dimensions and position
@@ -2658,18 +2618,9 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
         // the x/y coordinates of the final glyph would have needed to be mapped to floats anyway,
         // so going from 0..c->width/c->height -> -1..1 is not that big of a deal.
         
-        //TODO: Investigate on LiberationMono glyphs like `o` and `T` having the top cut off?!?!?!
-        //TODO: elements whose size is larger than the viewport?
-        //TODO: Since these values are computed once, rather than in the shader, they will not
-        // be Aspect Ratio Indipendent once the viewport dimensions are re-computed.
-        
         //NOTE: Map lengths
         map->xAdv   = (f32)map->xAdv * 0.5;
         map->yAdv   = (f32)map->yAdv * 0.5;
-        
-        f32 w = (f32)map->width / (f32)c->width;
-        f32 h = (f32)map->height / (f32)c->height;
-        f32 xPos = 0.0;
         
         //NOTE:
         // To align a glyph to the baseline, if the glyph extends below the baseline
@@ -2683,19 +2634,25 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
         // *BUT* I presume, that being a baseline-relative measurement, it is indipendent of a -1..1 range, and only
         // cares about the 'fraction' of height of the glyph it needs to move below.
         // So we are not mapping to a -1..1 range here. Just taking the right fraction.
-        f32 diff = (((f32)map->y1 / (f32)c->height));
-        f32 yPos = 0.0 - diff;
         
-        //Vertex Data (posX, posY, texU, texV)
-        f32 verticesCurrent[6][4] =
+        
+        //NOTE: To make sure glyphs are resolution-indipendent, we are passing the glyph's dimensions
+        // to the shader (and the viewport's dimensions as a uniform) and we map in the vertex shader itself.
+        f32 mw = (f32)map->width;
+        f32 mh = (f32)map->height;
+        f32 y0 = (f32)map->y0;
+        f32 y1 = (f32)map->y1;
+        
+        //Vertex Data (localX, localY, texU, texV, y0, y1)
+        f32 verticesCurrent[verticesPerGlyph][floatsPerVertex] =
         {
-            {xPos,     yPos,     texelLeft,  texelTop},  // Bottom-left
-            {xPos,     yPos + h, texelLeft,  texelBot},  // Top-left
-            {xPos + w, yPos,     texelRight, texelTop},  // Bot-right
+            { 0.0, 0.0, texelLeft,  texelTop, y0, y1 },  // Bottom-left
+            { 0.0,  mh, texelLeft,  texelBot, y0, y1 },  // Top-left
+            {  mw, 0.0, texelRight, texelTop, y0, y1 },  // Bot-right
             
-            {xPos + w, yPos,     texelRight, texelTop},  // Bot-right
-            {xPos,     yPos + h, texelLeft,  texelBot},  // Top-left
-            {xPos + w, yPos + h, texelRight, texelBot}   // Top-right
+            {  mw, 0.0, texelRight, texelTop, y0, y1 },  // Bot-right
+            { 0.0,  mh, texelLeft,  texelBot, y0, y1 },  // Top-left
+            {  mw,  mh, texelRight, texelBot, y0, y1 }   // Top-right
         };
         
         ls_memcpy(verticesCurrent, glyphVertexMap + glyphVertMapIdx, sizeOfSingleGlyphVertex);
@@ -2714,11 +2671,14 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     // TODO: Look into glMapBufferRange() which apparently does things a little different
     glBufferData(GL_ARRAY_BUFFER, sizeOfVertexMap, glyphVertexMap, GL_STATIC_DRAW);
     
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, floatsPerVertex * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
     
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, floatsPerVertex * sizeof(float), (void *)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
+    
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, floatsPerVertex * sizeof(float), (void *)(4 * sizeof(float)));
+    glEnableVertexAttribArray(2);
     
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
@@ -3703,6 +3663,7 @@ void ls_uiGlyph(UIContext *c, UIFont *font, s32 xPos, s32 yPos, f64 scaling, UIR
     Mat4 scale = Scale4(vec4(scaling, scaling, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
     glUniformMatrix4fv(glGetUniformLocation(c->textShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniform2f(glGetUniformLocation(c->textShader, "viewportSize"), (f32)c->width, (f32)c->height);
     
     glBindVertexArray(font->atlasVAO);
     glDrawArrays(GL_TRIANGLES, glyph->codepoint * verticesPerGlyph, verticesPerGlyph);
@@ -3808,6 +3769,7 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     Mat4 transform = ls_mat4x4Mul(scale, translate);
     
     glUniformMatrix4fv(glGetUniformLocation(c->sdfTextShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniform2f(glGetUniformLocation(c->sdfTextShader, "viewportSize"), (f32)c->width, (f32)c->height);
     
     glBindVertexArray(font->atlasVAO);
     glDrawArrays(GL_TRIANGLES, map->codepoint * verticesPerGlyph, verticesPerGlyph);
@@ -4077,6 +4039,7 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
     }
 }
 
+//TODO: This sucks, and does not allow to choose between sdf or not.
 void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UITextBox *box, s32 xPos, s32 yPos, 
                              s32 w, s32 h, UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
 {
@@ -4260,10 +4223,10 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
     f64 scaling   = (f64)pixelHeight / (f64)font->pixelHeight;
     s32 lineSpace = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
     
-#if _DEBUG
+#if 0
     //NOTE: Draw the font baseline, Point (xPos, yPos)
-    ls_uiFillCircle(c, xPos, yPos, 2, threadRect, scissor, RGB(0xFF, 0x00, 0xFF));
-    ls_uiFillRect(c, xPos, yPos, c->width - xPos-1, 1, threadRect, scissor, RGB(0xFF, 0x00, 0xFF));
+    //ls_uiFillCircle(c, xPos, yPos, 2, threadRect, scissor, RGB(0xFF, 0x00, 0xFF));
+    //ls_uiFillRect(c, xPos, yPos, c->width - xPos-1, 1, threadRect, scissor, RGB(0xFF, 0x00, 0xFF));
     
 #endif
     
@@ -4292,10 +4255,9 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         }
         
         
-#if _DEBUG
+#if 0
         //NOTE: Draw the glyph's bounding box
         //ls_uiBorder(c, realX, superRealY, map->width*scaling, map->height*scaling, threadRect, scissor, RGB(0x00, 0xFF, 0x00));
-        
         //ls_uiBorder(c, realX, superRealY, map->x1 - map->x0, map->y1 - map->y0, threadRect, scissor, RGB(0xFF, 0xFF, 0x00));
 #endif
         
