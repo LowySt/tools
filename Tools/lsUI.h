@@ -205,7 +205,10 @@ struct UIAtlasMapEntry
     s32 height;
     s32 x0;
     s32 y0;
+    s32 x1;
+    s32 y1;
     s32 xAdv;
+    s32 yAdv;
     s32 leftSB;
 };
 
@@ -2173,7 +2176,7 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
     uiContext->contextArena    = contextArena;
     uiContext->frameArena      = frameArena;
     uiContext->widgetArena     = widgetArena;
-    uiContext->scratchArena    = ls_arenaCreate(MBytes(1));
+    uiContext->scratchArena    = ls_arenaCreate(MBytes(4), (char*)"scratchArena");
     
     uiContext->drawBuffer      = backBuffer;
     
@@ -2265,9 +2268,9 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
                                    s32 contextArenaSize, s32 frameArenaSize, s32 widgetArenaSize,
                                    RenderCallback cb = __ui_default_windows_render_callback)
 {
-    Arena contextArena = ls_arenaCreate(contextArenaSize);
-    Arena frameArena   = ls_arenaCreate(frameArenaSize);
-    Arena widgetArena  = ls_arenaCreate(widgetArenaSize);
+    Arena contextArena = ls_arenaCreate(contextArenaSize, (char*)"contextArena");
+    Arena frameArena   = ls_arenaCreate(frameArenaSize, (char*)"frameArena");
+    Arena widgetArena  = ls_arenaCreate(widgetArenaSize, (char*)"widgetArena");
     return ls_uiInitDefaultContext(backBuffer, width, height, contextArena, frameArena, widgetArena, cb);
 }
 
@@ -2537,10 +2540,17 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
 {
     //TODO: If I'm working with the GPU, do I actually need the Atlas Data to be kept in RAM?
     // After we upload it, can't it just stay on the GPU?
-    Arena prev = ls_arenaUse(c->contextArena);
+    
+    Arena prev = ls_arenaUse(c->scratchArena);
     
     u8 *bitmapFile = NULL;
     u64 bytesRead = ls_readFile(path, (char **)&bitmapFile, 0);
+    
+    //TODO: This is LEAKING memory, but it's just a few bytes and allowes me to swap between
+    // different fonts very quickly. It makes development easier. Will hopefully fix later
+    // (But tested swapping fonts dozens of time and it never created a problem, it's really
+    //  only leaking some bytes every time (the UIFont data))
+    ls_arenaUse(c->contextArena);
     
     b32 isWindowyfied = FALSE;
     u32 PixelOffset = *((u32 *)((char *)bitmapFile + 10));
@@ -2628,15 +2638,13 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     f32 *glyphVertexMap = (f32 *)ls_alloc(sizeOfVertexMap);
     s32 glyphVertMapIdx = 0;
     
-    f32 glyphReferenceHeight = (f32)fontMaxGlyphHeight;
-    f32 scaleFactor          = glyphReferenceHeight / (f32)font->pixelHeight;
-    f32 scaledAscent         = (f32)font->ascent * scaleFactor;
-    f32 scaledDescent        = (f32)font->descent * scaleFactor;
-    f32 refBaseline          = (scaledAscent - scaledDescent) / 2.0f;
-    f32 baselineOffset       = refBaseline - scaledAscent;
-    
-    //TODO: Real rounding. This always goes towards zero, but it shouldn't...
-    font->baselineOffset     = (s32)baselineOffset;
+    //NOTE: @GlyphMapping
+    // To reduce the amount of computation done each frame, we are mapping each glyphs dimensions and position
+    // in the OpenGL's unit square directly when uploading to the GPU.
+    // This means mapping all dimensions to the [-1..1] OpenGL's NDC, and adjusting lengths.
+    // Adjusting lengths means bringing them to the [0..1] range, and multiplying them by 0.5
+    // Read more: @GlyphMapping
+    font->baselineOffset     = (s32)(((f32)font->ascent - (f32)font->descent) * 0.5);
     for (; !ls_uiAtlasIterDone(atlasIt); ls_uiAtlasIterNext(&atlasIt))
     {
         UIAtlasMapEntry *map = atlasIt.curr;
@@ -2649,24 +2657,34 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
         //NOTE: To avoid headaches, all glyphs are positioned in the center of the unit square
         // the x/y coordinates of the final glyph would have needed to be mapped to floats anyway,
         // so going from 0..c->width/c->height -> -1..1 is not that big of a deal.
-        f32 scaledW = (f32)map->width * scaleFactor;
-        f32 scaledH = (f32)map->height * scaleFactor;
         
+        //TODO: Investigate on LiberationMono glyphs like `o` and `T` having the top cut off?!?!?!
         //TODO: elements whose size is larger than the viewport?
         //TODO: Since these values are computed once, rather than in the shader, they will not
         // be Aspect Ratio Indipendent once the viewport dimensions are re-computed.
-        f32 w = scaledW / (f32)c->width;
-        f32 h = scaledH / (f32)c->height;
-        f32 xPos = -(w/2.0f);
-        f32 yPos = -(h/2.0f);
         
-        /*
-        if(map->codepoint == (u32)'!')
-        {
-            ls_log("Width: {s32}, Height: {s32}", map->width, map->height);
-            ls_log("w: {f32}, h: {f32}\nx: {f32}, y: {f32}", w, h, xPos, yPos); 
-        }
-        */
+        //NOTE: Map lengths
+        map->xAdv   = (f32)map->xAdv * 0.5;
+        map->yAdv   = (f32)map->yAdv * 0.5;
+        
+        f32 w = (f32)map->width / (f32)c->width;
+        f32 h = (f32)map->height / (f32)c->height;
+        f32 xPos = 0.0;
+        
+        //NOTE:
+        // To align a glyph to the baseline, if the glyph extends below the baseline
+        // it needs to be adjusted by the amount it extends (either y0 or y1 based on if we measure y-up or y-down)
+        // BUT: The Normalized Device Unit of OpenGL should go from -1.0..1.0
+        // Which means, to normalize y1 to -1..1, we would need to:
+        //    divide by the max y1/height -> range 0..1
+        //    multiply by 2.0             -> range 0..2
+        //    subtract 1.0                -> range -1..1
+        //
+        // *BUT* I presume, that being a baseline-relative measurement, it is indipendent of a -1..1 range, and only
+        // cares about the 'fraction' of height of the glyph it needs to move below.
+        // So we are not mapping to a -1..1 range here. Just taking the right fraction.
+        f32 diff = (((f32)map->y1 / (f32)c->height));
+        f32 yPos = 0.0 - diff;
         
         //Vertex Data (posX, posY, texU, texV)
         f32 verticesCurrent[6][4] =
@@ -3639,6 +3657,7 @@ void ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, UIRect threadRe
 }
 
 //TODO: I don't like that uiGlyph and SDFGlyph are separate functions...
+//TODO: We are passing UIGlyph just to use the codepoint in the OpenGL Backend
 void ls_uiGlyph(UIContext *c, UIFont *font, s32 xPos, s32 yPos, f64 scaling, UIRect threadRect, UIRect scissor, UIGlyph *glyph, Color textColor)
 {
 #ifdef LS_UI_OPENGL_BACKEND
@@ -3660,19 +3679,29 @@ void ls_uiGlyph(UIContext *c, UIFont *font, s32 xPos, s32 yPos, f64 scaling, UIR
     f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
     glUniform1f(glGetUniformLocation(c->textShader, "zLayer"), normZ);
     
-    // offsetX: (xPos - width/2) -> [-width/2...width/2]
-    // mappedX: offsetX / width  -> [-0.5...0.5]
-    //          mappedX*2        -> [-1.0...1.0]
+    //NOTE: Correctly mapping the glyphs coordinates and dimensions is very annoying
+    // We want to limit the amount of computation that needs to happen every frame, so we try to
+    // have them be all precomputed when the glyph's position and size is added to the VAO.
+    // During that phase, some amount of scaling, mapping and offsetting already happens @GlyphMapping
+    //
+    // Here, we need to bring the pixel-space xPos and yPos to the same mapping
+    // (which *SHOULD* be [-1..1] OpenGL's NDC). Widths/Heights, as far as I currently understand, are *NOT*
+    // supposed to be mapped -1..1 as well, because they are not positions in that space, but rather lengths.
+    // To map those lengths, it seems the easiest way is to go to a simple fraction (map to 0..1 space)
+    // and then just divide by 2 (* 0.5) since a lenght in 0..1 space would be double its equivalent in a -1..1 space
+    // (since the space is literally double in range)
+    // This lengths halving is already performed when uploading the glyphs info to the GPU, and should not be
+    // performed again.
     f64 xf = (f64)xPos;
     f64 yf = (f64)yPos;
     f64 wf = (f64)c->width;
     f64 hf = (f64)c->height;
     f64 xp = ((xf - wf/2.0) / wf)*2;
     f64 yp = ((yf - hf/2.0) / hf)*2;
+    
     Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
     Mat4 scale = Scale4(vec4(scaling, scaling, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
-    
     glUniformMatrix4fv(glGetUniformLocation(c->textShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
     
     glBindVertexArray(font->atlasVAO);
@@ -4224,10 +4253,19 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
     LogMsg(font, "Passed font is null\n");
     if(!font) { return; }
     
+    //TODO: Does it ever make sense to use LeftSideBearing on the left edge of the viewport?
+    // Seems easier to just keep an healthy pad. It's not `font-indipendent` but who cares?
     s32 currXPos  = xPos;
     s32 currYPos  = yPos;
     f64 scaling   = (f64)pixelHeight / (f64)font->pixelHeight;
     s32 lineSpace = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
+    
+#if _DEBUG
+    //NOTE: Draw the font baseline, Point (xPos, yPos)
+    ls_uiFillCircle(c, xPos, yPos, 2, threadRect, scissor, RGB(0xFF, 0x00, 0xFF));
+    ls_uiFillRect(c, xPos, yPos, c->width - xPos-1, 1, threadRect, scissor, RGB(0xFF, 0x00, 0xFF));
+    
+#endif
     
 #ifdef LS_UI_OPENGL_BACKEND
     
@@ -4246,16 +4284,22 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         
         UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(font, codepoint);
         
-        s32 y1 = map->height*scaling + map->y0*scaling;
-        s32 realY = (currYPos - y1) - (font->baselineOffset*scaling);
-        if (font->isSDF) { ls_uiSDFGlyph(c, font, codepoint, currXPos, realY, scaling, threadRect, scissor, textColor); }
+        if (font->isSDF) { ls_uiSDFGlyph(c, font, codepoint, currXPos, currYPos, scaling, threadRect, scissor, textColor); }
         else {
             //TODO: this uses ls_uiGetAtlasMapEntry as well, so we are redoing the same thing
             UIGlyph glyph = ls_uiGetGlyphFromAtlas(font, codepoint);
-            ls_uiGlyph(c, font, currXPos, realY, scaling, threadRect, scissor, &glyph, textColor);
+            ls_uiGlyph(c, font, currXPos, currYPos, scaling, threadRect, scissor, &glyph, textColor);
         }
         
-        currXPos += map->xAdv*scaling;
+        
+#if _DEBUG
+        //NOTE: Draw the glyph's bounding box
+        //ls_uiBorder(c, realX, superRealY, map->width*scaling, map->height*scaling, threadRect, scissor, RGB(0x00, 0xFF, 0x00));
+        
+        //ls_uiBorder(c, realX, superRealY, map->x1 - map->x0, map->y1 - map->y0, threadRect, scissor, RGB(0xFF, 0xFF, 0x00));
+#endif
+        
+        currXPos += map->xAdv*scaling;//*0.51;
         if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
     }
     
@@ -4535,15 +4579,17 @@ UIGlyph ls_uiGetGlyphFromAtlas(UIFont *font, u32 codepoint)
     
     UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(font, codepoint);
     UIGlyph result = { 
-        .data = &font->fontAtlas[map->atlasY*font->atlasWidth + map->atlasX],
+        .data      = &font->fontAtlas[map->atlasY*font->atlasWidth + map->atlasX],
         .codepoint = codepoint,
-        .width = map->width,
-        .height = map->height,
-        .x0 = map->x0,
-        .y0 = map->y0,
-        .y1 = map->height + map->y0,
-        .xAdv = map->xAdv,
-        .yAdv = 0
+        .width     = map->width,
+        .height    = map->height,
+        .x0        = map->x0,
+        .y0        = map->y0,
+        .x1        = map->x1,
+        .y1        = map->y1,
+        .xAdv      = map->xAdv,
+        .yAdv      = map->yAdv,
+        .leftSB    = map->leftSB,
     };
     
     return result;
