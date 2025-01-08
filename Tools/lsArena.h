@@ -9,6 +9,8 @@
 #include "lsLinux.h"
 #endif
 
+#include "lsCRT.h"
+
 struct Arena
 {
     void *data;
@@ -17,7 +19,7 @@ struct Arena
 
 extern "C"
 {
-    Arena ls_arenaCreate(u64 arenaSize);
+    Arena ls_arenaCreate(u64 arenaSize, char *name);
     void  ls_arenaDestroy(Arena a);
     
     Arena ls_arenaUse(Arena a);
@@ -31,21 +33,21 @@ extern "C"
 
 #ifdef LS_ARENA_IMPLEMENTATION
 
-Arena ls_arenaCreate(u64 arenaSize)
+Arena ls_arenaCreate(u64 arenaSize, char *name=NULL)
 {
 #ifdef LS_PLAT_WINDOWS
     u32 id = 0;
-    void *p = windows_createArena(arenaSize, &id);
+    void *p = windows_createArena(arenaSize, &id, name);
     Arena Res = {p, id};
-    return Res;
 #endif
     
 #ifdef LS_PLAT_LINUX
     u32 id = 0;
-    void *p = linux_createArena(arenaSize, &id);
+    void *p = linux_createArena(arenaSize, &id, name);
     Arena Res = {p, id};
-    return Res;
 #endif
+    
+    return Res;
 }
 
 
