@@ -642,22 +642,20 @@ u32 ls_ftoa_t(f64 x, char *buff, u32 buffMax)
     u32 BuffIdx = 0;
     
     //NOTE: itoa_t already adds the - in front of negative integers!
-    //      Before I had to do the check here. Now it's not necessary!
+    // Unfortunately when casting to (int), a value between 0 and 1 looses
+    // the sign. (we don't have -0 integers in C)
     char IntegerPart[32] = {};
-    u32 intLen = ls_itoa_t((int)x, IntegerPart, 32);
-    /*
-    if(isNegative && x < 1.0f)
+    u32 intLen = 0;
+    if(isNegative && ((int)x == 0))
     {
-        //IntegerPart[0] = '-';
-        //intLen = ls_itoa_t((int)x, IntegerPart+1, 31);
-        //intLen += 1;
-        intLen = ls_itoa_t((int)x, IntegerPart, 32);
+        IntegerPart[0] = '-';
+        intLen = ls_itoa_t((int)x, IntegerPart+1, 31);
+        intLen += 1;
     }
     else
     {
         intLen = ls_itoa_t((int)x, IntegerPart, 32);
     }
-    */
     
     char FractPart[32] = {};
     u32 fractLen = 0;
