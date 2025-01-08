@@ -146,6 +146,10 @@ struct InternalArena
     u64   lastAllocationSize;
     
     u32 id;
+    
+#if _DEBUG
+    char name[64];
+#endif
 };
 
 struct MemoryArena
@@ -172,7 +176,7 @@ extern "C"
 	void *windows_memAlloc(size_t size);
 	void windows_memFree(void *ptr);
     
-    void *windows_createArena(u64 arenaSize, u32 *id);
+    void *windows_createArena(u64 arenaSize, u32 *id, char *name);
     InternalArena windows_useArena(u32 id);
     void windows_stopArena();
     void windows_clearArena(u32 id);
@@ -503,7 +507,7 @@ void *windows_memAlloc(size_t size)
         LogMsg(Ar->id == Memory.currArenaId, "The arena ID doesn't match the Memory currentArenaID.\n");
         Assert(Ar->id == Memory.currArenaId);
         
-        LogMsg(Ar->used + size <= Ar->capacity, "Arena is out of space\n");
+        LogMsgF(Ar->used + size <= Ar->capacity, "Arena %cs is out of space: (%d / %d)\n", Ar->name, Ar->used, Ar->capacity);
         Assert(Ar->used + size <= Ar->capacity);
         
         //AssertMsgF(Ar->used + size <= Ar->capacity, "Arena is out of space (cap: %d, size: %d, req: %d).\n", Ar->capacity, Ar->used, size);
@@ -700,7 +704,7 @@ void windows_memFree(void *ptr)
 
 
 /*ARENAS*/
-void *windows_createArena(u64 arenaSize, u32 *id)
+void *windows_createArena(u64 arenaSize, u32 *id, char *name=NULL)
 {
     b32 found = FALSE;
     u32 arId = 0;
@@ -720,6 +724,16 @@ void *windows_createArena(u64 arenaSize, u32 *id)
     Memory.used[arId] = TRUE;
     
     *id = arId;
+    
+#if _DEBUG
+    if(name != NULL)
+    {
+        s32 name_len = ls_len(name);
+        if(name_len > 64) { name_len = 64; }
+        ls_memcpy(name, Ar->name, name_len);
+    }
+#endif
+    
     return Ar->data;
 }
 
