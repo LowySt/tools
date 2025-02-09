@@ -818,6 +818,8 @@ f32 ls_atof(char *s, u32 len)
 
 char *ls_strstr(char *haystack, char *needle)
 {
+    AssertMsg(FALSE, "This function is fucked and should be fixed!");
+    
     char *At = haystack;
     char *Bt = needle;
     
