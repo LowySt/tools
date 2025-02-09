@@ -35,7 +35,7 @@ static s32      GlobalParentIndex;
 
 #define PROF_CAT_STR(a, b)      a##b
 #define PROF_CAT_STR2(a, b)     PROF_CAT_STR(a, b)
-#define ProfileBlockBandwidth(name, bytes)    auto PROF_CAT_STR2(bp, __LINE__) = BlockProfiler(name, __COUNTER__ + 1, bytes)
+#define ProfileBlockBandwidth(name, bytes)    auto PROF_CAT_STR2(bp, __LINE__) = BlockProfiler((char *)name, __COUNTER__ + 1, bytes)
 #define ProfileBlock(name) ProfileBlockBandwidth(name, 0)
 #define ProfileFunc             ProfileBlock(__FUNCTION__)
 #define ProfileEndCounterCheck  static_assert(__COUNTER__ < MAX_BPF_COUNT, "Too many Profile Points\n")
@@ -135,7 +135,6 @@ void ProfilerStart() { GlobalProfiler.beginTimestamp = __rdtsc(); };
 u64 ProfilerEnd()
 {
     u64 max = __rdtsc() - GlobalProfiler.beginTimestamp;
-    
     ls_log("Clock Time assuming the timer is running at 4.2Ghz");
     ls_log("Total: {12u64} ({5u64} ms)\n", max, max / 4200000);
     
@@ -283,7 +282,7 @@ b32 repTester_isTesting(RepetitionTester *t)
 
 #else
 
-void ProfilerFlush() { ProfilerEnd(); }
+void ProfilerFlush() { return; /*ProfilerEnd();*/ }
 
 RepetitionTester repTester_Init(u64 timerFrequency, u64 timeoutInSeconds) { return {}; }
 u64 repTester_GetPageFaults() { return 0; }
