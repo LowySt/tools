@@ -6,6 +6,8 @@
 //                        1 if sortA is bigger than sortB
 typedef s32 (*sortFunc)(void *sortA, void *sortB);
 
+s32  ls_sortAscendingS32(void *a, void *b);
+
 void ls_bubblesort(void *data, s32 itemSize, s32 numItems, sortFunc customFunc);
 void ls_combsort(void *data, s32 itemSize, s32 numItems, sortFunc customFunc);
 void ls_quicksort(void *data, u32 elementSize, u32 numElements, sortFunc customFunc);
@@ -19,6 +21,18 @@ void ls_radixsort(void *data, s32 itemSize, s32 numItems, sortFunc customFunc);
 
 
 #ifdef LS_SORT_IMPLEMENTATION
+
+s32 ls_sortAscendingS32(void *a, void *b)
+{
+    s32 left  = *((s32 *)a);
+    s32 right = *((s32 *)b);
+    
+    if(left < right)  { return -1; }
+    if(left == right) { return 0; }
+    
+    return 1;
+}
+
 
 void ls_bubblesort(void *data, s32 itemSize, s32 numItems, sortFunc customFunc)
 {
