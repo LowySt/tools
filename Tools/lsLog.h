@@ -213,7 +213,7 @@ s32 ls_vlogFormatU64(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *ar
     
     if(numMods == 0)
     {
-        ls_utoa_t(intValue, intBuff, buffSize);
+        sLen = ls_utoa_t(intValue, intBuff, buffSize);
     }
     else
     {
