@@ -81,10 +81,11 @@ if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
 #define WheelRotatedIn(x, y, w, h) (WheelRotated && MouseInRect(x, y, w, h))
 
 
-#ifdef LS_UI_OPENGL_BACKEND
+#if defined(LS_UI_OPENGL_BACKEND)
 const     u32 __LS_UI_THREAD_COUNT     = 0;
-#else
-const     u32 __LS_UI_THREAD_COUNT     = 8;
+#elif defined(LS_UI_SOFTWARE_BACKEND)
+const     u32 __LS_UI_THREAD_COUNT     = 1;
+//const     u32 __LS_UI_THREAD_COUNT     = 8;
 #endif
 constexpr u32 LS_UI_RENDER_GROUP_COUNT = __LS_UI_THREAD_COUNT == 0 ? 1 : __LS_UI_THREAD_COUNT;
 
@@ -182,6 +183,7 @@ struct UIGlyph
     s32 width;
     s32 height;
     
+    //TODO: Make these u16, since I doubt I'll have a single atlas larger than 65x65K pixels.
     s32 atlasX;
     s32 atlasY;
     s32 x0;
@@ -1863,7 +1865,7 @@ TexCoord    = inTexCoord;                           // Pass texture coordinates 
 in vec2 TexCoord;
 out vec4 FragColor;
 
-uniform sampler2D sdfTexture;  // SDF font texture
+uniform sampler2D tex;  // SDF font texture
 uniform uvec4 textColor;       // Premultiplied RGBA color
 uniform float smoothing;       // Smoothing factor for the SDF edge
 uniform float zLayer;          // zLayer used to determine frag depth
@@ -1885,13 +1887,13 @@ vec4 fColor = convertIntColToFloat(textColor);
 #ifdef SUPERSAMPLING
 
 //2X Supersampling
-vec2 offset = vec2(0.5) / textureSize(sdfTexture, 0);
+vec2 offset = vec2(0.5) / textureSize(tex, 0);
 
 float sdfValues[4];
-sdfValues[0] = texture(sdfTexture, TexCoord + vec2(-offset.x, -offset.y)).r;
-sdfValues[1] = texture(sdfTexture, TexCoord + vec2( offset.x, -offset.y)).r;
-sdfValues[2] = texture(sdfTexture, TexCoord + vec2(-offset.x,  offset.y)).r;
-sdfValues[3] = texture(sdfTexture, TexCoord + vec2( offset.x,  offset.y)).r;
+sdfValues[0] = texture(tex, TexCoord + vec2(-offset.x, -offset.y)).r;
+sdfValues[1] = texture(tex, TexCoord + vec2( offset.x, -offset.y)).r;
+sdfValues[2] = texture(tex, TexCoord + vec2(-offset.x,  offset.y)).r;
+sdfValues[3] = texture(tex, TexCoord + vec2( offset.x,  offset.y)).r;
 
     // Compute the alpha value using a threshold (0.5 is the middle distance)
 float base  = 0.65;
@@ -1907,15 +1909,15 @@ vec4 result = vec4(fColor.rgb * alpha, fColor.a * alpha);
 
 #elif defined(SUBPIXELAA)
 
-vec2 redOff = vec2(-0.33, 0.0) / textureSize(sdfTexture, 0); // Left of Pixel
-vec2 greOff = vec2(  0.0, 0.0) / textureSize(sdfTexture, 0); // Center
-vec2 bluOff = vec2( 0.33, 0.0) / textureSize(sdfTexture, 0); // Right of Pixel
+vec2 redOff = vec2(-0.33, 0.0) / textureSize(tex, 0); // Left of Pixel
+vec2 greOff = vec2(  0.0, 0.0) / textureSize(tex, 0); // Center
+vec2 bluOff = vec2( 0.33, 0.0) / textureSize(tex, 0); // Right of Pixel
 
 // Sample the Texture at each subpixel offset and calc alpha
 float base = 0.65;
-float alphaRed = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, TexCoord + redOff).r);
-float alphaGre = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, TexCoord + greOff).r);
-float alphaBlu = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, TexCoord + bluOff).r);
+float alphaRed = smoothstep(base - smoothing, base + smoothing, texture(tex, TexCoord + redOff).r);
+float alphaGre = smoothstep(base - smoothing, base + smoothing, texture(tex, TexCoord + greOff).r);
+float alphaBlu = smoothstep(base - smoothing, base + smoothing, texture(tex, TexCoord + bluOff).r);
 
 // Gamma-correct
 alphaRed = pow(alphaRed, 1.0 / gamma);
@@ -1937,11 +1939,11 @@ vec4 result = vec4(subpixelColor, finalAlpha);
 #elif defined(SUPERSAMPLED_SUBPIXEL_AA)
 
 //2X Supersampling
- vec2 offset = vec2(0.5) / textureSize(sdfTexture, 0);
+ vec2 offset = vec2(0.5) / textureSize(tex, 0);
 
- vec2 redOff = vec2(-0.33, 0.0) / textureSize(sdfTexture, 0); // Left of Pixel
- vec2 greOff = vec2(  0.0, 0.0) / textureSize(sdfTexture, 0); // Center
- vec2 bluOff = vec2( 0.33, 0.0) / textureSize(sdfTexture, 0); // Right of Pixel
+ vec2 redOff = vec2(-0.33, 0.0) / textureSize(tex, 0); // Left of Pixel
+ vec2 greOff = vec2(  0.0, 0.0) / textureSize(tex, 0); // Center
+ vec2 bluOff = vec2( 0.33, 0.0) / textureSize(tex, 0); // Right of Pixel
 
  vec2 offsetFrags[4];
 offsetFrags[0] = TexCoord + vec2(-offset.x, -offset.y);
@@ -1956,9 +1958,9 @@ float blue;
 vec3 subpix;
 float finalAlpha;
 for (int i = 0; i < 4; ++i) {
-  red   = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, offsetFrags[i] + redOff).r);
- green = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, offsetFrags[i] + greOff).r);
- blue  = smoothstep(base - smoothing, base + smoothing, texture(sdfTexture, offsetFrags[i] + bluOff).r);
+  red   = smoothstep(base - smoothing, base + smoothing, texture(tex, offsetFrags[i] + redOff).r);
+ green = smoothstep(base - smoothing, base + smoothing, texture(tex, offsetFrags[i] + greOff).r);
+ blue  = smoothstep(base - smoothing, base + smoothing, texture(tex, offsetFrags[i] + bluOff).r);
 
 red = pow(red, 1.0 / gamma);
 green = pow(green, 1.0 / gamma);
@@ -1981,7 +1983,7 @@ vec4 result = vec4(subpix * finalAlpha, finalAlpha);
 #else //NO FILTERS
 
 // Sample the SDF texture, values range from 0 to 1
-    float sdfValue = texture(sdfTexture, TexCoord).r;
+    float sdfValue = texture(tex, TexCoord).r;
 float base  = 0.58;
 float alpha = smoothstep(base - smoothing, base + smoothing, sdfValue);
 
@@ -3720,6 +3722,245 @@ void ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, UIRect threadRe
 #endif
 }
 
+s32 ls_uiGetKernAdvance(UIContext *c, s32 codepoint1, s32 codepoint2)
+{
+    AssertNonNull(c);
+    AssertNonNull(c->currFont);
+    AssertNonNull(c->currFont->kernAdvanceTable);
+    
+    UIFont *font = c->currFont;
+    s32 kernAdvance = font->kernAdvanceTable[codepoint1][codepoint2];
+    
+    return kernAdvance;
+}
+
+s32 ls_uiGetKernAdvance(UIFont *font, s32 codepoint1, s32 codepoint2)
+{
+    AssertNonNull(font);
+    AssertNonNull(font->kernAdvanceTable);
+    
+    s32 kernAdvance = font->kernAdvanceTable[codepoint1][codepoint2];
+    
+    return kernAdvance;
+}
+
+#if defined(LS_UI_OPENGL_BACKEND)
+void __ls_uiOGLGlyph(UIContext *c, UIFont *f, s32 cp, s32 x, s32 y, f64 scale, Color col)
+{
+    const s32 verticesPerGlyph = 6;
+    
+    b32 isSDF = c->fontGroup.isSDF;
+    u32 shader = isSDF ? c->sdfTextShader : c->textShader;
+    
+    glUseProgram(shader);
+    
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, c->fontGroup.texID);
+    GLint swizzleMask[] = {GL_RED, GL_RED, GL_RED, GL_RED}; // Map red to R, G, B, A
+    glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask);
+    
+    glUniform1i(glGetUniformLocation(shader, "tex"), 0); // Texture unit 0
+    glUniform4ui(glGetUniformLocation(shader, "textColor"), col.r, col.g, col.b, col.a);
+    if (isSDF)
+    {
+        f64 smoothingValue = 0.05;
+        glUniform1f(glGetUniformLocation(c->sdfTextShader, "smoothing"), smoothingValue);
+    }
+    
+    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(shader, "zLayer"), normZ);
+    
+    //NOTE: Correctly mapping the glyphs coordinates and dimensions is very annoying
+    // We want to limit the amount of computation that needs to happen every frame, so we try to
+    // have them be all precomputed when the glyph's position and size is added to the VAO.
+    // During that phase, some amount of scaling, mapping and offsetting already happens @GlyphMapping
+    //
+    // Here, we need to bring the pixel-space xPos and yPos to the same mapping
+    // (which *SHOULD* be [-1..1] OpenGL's NDC). Widths/Heights, as far as I currently understand, are *NOT*
+    // supposed to be mapped -1..1 as well, because they are not positions in that space, but rather lengths.
+    // To map those lengths, it seems the easiest way is to go to a simple fraction (map to 0..1 space)
+    // and then just divide by 2 (* 0.5) since a lenght in 0..1 space would be double its equivalent in a -1..1 space
+    // (since the space is literally double in range)
+    // This lengths halving is already performed when uploading the glyphs info to the GPU, and should not be
+    // performed again.
+    f64 xf = (f64)x;
+    f64 yf = (f64)y;
+    f64 wf = (f64)c->width;
+    f64 hf = (f64)c->height;
+    f64 xp = ((xf - wf/2.0) / wf)*2;
+    f64 yp = ((yf - hf/2.0) / hf)*2;
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scaleM = Scale4(vec4(scale, scale, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scaleM, translate);
+    
+    glUniformMatrix4fv(glGetUniformLocation(shader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniform2f(glGetUniformLocation(shader, "viewportSize"), (f32)c->width, (f32)c->height);
+    
+    s32 vaoGlyphIndex = (f->idxInGroup * c->fontGroup.codepointCount) + cp;
+    glBindVertexArray(c->fontGroup.atlasVAO);
+    glDrawArrays(GL_TRIANGLES, vaoGlyphIndex * verticesPerGlyph, verticesPerGlyph);
+    
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
+#elif defined(LS_UI_SOFTWARE_BACKEND)
+
+void __ls_uiSoftwareGlyph(UIContext *c, UIGlyph *g, s32 xP, s32 yP, s32 stride, f32 scale, UIRect tRect, UIRect scissor, Color col)
+{
+    AssertNonNull(c);
+    AssertNonNull(g);
+    if(g->width == 0 || g->height == 0) { return; }
+    
+    b32 isSDF = c->fontGroup.isSDF;
+    
+    auto bl_interp = [stride, scale](UIGlyph *glyph, s32 ix, s32 iy, s32 scaledHeight) -> f64 {
+        //NOTE: map the output pixel position to the sdf glyph position
+        f64 x = (f64)ix / (f64)scale;
+        f64 y = (f64)((scaledHeight - 1) - iy) / (f64)scale;
+        
+        //NOTE: Calculate the Integer and Fractional parts of the coordinates
+        s32 x0 = (s32)x;
+        s32 x1 = (x0 + 1 < glyph->width) ? x0 + 1 : x0;
+        s32 y0 = (s32)y;
+        s32 y1 = (y0 + 1 < glyph->height) ? y0 + 1 : y0;
+        
+        f64 dx = x - x0;
+        f64 dy = y - y0;
+        
+        //NOTE: Get a 4x4 pixel square
+        f64 v00 = (f64)glyph->data[y0 * stride + x0] / 255.0;
+        f64 v01 = (f64)glyph->data[y1 * stride + x0] / 255.0;
+        f64 v10 = (f64)glyph->data[y0 * stride + x1] / 255.0;
+        f64 v11 = (f64)glyph->data[y1 * stride + x1] / 255.0;
+        
+        //NOTE: Bilinear Interpolation (It's just a lerp between two lerps. Hence Bi- Linear!)
+        f64 v0 = v00 * (1.0 - dy) + v01 * dy;
+        f64 v1 = v10 * (1.0 - dy) + v11 * dy;
+        f64 final = v0 * (1.0 - dx) + v1 * dx;
+        
+        //NOTETODO: Shitty sdf filtering.
+        const s32 onEdgeValue = 180;
+        const f64 fractOnEdge = (f64)onEdgeValue/255.0;
+        f64 realAlpha = final < fractOnEdge ? final : 1.0;
+        
+        return realAlpha;
+    };
+    
+    u32 *At = (u32 *)c->drawBuffer;
+    s32 startY = yP - g->y1*scale;
+    s32 startX = xP + g->x0*scale;
+    
+    //NOTE: Scaled dimensions for the glyph
+    s32 scaledHeight = g->height*scale;
+    s32 scaledWidth  = g->width*scale;
+    
+    s32 yOff = 0;
+    s32 xOff = 0;
+    
+    //NOTE: Output bounding box in the backbuffer based on the scaled dimensions
+    s32 maxY = scaledHeight;
+    if(startY + maxY > tRect.maxY) { maxY -= (startY+maxY) - tRect.maxY; }
+    s32 maxX = scaledWidth;
+    if(startX + maxX > tRect.maxX) { maxX -= (startX+maxX) - tRect.maxX; }
+    
+    s32 minY = tRect.minY;
+    if(startY < minY) { yOff = minY - startY; maxY -= yOff; startY = minY; }
+    s32 minX = tRect.minX;
+    if(startX < minX) { xOff = minX - startX; maxX -= xOff; startX = minX; }
+    
+    for(s32 y = 0; y < maxY; ++y)
+    {
+        s32 backbufferY = startY + y;
+        
+        for(s32 x = 0; x < maxX; ++x)
+        {
+            s32 backbufferX = startX + x;
+            Color base  = { .value = At[backbufferY*c->width + backbufferX] };
+            
+            f64 realAlpha = 0.0;
+            if(isSDF)
+            {
+                //NOTE: Fetch the sdf value by doing bilinear interpolation on the sdf bitmap
+                realAlpha = bl_interp(g, x + xOff, y + yOff, scaledHeight);
+                
+                //NOTE: Dynamically adjust the aliasing around the edge. This is important
+                // since we want a sharp glyph at large pixel sizes and an aliased glyph 
+                // at small pixels sizes to make them more readable and less jagged!
+                f32 t = (f32)(scale*64.0) / ((f32)c->height * 0.26);
+                if (t > 1.0) { t = 1.0f; }
+                u8 alphaCheck = (u8)(255.0 * t);
+                if(realAlpha < alphaCheck) { realAlpha = 0.0; }
+            }
+            else
+            {
+                s32 flippedY = ((scaledHeight - 1) - (y+yOff));
+                realAlpha = (f64)g->data[flippedY * stride + (x+xOff)] / 255.0;
+            }
+            
+            Color actual = {
+                .b = (u8)(col.b*realAlpha),
+                .g = (u8)(col.g*realAlpha),
+                .r = (u8)(col.r*realAlpha),
+                .a = (u8)(col.a*realAlpha)
+            };
+            
+            Color final = ls_uiAlphaBlend(actual, base);
+            At[backbufferY * c->width + backbufferX] = final.value;
+        }
+    }
+}
+
+#endif
+
+s32 ls_uiGlyph(UIContext *c, UIFont *f, u32 cp, u32 cpNext, s32 x, s32 y, f64 scale, UIRect tRect, UIRect scissor, Color col)
+{
+#if defined(LS_UI_OPENGL_BACKEND)
+    if(f->isAtlas)
+    {
+        UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(c, f, cp);
+        
+        __ls_uiOGLGlyph(c, f, cp, x, y, scale, col);
+        return (map->xAdv*scale);
+    }
+    else
+    {
+        AssertMsg(FALSE, "Unhandled case: OpenGL uiGlyph without an atlas");
+        return 0;
+    }
+#elif defined(LS_UI_SOFTWARE_BACKEND)
+    UIGlyph g   = {};
+    s32 stride  = 0;
+    s32 advance = 0;
+    if(f->isAtlas)
+    {
+        g = ls_uiGetGlyphFromAtlas(c, f, cp);
+        stride = f->atlasWidth;
+        advance = g.xAdv*scale;
+    }
+    else
+    {
+        g = f->glyph[cp];
+        stride = g.width*scale;
+        
+        s32 kernAdvance = 0;
+        if(cpNext != 0xFFFFFFFF) { kernAdvance = ls_uiGetKernAdvance(f, cp, cpNext); }
+        
+        advance = (g.xAdv + kernAdvance)*scale;
+    }
+    
+    __ls_uiSoftwareGlyph(c, &g, x, y, stride, scale, tRect, scissor, col);
+    return advance;
+#else
+    
+#error Unhandled backend in ls_uiGlyph()
+    
+#endif
+}
+
+#if 0
+
 //TODO: I don't like that uiGlyph and SDFGlyph are separate functions...
 //TODO: We are passing UIGlyph just to use the codepoint in the OpenGL Backend
 void ls_uiGlyph(UIContext *c, UIFont *font, s32 xPos, s32 yPos, f64 scaling, UIRect threadRect, UIRect scissor, UIGlyph *glyph, Color textColor)
@@ -3852,7 +4093,7 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     
     Color col = textColor;
     f64 smoothingValue = 0.05;
-    glUniform1i(glGetUniformLocation(c->sdfTextShader, "sdfTexture"), 0); // Texture unit 0
+    glUniform1i(glGetUniformLocation(c->sdfTextShader, "tex"), 0); // Texture unit 0
     glUniform4ui(glGetUniformLocation(c->sdfTextShader, "textColor"), col.r, col.g, col.b, col.a);
     glUniform1f(glGetUniformLocation(c->sdfTextShader, "smoothing"), smoothingValue);
     
@@ -3939,11 +4180,6 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
     s32 minX = threadRect.minX;
     if(startX < minX) { xOff = minX - startX; maxX -= xOff; startX = minX; }
     
-    /*NOTE: This is not required, since the threadRects already clamp to the client area
-    if(startY + maxY > c->height) { maxY -= ((startY + maxY) - c->height); }
-    if(startX + maxX > c->width)  { maxX -= ((startX + maxX) - c->width); }
-    */
-    
     for(s32 y = 0; y < maxY; ++y)
     {
         s32 backbufferY = startY + y;
@@ -3986,28 +4222,7 @@ void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride,
 #endif
 }
 
-
-s32 ls_uiGetKernAdvance(UIContext *c, s32 codepoint1, s32 codepoint2)
-{
-    AssertNonNull(c);
-    AssertNonNull(c->currFont);
-    AssertNonNull(c->currFont->kernAdvanceTable);
-    
-    UIFont *font = c->currFont;
-    s32 kernAdvance = font->kernAdvanceTable[codepoint1][codepoint2];
-    
-    return kernAdvance;
-}
-
-s32 ls_uiGetKernAdvance(UIFont *font, s32 codepoint1, s32 codepoint2)
-{
-    AssertNonNull(font);
-    AssertNonNull(font->kernAdvanceTable);
-    
-    s32 kernAdvance = font->kernAdvanceTable[codepoint1][codepoint2];
-    
-    return kernAdvance;
-}
+#endif
 
 void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, 
                                     UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
@@ -4053,7 +4268,8 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
     
     s32 currXPos = xPos;
     s32 currYPos = yPos;
-    u32 code    = 0;
+    u32 code     = 0;
+    u32 codeNext = 0xFFFFFFFF;
     
     utf32 realString = { box->text.data + i, box->text.len - i, box->text.size - i };
     uview lineView = ls_uviewCreate(realString);
@@ -4094,6 +4310,7 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
             }
             
             code = line.data[lIdx];
+            if(lIdx < line.len-1) { codeNext = line.data[lIdx+1]; }
             AssertMsgF(code <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
             
             Color actualColor = textColor;
@@ -4108,11 +4325,15 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
                               threadRect, scissor, c->invWidgetColor);
             }
             
+#if 0
             ls_uiGlyph(c, font, currXPos, currYPos+vertGlyphOff, 1.0, threadRect, scissor, currGlyph, actualColor);
             
             s32 kernAdvance = 0;
             if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
             currXPos += (currGlyph->xAdv + kernAdvance);
+#endif
+            s32 xAdvance = ls_uiGlyph(c, font, code, codeNext, currXPos, currYPos+vertGlyphOff, 1.0, threadRect, scissor, actualColor);
+            currXPos += xAdvance;
             
         }
         
@@ -4120,8 +4341,11 @@ void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, 
         
         if(box->isCaretOn && (c->currentFocus == (u64 *)box) && (lineIdx == box->caretLineIdx))
         {
+#if 0
             UIGlyph *currGlyph = &font->glyph[(char32_t)'|'];
             ls_uiGlyph(c, font, caretX, currYPos+vertGlyphOff, 1.0, threadRect, scissor, currGlyph, textColor);
+#endif
+            ls_uiGlyph(c, font, (u32)'|', 0xFFFFFFFF, caretX, currYPos+vertGlyphOff, 1.0, threadRect, scissor, textColor);
         }
         
         currYPos -= lineHeight;
@@ -4256,6 +4480,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
                 ls_uiFillRect(c, currXPos, currYPos, xAdv, lineHeight, threadRect, scissor, c->invWidgetColor);
             }
             
+#if 0
             if(font->isAtlas)
             {
 #ifdef LS_UI_OPENGL_BACKEND
@@ -4278,12 +4503,16 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
                 if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
                 currXPos += (currGlyph.xAdv + kernAdvance);
             }
+#endif
+            s32 xAdvance = ls_uiGlyph(c, font, code, 0xFFFFFFFF, currXPos, currYPos+vertGlyphOff, scaling, threadRect, scissor, actualColor);
+            currXPos += xAdvance;
         }
         
         if((lineIdx == relativeCaretLineIdx) && (cIdx == line.len)) { caretX = currXPos-3; }
         
         if(box->isCaretOn && (c->currentFocus == (u64 *)box) && (lineIdx == relativeCaretLineIdx))
         {
+#if 0
             if(font->isAtlas)
             {
 #ifdef LS_UI_OPENGL_BACKEND
@@ -4304,7 +4533,8 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
                 UIGlyph *currGlyph = &c->currFont->glyph[(char32_t)'|'];
                 ls_uiGlyph(c, font, caretX, currYPos+vertGlyphOff, scaling, threadRect, scissor, currGlyph, textColor);
             }
-            
+#endif
+            ls_uiGlyph(c, font, (u32)'|', 0xFFFFFFFF, caretX, currYPos+vertGlyphOff, scaling, threadRect, scissor, textColor);
         }
         
         currYPos -= lineHeight;
@@ -4328,12 +4558,23 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
     f64 scaling   = (f64)pixelHeight / (f64)font->pixelHeight;
     s32 lineSpace = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
     
+    for(u32 i = 0; i < text.len; i++)
+    {
+        u32 cp = 0xFFFFFFFF;
+        u32 cpNext = 0xFFFFFFFF;
+        if constexpr(typeid(T) == typeid(utf32))
+        { cp = text.data[i]; cpNext = i < text.len-1 ? text.data[i+1] : 0xFFFFFFFF; }
+        else if constexpr(typeid(T) == typeid(utf8))
+        { cp = ls_utf32CharFromUtf8(text, i); cpNext = i < text.len-1 ? ls_utf32CharFromUtf8(text, i+1) : 0xFFFFFFFF; }
+        else
+        { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
+        AssertMsgF(cp <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", cp);
+        
+        s32 xAdvance = ls_uiGlyph(c, font, cp, cpNext, currXPos, currYPos, scaling, threadRect, scissor, textColor);
+        currXPos += xAdvance;
+        if(cp == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
+    }
 #if 0
-    //NOTE: Draw the font baseline, Point (xPos, yPos)
-    //ls_uiFillCircle(c, xPos, yPos, 2, threadRect, scissor, RGB(0xFF, 0x00, 0xFF));
-    //ls_uiFillRect(c, xPos, yPos, c->width - xPos-1, 1, threadRect, scissor, RGB(0xFF, 0x00, 0xFF));
-    
-#endif
     
 #ifdef LS_UI_OPENGL_BACKEND
     
@@ -4359,13 +4600,6 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
             ls_uiGlyph(c, font, currXPos, currYPos, scaling, threadRect, scissor, &glyph, textColor);
         }
         
-        
-#if 0
-        //NOTE: Draw the glyph's bounding box
-        //ls_uiBorder(c, realX, superRealY, map->width*scaling, map->height*scaling, threadRect, scissor, RGB(0x00, 0xFF, 0x00));
-        //ls_uiBorder(c, realX, superRealY, map->x1 - map->x0, map->y1 - map->y0, threadRect, scissor, RGB(0xFF, 0xFF, 0x00));
-#endif
-        
         currXPos += map->xAdv*scaling;//*0.51;
         if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
     }
@@ -4382,15 +4616,18 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         else
         { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
         
-        AssertMsgF(codepoint <= font->maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
+        AssertMsgF(codepoint <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
         
         //TODO: I don't like branching inside the loop for a constant result, 
         //      the branch predictor should get it though...
         if(font->isAtlas)
         {
-            UIGlyph currGlyph = ls_uiGetGlyphFromAtlas(font, codepoint);
-            ls_uiSDFGlyph(c, &currGlyph, currXPos, currYPos, font->atlasWidth, scaling, 
-                          threadRect, scissor, textColor);
+            UIGlyph currGlyph = ls_uiGetGlyphFromAtlas(c, font, codepoint);
+            if(c->fontGroup.isSDF)
+            { ls_uiSDFGlyph(c, &currGlyph, currXPos, currYPos, font->atlasWidth, scaling,
+                            threadRect, scissor, textColor); }
+            else
+            { ls_uiGlyph(c, font, currXPos, currYPos, scaling, threadRect, scissor, &currGlyph, textColor); }
             
             currXPos += currGlyph.xAdv*scaling;
             if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
@@ -4409,6 +4646,7 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         }
     }
 #endif
+#endif
 }
 
 
@@ -4425,22 +4663,25 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UILayoutRect layout,
     s32 currYPos = layout.startY + layout.maxY;
     for(u32 i = 0; i < text.len; i++)
     {
-        u32 indexInGlyphArray = text.data[i];
-        AssertMsgF(indexInGlyphArray <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
+        u32 cp = text.data[i];
+        u32 cpNext = i < text.len - 1 ? text.data[i+1] : 0xFFFFFFFF;
+        AssertMsgF(cp <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", cp);
         
-        if(indexInGlyphArray == (u32)'\n') {
+        if(cp == (u32)'\n') {
             currYPos -= font->pixelHeight;
             currXPos = layout.minX;
             continue;
         }
         
-        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
+#if 0
+        UIGlyph *currGlyph = &font->glyph[cp];
         ls_uiGlyph(c, font, currXPos, currYPos, 1.0, threadRect, scissor, currGlyph, textColor);
         
         s32 kernAdvance = 0;
-        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
-        
+        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, cp, cpNext); }
         s32 newAdvance = currGlyph->xAdv + kernAdvance;
+#endif
+        s32 newAdvance = ls_uiGlyph(c, font, cp, cpNext, currXPos, currYPos, 1.0, threadRect, scissor, textColor);
         if((currXPos + newAdvance) > (layout.maxX))
         { 
             currYPos -= font->pixelHeight; 
@@ -4740,6 +4981,12 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
     if(!c->fontGroup.fonts) { return; }
     c->currPixelHeight = pixelHeight;
     
+#if defined(LS_UI_OPENGL_BACKEND)
+#elif defined(LS_UI_SOFTWARE_BACKEND)
+#else
+#error Unhandled backend in ls_uiSelectFontByPixelHeight()
+#endif
+    
 #ifdef LS_UI_OPENGL_BACKEND
     if(c->currFont->isAtlas)
     {
@@ -4782,7 +5029,7 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
     if(c->currFont->isAtlas)
     {
         //NOTE: The first font in the group is always the largest one!
-        UIFont *bestMatch = c->fontGroup.fonts;
+        UIFont *bestMatch = c->fontGroup.fonts + (c->fontGroup.fontCount-1);
         s32 bestMatchDiff = bestMatch->pixelHeight - pixelHeight;
         if(bestMatchDiff < 0)
         {
@@ -4790,7 +5037,7 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
             return;
         }
         
-        for(s32 sizesIdx = 1; sizesIdx < c->fontGroup.fontCount; sizesIdx++)
+        for(s32 sizesIdx = c->fontGroup.fontCount-2; sizesIdx >= 0; sizesIdx--)
         {
             UIFont *curr = c->fontGroup.fonts + sizesIdx;
             s32 diff = curr->pixelHeight - pixelHeight;
@@ -4814,9 +5061,8 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
     }
     else
     {
-        //TODO: Hardcoded
         for(u32 i = 0; i < 4; i++)
-        { if(c->fonts[i].pixelHeight == pixelHeight) { c->currFont = &c->fonts[i]; return; } }
+        { if(c->fontGroup.fonts[i].pixelHeight == pixelHeight) { c->currFont = &c->fontGroup.fonts[i]; return; } }
     }
     
     AssertMsgF(FALSE, "Asked pixelHeight %d not available\n", pixelHeight);
