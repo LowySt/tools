@@ -329,18 +329,18 @@ WINGDIAPI void APIENTRY glVertex4sv (const GLshort *v);
 WINGDIAPI void APIENTRY glVertexPointer (GLint size, GLenum type, GLsizei stride, const GLvoid *pointer);
 #endif
 
-typedef void (WINAPI *PFNGLBEGINPROC)(GLenum mode);
+typedef void (WINAPI *PFNGLBEGINPROC)(GLenum);
 typedef void (WINAPI *PFNGLENDPROC)();
-typedef void (WINAPI *PFNGLCOLOR3UBPROC)(GLubyte red, GLubyte green, GLubyte blue);
-typedef void (WINAPI *PFNGLCOLOR4UBPROC)(GLubyte red, GLubyte green, GLubyte blue, GLubyte alpha);
-typedef void (WINAPI *PFNGLCOLOR4FPROC)(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
-typedef void (WINAPI *PFNGLVERTEX3FPROC)(GLfloat x, GLfloat y, GLfloat z);
-typedef void (WINAPI *PFNGLTEXCOORD2FPROC)(GLfloat s, GLfloat t);
+typedef void (WINAPI *PFNGLCOLOR3UBPROC)(GLubyte, GLubyte green, GLubyte blue);
+typedef void (WINAPI *PFNGLCOLOR4UBPROC)(GLubyte, GLubyte green, GLubyte blue, GLubyte alpha);
+typedef void (WINAPI *PFNGLCOLOR4FPROC)(GLfloat, GLfloat green, GLfloat blue, GLfloat alpha);
+typedef void (WINAPI *PFNGLVERTEX3FPROC)(GLfloat, GLfloat, GLfloat );
+typedef void (WINAPI *PFNGLTEXCOORD2FPROC)(GLfloat, GLfloat t);
 typedef void (WINAPI *PFNGLDISABLEPROC)(GLenum cap);
 typedef void (WINAPI *PFNGLALPHAFUNCPROC)(GLenum func, GLclampf ref);
-typedef void (WINAPI *PFNGLVIEWPORTPROC)(GLint x, GLint y, GLsizei width, GLsizei height);
-typedef void (WINAPI *PFNGLBLENDFUNCPROC)(GLenum sfactor, GLenum dfactor);
-typedef void (WINAPI *PFNGLTEXPARAMETERIVPROC)(GLenum target, GLenum pname, const GLint *params);
+typedef void (WINAPI *PFNGLVIEWPORTPROC)(GLint, GLint y, GLsizei width, GLsizei height);
+typedef void (WINAPI *PFNGLBLENDFUNCPROC)(GLenum, GLenum dfactor);
+typedef void (WINAPI *PFNGLTEXPARAMETERIVPROC)(GLenum, GLenum pname, const GLint *params);
 
 #ifdef __GNUG__
 #define GL_FN(a, b) a b;
