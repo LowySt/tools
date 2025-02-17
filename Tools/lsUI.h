@@ -3873,17 +3873,21 @@ void __ls_uiSoftwareGlyph(UIContext *c, UIGlyph *g, s32 xP, s32 yP, s32 stride, 
     for(s32 y = 0; y < maxY; ++y)
     {
         s32 backbufferY = startY + y;
+        f64 glyphY = ((f64)(y + yOff) / scale);
         
         for(s32 x = 0; x < maxX; ++x)
         {
             s32 backbufferX = startX + x;
+            f64 glyphX = ((f64)(x + xOff) / scale);
+            
             Color base  = { .value = At[backbufferY*c->width + backbufferX] };
             
             f64 realAlpha = 0.0;
             if(isSDF)
             {
                 //NOTE: Fetch the sdf value by doing bilinear interpolation on the sdf bitmap
-                realAlpha = bl_interp(g, x + xOff, y + yOff, scaledHeight);
+                //      This is already doing the int->fract coords for interpolation
+                realAlpha = bl_interp(g, y+yOff, x+xOff, scaledHeight);
                 
                 //NOTE: Dynamically adjust the aliasing around the edge. This is important
                 // since we want a sharp glyph at large pixel sizes and an aliased glyph 
@@ -3895,8 +3899,8 @@ void __ls_uiSoftwareGlyph(UIContext *c, UIGlyph *g, s32 xP, s32 yP, s32 stride, 
             }
             else
             {
-                s32 flippedY = ((scaledHeight - 1) - (y+yOff));
-                realAlpha = (f64)g->data[flippedY * stride + (x+xOff)] / 255.0;
+                s32 flippedY = ((scaledHeight / scale - 1) - (s32)glyphY);
+                realAlpha = (f64)g->data[flippedY * stride + (s32)glyphX] / 255.0;
             }
             
             Color actual = {
@@ -3958,271 +3962,6 @@ s32 ls_uiGlyph(UIContext *c, UIFont *f, u32 cp, u32 cpNext, s32 x, s32 y, f64 sc
     
 #endif
 }
-
-#if 0
-
-//TODO: I don't like that uiGlyph and SDFGlyph are separate functions...
-//TODO: We are passing UIGlyph just to use the codepoint in the OpenGL Backend
-void ls_uiGlyph(UIContext *c, UIFont *font, s32 xPos, s32 yPos, f64 scaling, UIRect threadRect, UIRect scissor, UIGlyph *glyph, Color textColor)
-{
-#ifdef LS_UI_OPENGL_BACKEND
-    
-    const s32 verticesPerGlyph = 6;
-    
-    glUseProgram(c->textShader);
-    
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, c->fontGroup.texID);
-    GLint swizzleMask[] = {GL_RED, GL_RED, GL_RED, GL_RED}; // Map red to R, G, B, A
-    glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask);
-    
-    Color col = textColor;
-    f64 smoothingValue = 0.05;
-    glUniform1i(glGetUniformLocation(c->textShader, "tex"), 0); // Texture unit 0
-    glUniform4ui(glGetUniformLocation(c->textShader, "textColor"), col.r, col.g, col.b, col.a);
-    
-    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
-    glUniform1f(glGetUniformLocation(c->textShader, "zLayer"), normZ);
-    
-    //NOTE: Correctly mapping the glyphs coordinates and dimensions is very annoying
-    // We want to limit the amount of computation that needs to happen every frame, so we try to
-    // have them be all precomputed when the glyph's position and size is added to the VAO.
-    // During that phase, some amount of scaling, mapping and offsetting already happens @GlyphMapping
-    //
-    // Here, we need to bring the pixel-space xPos and yPos to the same mapping
-    // (which *SHOULD* be [-1..1] OpenGL's NDC). Widths/Heights, as far as I currently understand, are *NOT*
-    // supposed to be mapped -1..1 as well, because they are not positions in that space, but rather lengths.
-    // To map those lengths, it seems the easiest way is to go to a simple fraction (map to 0..1 space)
-    // and then just divide by 2 (* 0.5) since a lenght in 0..1 space would be double its equivalent in a -1..1 space
-    // (since the space is literally double in range)
-    // This lengths halving is already performed when uploading the glyphs info to the GPU, and should not be
-    // performed again.
-    f64 xf = (f64)xPos;
-    f64 yf = (f64)yPos;
-    f64 wf = (f64)c->width;
-    f64 hf = (f64)c->height;
-    f64 xp = ((xf - wf/2.0) / wf)*2;
-    f64 yp = ((yf - hf/2.0) / hf)*2;
-    
-    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
-    Mat4 scale = Scale4(vec4(scaling, scaling, 0.0, 1.0));
-    Mat4 transform = ls_mat4x4Mul(scale, translate);
-    glUniformMatrix4fv(glGetUniformLocation(c->textShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
-    glUniform2f(glGetUniformLocation(c->textShader, "viewportSize"), (f32)c->width, (f32)c->height);
-    
-    s32 vaoGlyphIndex = (font->idxInGroup * c->fontGroup.codepointCount) + glyph->codepoint;
-    glBindVertexArray(c->fontGroup.atlasVAO);
-    glDrawArrays(GL_TRIANGLES, vaoGlyphIndex * verticesPerGlyph, verticesPerGlyph);
-    
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glBindVertexArray(0);
-    glUseProgram(0);
-    
-#else
-    AssertNonNull(c);
-    AssertNonNull(glyph);
-    if(glyph->width == 0 || glyph->height == 0) { return; }
-    
-    s32 minX = threadRect.minX;
-    s32 minY = threadRect.minY;
-    s32 maxX = threadRect.maxX;
-    s32 maxY = threadRect.maxY;
-    
-    u32 *At = (u32 *)c->drawBuffer;
-    
-    s32 startY = yPos-glyph->y1;
-    s32 eY = glyph->height-1;
-    if(startY < minY) { eY -= (minY - startY); startY = minY; }
-    
-    //TODO: Remove bound checking against the threadRect by pre-computing proper boundaries
-    //      And also with the scissor. *Basically compute the smalles rectangle that is valid*
-    for(s32 y = startY; eY >= 0; y++, eY--)
-    {
-        if(y > maxY) break;
-        if(y < scissor.y || y > scissor.y + scissor.h) break;
-        
-        s32 startX = xPos+glyph->x0;
-        s32 eX = 0;
-        if(startX < minX) { eX += (minX - startX); startX = minX; }
-        
-        for(s32 x = startX; eX < glyph->width; x++, eX++)
-        {
-            if(x > maxX) break;
-            if(x < scissor.x || x >= scissor.x + scissor.w) break;
-            
-            Color base = { .value = At[y*c->width + x] };
-            u8 dstA    = glyph->data[eY*glyph->width + eX];
-            
-            f64 dA = (f64)dstA / 255.0;
-            
-            Color actual = {
-                .b = (u8)(textColor.b*dA),
-                .g = (u8)(textColor.g*dA),
-                .r = (u8)(textColor.r*dA),
-                .a = (u8)(textColor.a*dA)
-            };
-            
-            Color blendedColor = ls_uiAlphaBlend(actual, base);
-            At[y*c->width + x] = blendedColor.value;
-        }
-    }
-#endif
-}
-
-#ifdef LS_UI_OPENGL_BACKEND
-void ls_uiSDFGlyph(UIContext *c, UIFont *font, u32 codepoint, s32 xPos, s32 yPos, f64 scaling, 
-                   UIRect threadRect, UIRect scissor, Color textColor)
-#else
-void ls_uiSDFGlyph(UIContext *c, UIGlyph *glyph, s32 xPos, s32 yPos, s32 stride, f64 scaling, 
-                   UIRect threadRect, UIRect scissor, Color textColor)
-#endif
-{
-#ifdef LS_UI_OPENGL_BACKEND
-    
-    //TODO: Seems inefficient, but whatever... Maybe create a jumptable from codepoint to index
-    // baked directly in the atlas?
-    UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(c, font, codepoint);
-    const s32 verticesPerGlyph = 6;
-    
-    glUseProgram(c->sdfTextShader);
-    
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, c->fontGroup.texID);
-    GLint swizzleMask[] = {GL_RED, GL_RED, GL_RED, GL_RED};  // Map red to R, G, B, A
-    glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask);
-    
-    Color col = textColor;
-    f64 smoothingValue = 0.05;
-    glUniform1i(glGetUniformLocation(c->sdfTextShader, "tex"), 0); // Texture unit 0
-    glUniform4ui(glGetUniformLocation(c->sdfTextShader, "textColor"), col.r, col.g, col.b, col.a);
-    glUniform1f(glGetUniformLocation(c->sdfTextShader, "smoothing"), smoothingValue);
-    
-    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
-    glUniform1f(glGetUniformLocation(c->sdfTextShader, "zLayer"), normZ);
-    
-    
-    // offsetX: (xPos - width/2) -> [-width/2...width/2]
-    // mappedX: offsetX / width  -> [-0.5...0.5]
-    //          mappedX*2        -> [-1.0...1.0]
-    f64 xf = (f64)xPos;
-    f64 yf = (f64)yPos;
-    f64 wf = (f64)c->width;
-    f64 hf = (f64)c->height;
-    f64 xp = ((xf - wf/2.0) / wf)*2;
-    f64 yp = ((yf - hf/2.0) / hf)*2;
-    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
-    Mat4 scale = Scale4(vec4(scaling, scaling, 0.0, 1.0));
-    Mat4 transform = ls_mat4x4Mul(scale, translate);
-    
-    glUniformMatrix4fv(glGetUniformLocation(c->sdfTextShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
-    glUniform2f(glGetUniformLocation(c->sdfTextShader, "viewportSize"), (f32)c->width, (f32)c->height);
-    
-    glBindVertexArray(c->fontGroup.atlasVAO);
-    glDrawArrays(GL_TRIANGLES, map->codepoint * verticesPerGlyph, verticesPerGlyph);
-    
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glBindVertexArray(0);
-    glUseProgram(0);
-    
-#else
-    
-    AssertNonNull(c);
-    AssertNonNull(glyph);
-    if(glyph->width == 0 || glyph->height == 0) { return; }
-    
-    auto bl_interp = [stride](UIGlyph *glyph, f64 x, f64 y) -> f64 {
-        //NOTE: Calculate the Integer and Fractional parts of the coordinates
-        s32 x0 = (s32)x;
-        s32 x1 = (x0 + 1 < glyph->width) ? x0 + 1 : x0;
-        s32 y0 = (s32)y;
-        s32 y1 = (y0 + 1 < glyph->height) ? y0 + 1 : y0;
-        
-        f64 dx = x - x0;
-        f64 dy = y - y0;
-        
-        //NOTE: Get a 4x4 pixel square
-        f64 v00 = (f64)glyph->data[y0 * stride + x0] / 255.0;
-        f64 v01 = (f64)glyph->data[y1 * stride + x0] / 255.0;
-        f64 v10 = (f64)glyph->data[y0 * stride + x1] / 255.0;
-        f64 v11 = (f64)glyph->data[y1 * stride + x1] / 255.0;
-        
-        //NOTE: Bilinear Interpolation (It's just a lerp between two lerps. Hence Bi- Linear!)
-        f64 v0 = v00 * (1.0 - dy) + v01 * dy;
-        f64 v1 = v10 * (1.0 - dy) + v11 * dy;
-        f64 final = v0 * (1.0 - dx) + v1 * dx;
-        
-        return final;
-    };
-    
-    u32 *At = (u32 *)c->drawBuffer;
-    s32 startY = yPos-glyph->y1*scaling;
-    s32 startX = xPos+glyph->x0*scaling;
-    
-    //const s32 todoOnEdgeValue = 160;
-    const s32 todoOnEdgeValue = 180;
-    const f64 todoFractOnEdge = (f64)todoOnEdgeValue/255.0;
-    
-    //NOTE: Scaled dimensions for the glyph
-    s32 scaledHeight = glyph->height*scaling;
-    s32 scaledWidth  = glyph->width*scaling;
-    
-    s32 yOff = 0;
-    s32 xOff = 0;
-    
-    //NOTE: Output bounding box in the backbuffer based on the scaled dimensions
-    s32 maxY = scaledHeight;
-    if(startY + maxY > threadRect.maxY) { maxY -= (startY+maxY) - threadRect.maxY; }
-    s32 maxX = scaledWidth;
-    if(startX + maxX > threadRect.maxX) { maxX -= (startX+maxX) - threadRect.maxX; }
-    
-    s32 minY = threadRect.minY;
-    if(startY < minY) { yOff = minY - startY; maxY -= yOff; startY = minY; }
-    s32 minX = threadRect.minX;
-    if(startX < minX) { xOff = minX - startX; maxX -= xOff; startX = minX; }
-    
-    for(s32 y = 0; y < maxY; ++y)
-    {
-        s32 backbufferY = startY + y;
-        
-        for(s32 x = 0; x < maxX; ++x)
-        {
-            s32 backbufferX = startX + x;
-            
-            //NOTE: map the output pixel position to the sdf glyph position
-            f64 sdfX = (x+xOff) / scaling;
-            f64 sdfY = ((scaledHeight - 1) - (y+yOff)) / scaling;
-            
-            //NOTE: Fetch the sdf value by doing bilinear interpolation on the sdf bitmap
-            f64 sdf_value = bl_interp(glyph, sdfX, sdfY);
-            
-            //NOTETODO: Shitty sdf filtering.
-            //f64 realAlpha = sdf_value < todoFractOnEdge ? 0.0 : 1.0;
-            f64 realAlpha = sdf_value < todoFractOnEdge ? sdf_value : 1.0;
-            Color actual = {
-                .b = (u8)(textColor.b*realAlpha),
-                .g = (u8)(textColor.g*realAlpha),
-                .r = (u8)(textColor.r*realAlpha),
-                .a = (u8)(textColor.a*realAlpha)
-            };
-            
-            //NOTE: Dynamically adjust the aliasing around the edge
-            // This is important since we want a sharp glyph at large pixel sizes
-            // and an aliased glyph at small pixels sizes to make them more readable and less
-            // jagged!
-            f32 t = (f32)(scaling*64.0) / ((f32)c->height * 0.26);
-            if (t > 1.0) { t = 1.0f; }
-            u8 alphaCheck = (u8)(255.0 * t);
-            if(actual.a < alphaCheck) { actual = {}; }
-            
-            Color base  = { .value = At[backbufferY*c->width + backbufferX] };
-            Color final = ls_uiAlphaBlend(actual, base);
-            At[backbufferY * c->width + backbufferX] = final.value;
-        }
-    }
-#endif
-}
-
-#endif
 
 void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, 
                                     UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
@@ -4574,79 +4313,6 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         currXPos += xAdvance;
         if(cp == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
     }
-#if 0
-    
-#ifdef LS_UI_OPENGL_BACKEND
-    
-    AssertMsg(font->isAtlas == TRUE, "Using a glyph array with the OpenGL Backend is currently not supported\n");
-    
-    for(u32 i = 0; i < text.len; i++)
-    {
-        u32 codepoint = 0xFFFFFFFF;
-        if constexpr(typeid(T) == typeid(utf32))
-        { codepoint = text.data[i]; }
-        else if constexpr(typeid(T) == typeid(utf8))
-        { codepoint = ls_utf32CharFromUtf8(text, i); }
-        else
-        { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
-        AssertMsgF(codepoint <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
-        
-        UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(c, font, codepoint);
-        
-        if (c->fontGroup.isSDF) { ls_uiSDFGlyph(c, font, codepoint, currXPos, currYPos, scaling, threadRect, scissor, textColor); }
-        else {
-            //TODO: this uses ls_uiGetAtlasMapEntry as well, so we are redoing the same thing
-            UIGlyph glyph = ls_uiGetGlyphFromAtlas(c, font, codepoint);
-            ls_uiGlyph(c, font, currXPos, currYPos, scaling, threadRect, scissor, &glyph, textColor);
-        }
-        
-        currXPos += map->xAdv*scaling;//*0.51;
-        if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
-    }
-    
-#else
-    
-    for(u32 i = 0; i < text.len; i++)
-    {
-        u32 codepoint = 0xFFFFFFFF;
-        if constexpr(typeid(T) == typeid(utf32))
-        { codepoint = text.data[i]; }
-        else if constexpr(typeid(T) == typeid(utf8))
-        { codepoint = ls_utf32CharFromUtf8(text, i); }
-        else
-        { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
-        
-        AssertMsgF(codepoint <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
-        
-        //TODO: I don't like branching inside the loop for a constant result, 
-        //      the branch predictor should get it though...
-        if(font->isAtlas)
-        {
-            UIGlyph currGlyph = ls_uiGetGlyphFromAtlas(c, font, codepoint);
-            if(c->fontGroup.isSDF)
-            { ls_uiSDFGlyph(c, &currGlyph, currXPos, currYPos, font->atlasWidth, scaling,
-                            threadRect, scissor, textColor); }
-            else
-            { ls_uiGlyph(c, font, currXPos, currYPos, scaling, threadRect, scissor, &currGlyph, textColor); }
-            
-            currXPos += currGlyph.xAdv*scaling;
-            if(codepoint == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
-        }
-        else
-        {
-            UIGlyph *currGlyph = &font->glyph[codepoint];
-            ls_uiGlyph(c, font, currXPos, currYPos, scaling, threadRect, scissor, currGlyph, textColor);
-            
-            s32 kernAdvance = 0;
-            if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
-            
-            currXPos += (currGlyph->xAdv + kernAdvance);
-            //NOTETODO VERY BAD!! need to determine
-            if(codepoint == (u32)'\n') { currYPos -= font->pixelHeight; currXPos = xPos; }
-        }
-    }
-#endif
-#endif
 }
 
 
@@ -4982,50 +4648,12 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
     c->currPixelHeight = pixelHeight;
     
 #if defined(LS_UI_OPENGL_BACKEND)
+    c->currPixelHeight *= 2.0f;
 #elif defined(LS_UI_SOFTWARE_BACKEND)
 #else
 #error Unhandled backend in ls_uiSelectFontByPixelHeight()
 #endif
     
-#ifdef LS_UI_OPENGL_BACKEND
-    if(c->currFont->isAtlas)
-    {
-        //NOTE: The first font in the group is always the largest one!
-        UIFont *bestMatch = c->fontGroup.fonts + (c->fontGroup.fontCount-1);
-        s32 bestMatchDiff = bestMatch->pixelHeight - pixelHeight;
-        if(bestMatchDiff < 0)
-        {
-            c->currFont = bestMatch;
-            return;
-        }
-        
-        for(s32 sizesIdx = c->fontGroup.fontCount-2; sizesIdx >= 0; sizesIdx--)
-        {
-            UIFont *curr = c->fontGroup.fonts + sizesIdx;
-            s32 diff = curr->pixelHeight - pixelHeight;
-            
-            //NOTETODO: This always picks the closest, but maybe I want to pick the
-            // biggest pixelHeight that is closest, because shrinking is better than
-            // enlarging without applying filters?
-            if(diff < 0) { return; }
-            
-            if(curr->pixelHeight == pixelHeight)
-            { 
-                c->currFont = curr;
-                return;
-            }
-            
-            if(diff < bestMatchDiff) { bestMatch = curr; bestMatchDiff = diff; }
-        }
-        
-        c->currFont = bestMatch;
-        return;
-    }
-    else
-    {
-        TODO;
-    }
-#else
     if(c->currFont->isAtlas)
     {
         //NOTE: The first font in the group is always the largest one!
@@ -5066,7 +4694,6 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
     }
     
     AssertMsgF(FALSE, "Asked pixelHeight %d not available\n", pixelHeight);
-#endif
 }
 
 inline
