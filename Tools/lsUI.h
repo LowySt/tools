@@ -2648,8 +2648,8 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
         // so going from 0..c->width/c->height -> -1..1 is not that big of a deal.
         
         //NOTE: Map lengths
-        map->xAdv   = (f32)map->xAdv * 0.5;
-        map->yAdv   = (f32)map->yAdv * 0.5;
+        //map->xAdv   = (f32)map->xAdv * 0.5;
+        //map->yAdv   = (f32)map->yAdv * 0.5;
         
         //NOTE:
         // To align a glyph to the baseline, if the glyph extends below the baseline
@@ -2667,8 +2667,9 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
         
         //NOTE: To make sure glyphs are resolution-indipendent, we are passing the glyph's dimensions
         // to the shader (and the viewport's dimensions as a uniform) and we map in the vertex shader itself.
-        f32 mw = (f32)map->width;
-        f32 mh = (f32)map->height;
+        //NOTE: I guess... instead of dividing lenghts (like xAdv and yAdv) by 2, we can multiply widths/height by 2?
+        f32 mw = (f32)map->width * 2.0;
+        f32 mh = (f32)map->height * 2.0;
         f32 y0 = (f32)map->y0;
         f32 y1 = (f32)map->y1;
         
@@ -4339,14 +4340,6 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UILayoutRect layout,
             continue;
         }
         
-#if 0
-        UIGlyph *currGlyph = &font->glyph[cp];
-        ls_uiGlyph(c, font, currXPos, currYPos, 1.0, threadRect, scissor, currGlyph, textColor);
-        
-        s32 kernAdvance = 0;
-        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, cp, cpNext); }
-        s32 newAdvance = currGlyph->xAdv + kernAdvance;
-#endif
         s32 newAdvance = ls_uiGlyph(c, font, cp, cpNext, currXPos, currYPos, 1.0, threadRect, scissor, textColor);
         if((currXPos + newAdvance) > (layout.maxX))
         { 
@@ -4648,7 +4641,7 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
     c->currPixelHeight = pixelHeight;
     
 #if defined(LS_UI_OPENGL_BACKEND)
-    c->currPixelHeight *= 2.0f;
+    //c->currPixelHeight *= 2.0f;
 #elif defined(LS_UI_SOFTWARE_BACKEND)
 #else
 #error Unhandled backend in ls_uiSelectFontByPixelHeight()
