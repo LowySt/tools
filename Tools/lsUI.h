@@ -230,14 +230,6 @@ struct UIAtlasIterator
     b32 sizeChanged;
 };
 
-enum UIFontSize
-{
-    FS_SMALL = 0,
-    FS_MEDIUM = 1,
-    FS_LARGE = 2,
-    FS_EXTRALARGE = 3
-};
-
 //TODO: Add max descent of font to adjust text vertical position in text boxes.
 struct UIFont
 {
@@ -800,7 +792,6 @@ void         ls_uiFocusChange(UIContext *c, u64 *focus);
 b32          ls_uiInFocus(UIContext *c, void *p);
 b32          ls_uiHasCapture(UIContext *c, void *p);
 void         ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight);
-s32          ls_uiSelectFontByFontSize(UIContext *c, UIFontSize fontSize);
 
 UIRect       ls_uiScreenCoordsToUnitSquare(UIContext *c, s32 x, s32 y, s32 w, s32 h);
 
@@ -818,17 +809,8 @@ void         ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor,
 void         ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
 void         ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer);
 
-UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, UICallback onClick, UICallback onHold, void *data);
-UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, UICallback onClick,
-                             UICallback onHold, void *userData);
-UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, 
-                             UICallback onClick, UICallback onHold, void *data);
-UIButton     ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text,
-                             UICallback onClick, UICallback onHold, void *data);
-void         ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 t,
-                             UICallback onClick, UICallback onHold, void *data);
-void         ls_uiButtonInit(UIContext *c, UIButton *, UIButtonStyle, const char32_t *t,
-                             UICallback onClick, UICallback onHold, void *data);
+template<typename T> UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, T *text, UICallback onClick,
+                                              UICallback onHold, void *userData);
 
 b32          ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgColor, s32 zLayer);
 b32          ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer);
@@ -839,27 +821,20 @@ UICheck      ls_uiCheckInit(UIContext *c, UICheckStyle s,
 UICheck      ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32 h,
                             u8 *bmpAdditive, s32 addW, s32 addH, UICallback onChange, void *data);
 
-void         ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
-                              Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
-void         ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 minWidth, s32 minHeight,
-                              Color bkgColor, Color borderColor, Color textColor, s32 zLayer);
+template<typename T>
+void ls_uiLabelInRect(UIContext *c, T label, s32 x, s32 y, s32 minW, s32 minH, Color bkg, Color border, Color text, s32 zLayer);
+template<typename T>
+void ls_uiLabelInRect(UIContext *c, T label, s32 x, s32 y, Color bkg, Color border, Color text, s32 zLayer);
+
+void                      ls_uiLabel(UIContext *c, utf32 label, f32 relX, f32 relY, Color textColor, s32 zLayer);
+template<typename T> void ls_uiLabel(UIContext *c, T label, s32 x, s32 y, Color textColor, s32 zLayer);
+template<typename T> void ls_uiLabel(UIContext *c, T label, s32 x, s32 y, s32 zLayer);
 
 UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, UIRect deltaPos, Color textColor, s32 zLayer);
 UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, Color textColor, s32 zLayer);
 UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect layout, Color textColor, s32 zLayer);
 UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, s32 zLayer);
 UILayoutRect ls_uiLabelLayout(UIContext *c, const char32_t *label, UILayoutRect layout, s32 zLayer);
-
-void         ls_uiLabel(UIContext *c, utf32 label, f32 relX, f32 relY, Color textColor, s32 zLayer);
-void         ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
-void         ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
-void         ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
-void         ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer);
-
-void         ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer);
-void         ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer);
-void         ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer);
-void         ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer);
 
 void         ls_uiTextBoxClear(UIContext *c, UITextBox *box);
 void         ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s);
@@ -3964,6 +3939,41 @@ s32 ls_uiGlyph(UIContext *c, UIFont *f, u32 cp, u32 cpNext, s32 x, s32 y, f64 sc
 #endif
 }
 
+s32 ls_uiGlyphAdv(UIContext *c, UIFont *f, u32 cp, u32 cpNext, f64 scale)
+{
+#if defined(LS_UI_OPENGL_BACKEND)
+    if(f->isAtlas)
+    {
+        UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(c, f, cp);
+        return (map->xAdv*scale);
+    }
+    else { AssertMsg(FALSE, "Unhandled case: OpenGL uiGlyph without an atlas"); return 0; }
+#elif defined(LS_UI_SOFTWARE_BACKEND)
+    s32 advance = 0;
+    if(f->isAtlas)
+    {
+        UIGlyph g = ls_uiGetGlyphFromAtlas(c, f, cp);
+        advance = g.xAdv*scale;
+        return advance;
+    }
+    else
+    {
+        UIGlyph g = f->glyph[cp];
+        s32 kernAdvance = 0;
+        if(cpNext != 0xFFFFFFFF) { kernAdvance = ls_uiGetKernAdvance(f, cp, cpNext); }
+        advance = (g.xAdv + kernAdvance)*scale;
+        return advance;
+    }
+    
+    AssertMsg(FALSE, "Unreachable");
+    return 0;
+#else
+    
+#error Unhandled backend in ls_uiGlyph()
+    
+#endif
+}
+
 void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, 
                                     UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
 {
@@ -4309,6 +4319,7 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
         else
         { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
         AssertMsgF(cp <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", cp);
+        AssertMsgF(cpNext == 0xFFFFFFFF || cpNext <= c->fontGroup.maxCodepoint, "CPN GlyphIndex %d OutOfBounds\n", cpNext);
         
         s32 xAdvance = ls_uiGlyph(c, font, cp, cpNext, currXPos, currYPos, scaling, threadRect, scissor, textColor);
         currXPos += xAdvance;
@@ -4333,6 +4344,7 @@ void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UILayoutRect layout,
         u32 cp = text.data[i];
         u32 cpNext = i < text.len - 1 ? text.data[i+1] : 0xFFFFFFFF;
         AssertMsgF(cp <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", cp);
+        AssertMsgF(cpNext == 0xFFFFFFFF || cpNext <= c->fontGroup.maxCodepoint, "CPN GlyphIndex %d OutOfBounds\n", cpNext);
         
         if(cp == (u32)'\n') {
             currYPos -= font->pixelHeight;
@@ -4371,43 +4383,20 @@ UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, T text, s32 pixelHeight)
     
     for(u32 i = 0; i < text.len; i++)
     {
-        u32 codepoint = 0xFFFFFFFF;
+        u32 cp = 0xFFFFFFFF, cpNext = 0xFFFFFFFF;
         if constexpr(typeid(T) == typeid(utf32))
-        { codepoint = text.data[i]; }
+        { cp = text.data[i]; cpNext = i < text.len-1 ? text.data[i+1] : 0xFFFFFFFF; }
         else if constexpr(typeid(T) == typeid(utf8))
-        { codepoint = ls_utf32CharFromUtf8(text, i); }
+        { cp = ls_utf32CharFromUtf8(text, i); cpNext = i < text.len-1 ? ls_utf32CharFromUtf8(text, i+1) : 0xFFFFFFFF; }
         else
         { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
         
-        AssertMsgF(codepoint <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", codepoint);
+        AssertMsgF(cp <= c->fontGroup.maxCodepoint, "CP GlyphIndex %d OutOfBounds\n", cp);
+        AssertMsgF(cpNext == 0xFFFFFFFF || cpNext <= c->fontGroup.maxCodepoint, "CPN GlyphIndex %d OutOfBounds\n", cpNext);
         
-        //TODO: I don't like branching inside the loop for a constant result, 
-        //      the branch predictor should get it though...
-        if(font->isAtlas)
-        {
-            UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(c, font, codepoint);
-            
-            totalWidth += map->xAdv*scaling;
-            if(codepoint == (u32)'\n') { totalWidth = 0; totalHeight += lineSpace; }
-            if(totalWidth > maxWidth) { maxWidth = totalWidth; }
-        }
-        else
-        {
-            UIGlyph *currGlyph = &font->glyph[codepoint];
-            
-            s32 kernAdvance = 0;
-            if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
-            
-            if(codepoint == (u32)'\n')
-            {
-                totalHeight += font->pixelHeight;
-                totalWidth   = 0;
-                continue;
-            }
-            
-            totalWidth += (currGlyph->xAdv + kernAdvance);
-            if(totalWidth > maxWidth) { maxWidth = totalWidth; }
-        }
+        totalWidth += ls_uiGlyphAdv(c, font, cp, cpNext, scaling);
+        if(cp == (u32)'\n')       { totalWidth = 0; totalHeight += lineSpace; }
+        if(totalWidth > maxWidth) { maxWidth = totalWidth; }
     }
     
     UIRect result = {0, 0, maxWidth, totalHeight};
@@ -4451,23 +4440,8 @@ s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
     return 0;
 }
 
-//TODO: This is only used in a lambda inside ls_uiTextBox()
-//      So, maybe either find a way to remove this, or just fit it inside ls_uiTextBox() instead!
-s32 ls_uiMonoGlyphMaxIndexDiff(UIContext *c, UIFont *font, s32 width)
-{
-    AssertMsg(c, "Context is null\n");
-    LogMsg(font, "Passed font is null\n");
-    if(!font) { return 0; }
-    
-    s32 kernAdvance = ls_uiGetKernAdvance(font, 'a', 'w');
-    UIGlyph *aGlyph = &font->glyph['a'];
-    
-    s32 maxGlyphs = width / (aGlyph->xAdv + kernAdvance);
-    return maxGlyphs;
-}
-
 //NOTE: ls_uiGlyphStringLayout calculates the height of the rectangle of the layout text 
-//      (finalLayout.y, finalLayout.h in the return value).
+//      (finalLayout.w, finalLayout.h in the return value).
 //      It also returns the coordinates of where the next character would go, if you were to keep writing.
 //      (finalLayout.x, finalLayout.y in the return value).
 //
@@ -4640,13 +4614,6 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
     if(!c->fontGroup.fonts) { return; }
     c->currPixelHeight = pixelHeight;
     
-#if defined(LS_UI_OPENGL_BACKEND)
-    //c->currPixelHeight *= 2.0f;
-#elif defined(LS_UI_SOFTWARE_BACKEND)
-#else
-#error Unhandled backend in ls_uiSelectFontByPixelHeight()
-#endif
-    
     if(c->currFont->isAtlas)
     {
         //NOTE: The first font in the group is always the largest one!
@@ -4689,156 +4656,50 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
     AssertMsgF(FALSE, "Asked pixelHeight %d not available\n", pixelHeight);
 }
 
-inline
-s32 ls_uiSelectFontByFontSize(UIContext *c, UIFontSize fontSize)
-{ 
-    LogMsg(c->fontGroup.fonts, "No fonts were loaded\n");
-    if(!c->fontGroup.fonts) { return 0; }
-#ifdef LS_UI_OPENGL_BACKEND
-    TODO;
-#else
-    c->currFont = &c->fontGroup.fonts[fontSize]; return c->currFont->pixelHeight;
-#endif
-}
-
-UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, UICallback onClick, UICallback onHold = NULL, void *userData = NULL)
+template<typename T>
+UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, T *text = NULL, UICallback onClick = NULL, UICallback onHold = NULL, void *userData = NULL)
 {
-    AssertMsg(c, "UI Context is null\n");
-    
-    UIButton Result = {
-        {onClick, userData, onHold, userData, NULL, NULL}, 
-        s, {}, 0, 0, 0, FALSE, FALSE 
-    };
-    
-    return Result;
-}
-
-UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, const char32_t *text, UICallback onClick,
-                         UICallback onHold = NULL, void *userData = NULL)
-{
-    Arena prev = ls_arenaUse(c->widgetArena);
-    
-    AssertMsg(c, "UI Context is null\n");
+    AssertNonNull(c);
     AssertMsg(c->currFont, "Font is not selected\n");
     
-    //TODO: Super mega shit for pixelHeight
-    utf32 name = ls_utf32FromUTF32(text);
-    s32 pixelHeight = c->currFont->pixelHeight;
-    if(c->currFont->isAtlas) { pixelHeight = c->currPixelHeight; }
+    //If no text pointer is provided, we just return an empty button
+    //  (for things like bitmap buttons)
+    if(text == NULL)
+    {
+        UIButton result = {
+            {onClick, userData, onHold, userData, NULL, NULL}, 
+            s, {}, 0, 0, 0, FALSE, FALSE 
+        };
+        return result;
+    }
     
-#ifndef LS_UI_OPENGL_BACKEND
-    s32 height = pixelHeight + 2; //Add Margin above and below text
-    //Add margin on each side
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, name, pixelHeight).w + 16;
-#else
-    s32 height = c->currPixelHeight + 2; //Add Margin above and below text
-    //Add margin on each side
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, name, pixelHeight).w + 16;
-#endif
+    //NOTE: Otherwise we calculate the dimensions occupied by the text
+    //      and use them to calculate the button's dimensions
+    s32 pixelHeight = c->currPixelHeight;
+    utf32 name = {};
+    if constexpr(typeid(T) == typeid(const char32_t))
+    {
+        Arena prev = ls_arenaUse(c->widgetArena);
+        name = ls_utf32FromUTF32(text);
+        ls_arenaUse(prev);
+    }
+    else if constexpr(typeid(T) == typeid(utf32))
+    {
+        name = text;
+    }
+    else
+    { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and const char32_t are supported"); }
     
-    UIButton Result = {
+    //Add Margin above and below text and on each side
+    s32 height = pixelHeight + 2;
+    s32 width = ls_uiGlyphStringRect(c, c->currFont, name, pixelHeight).w + 16;
+    
+    UIButton result = {
         {onClick, userData, onHold, userData, NULL, NULL}, 
         s, name, 0, width, height, FALSE, FALSE
     };
     
-    ls_arenaUse(prev);
-    return Result;
-}
-
-UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, utf32 text, UICallback onClick,
-                         UICallback onHold = NULL, void *userData = NULL)
-{
-    AssertMsg(c, "UI Context is null\n");
-    AssertMsg(c->currFont, "Font is not selected\n");
-    
-    //TODO: Super mega shit for pixelHeight
-    s32 pixelHeight = c->currFont->pixelHeight;
-    if(c->currFont->isAtlas) { pixelHeight = c->currPixelHeight; }
-    
-#ifndef LS_UI_OPENGL_BACKEND
-    s32 height = pixelHeight + 2; //Add Margin above and below text
-    //Add margin on each side
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, text, pixelHeight).w + 16;
-#else
-    s32 height = c->currPixelHeight + 2; //Add Margin above and below text
-    //Add margin on each side
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, text, pixelHeight).w + 16;
-#endif
-    
-    UIButton Result = {
-        {onClick, userData, onHold, userData, NULL, NULL}, 
-        s, text, 0, width, height, FALSE, FALSE
-    };
-    
-    return Result;
-}
-
-void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, utf32 text, UICallback onClick,
-                     UICallback onHold = NULL, void *userData = NULL)
-{
-    AssertMsg(c, "UI Context is null\n");
-    AssertMsg(c->currFont, "Font is not selected\n");
-    
-    b->style         = s;
-    b->name          = text;
-    b->callback1     = onClick;
-    b->callback2     = onHold;
-    b->callback1Data = userData;
-    b->callback2Data = userData;
-    
-    //TODO: Super mega shit for pixelHeight
-    s32 pixelHeight = c->currFont->pixelHeight;
-    if(c->currFont->isAtlas) { pixelHeight = c->currPixelHeight; }
-    
-#ifndef LS_UI_OPENGL_BACKEND
-    s32 height = pixelHeight + 2; //Add Margin above and below text
-    //Add margin on each side
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, text, pixelHeight).w + 16;
-#else
-    s32 height = c->currPixelHeight + 2; //Add Margin above and below text
-    //Add margin on each side
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, text, pixelHeight).w + 16;
-#endif
-    
-    b->bmp.w = width;
-    b->bmp.h = height;
-}
-
-void ls_uiButtonInit(UIContext *c, UIButton *b, UIButtonStyle s, const char32_t *t, UICallback onClick,
-                     UICallback onHold = NULL, void *data = NULL)
-{
-    Arena prev = ls_arenaUse(c->widgetArena);
-    
-    AssertMsg(c, "UI Context is null\n");
-    AssertMsg(c->currFont, "Font is not selected\n");
-    
-    b->style   = s;
-    
-    //TODO: Should this be a ls_utf32Constant() ??? I've been passed a constant literal...
-    b->name          = ls_utf32FromUTF32(t);
-    b->callback1     = onClick;
-    b->callback2     = onHold;
-    b->callback1Data = data;
-    b->callback2Data = data;
-    
-    //TODO: Super mega shit for pixelHeight
-    s32 pixelHeight = c->currFont->pixelHeight;
-    if(c->currFont->isAtlas) { pixelHeight = c->currPixelHeight; }
-    
-#ifndef LS_UI_OPENGL_BACKEND
-    s32 height = pixelHeight + 2; //Add Margin above and below text
-    //Add margin on each side
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, b->name, pixelHeight).w + 16;
-#else
-    s32 height = c->currPixelHeight + 2; //Add Margin above and below text
-    //Add margin on each side
-    s32 width = ls_uiGlyphStringRect(c, c->currFont, b->name, pixelHeight).w + 16;
-#endif
-    
-    b->bmp.w = width;
-    b->bmp.h = height;
-    
-    ls_arenaUse(prev);
+    return result;
 }
 
 //TODO:Menus use buttons, but also claim Focus, which means I can't use the global focus trick to avoid input
@@ -4907,66 +4768,9 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgCol
     return inputUse;
 }
 
-//TODO: Why do I have an almost copy-paste of this function above? Compact them...
 b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer = 0)
 {
-    Input *UserInput = &c->UserInput;
-    
-    b32 inputUse = FALSE;
-    
-    Color bkgColor    = c->widgetColor;
-    Color textColor   = c->textColor;
-    Color borderColor = c->borderColor;
-    
-    if(button->style == UIBUTTON_TEXT_NOBORDER) { bkgColor = c->backgroundColor; }
-    
-    if(button->isInactive == TRUE)
-    {
-        textColor = ls_uiDarkenRGB(textColor, 0.50f);
-        bkgColor  = ls_uiDarkenRGB(bkgColor, 0.50f);
-        
-        RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->bmp.w, button->bmp.h };
-        command.button        = button;
-        command.bkgColor      = bkgColor;
-        command.borderColor   = borderColor;
-        command.textColor     = textColor;
-        ls_uiPushRenderCommand(c, command, zLayer);
-        
-        return FALSE;
-    }
-    
-    if(MouseInRect(xPos, yPos, button->bmp.w, button->bmp.h-1))// && ls_uiInFocus(cxt, 0))
-    { 
-        button->isHot = TRUE;
-        bkgColor = c->highliteColor;
-        if(button->style == UIBUTTON_LINK) { textColor = c->highliteColor; }
-        
-        //b32 noCapture = ls_uiHasCapture(cxt, 0);
-        
-        if(LeftClick)// && noCapture)
-        {
-            //NOTE: button->onClick
-            if(button->callback1) { inputUse |= button->callback1(c, button->callback1Data); }
-        }
-        
-        if(LeftHold)//  && noCapture)
-        {
-            button->isHeld = TRUE;
-            bkgColor       = c->pressedColor;
-            
-            //NOTE: button->onHold
-            if(button->callback2) { inputUse |= button->callback2(c, button->callback2Data); }
-        }
-    }
-    
-    RenderCommand command = { UI_RC_BUTTON, xPos, yPos, button->bmp.w, button->bmp.h };
-    command.button        = button;
-    command.bkgColor      = bkgColor;
-    command.borderColor   = borderColor;
-    command.textColor     = textColor;
-    ls_uiPushRenderCommand(c, command, zLayer);
-    
-    return inputUse;
+    return ls_uiButton(c, button, xPos, yPos, c->widgetColor, zLayer);
 }
 
 UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s,
@@ -5030,6 +4834,7 @@ b32 ls_uiCheck(UIContext *c, UICheck *check, s32 x, s32 y, s32 zLayer = 0)
     return inputUse;
 }
 
+//TODO: Why do I need this?
 UIRect ls_uiLabelRect(UIContext *c, utf32 label, s32 xPos, s32 yPos)
 {
     s32 marginX    = 0.3f*c->currFont->pixelHeight;
@@ -5042,53 +4847,33 @@ UIRect ls_uiLabelRect(UIContext *c, utf32 label, s32 xPos, s32 yPos)
     return { xPos, yPos, rectWidth, rectHeight };
 }
 
-void ls_uiLabelInRect(UIContext *c, utf32 label, s32 xPos, s32 yPos,
-                      Color bkgColor, Color borderColor, Color textColor, s32 zLayer = 0)
+template<typename T>
+void ls_uiLabelInRect(UIContext *c, T label, s32 x, s32 y, s32 minW, s32 minH, Color bkg, Color border, Color text, s32 zLayer = 0)
 {
-    s32 marginX    = 0.3f*c->currFont->pixelHeight;
-    s32 marginY    = 0.25f*c->currFont->pixelHeight;
+    s32 pixelHeight = c->currPixelHeight;
+    s32 marginX     = 0.3f*pixelHeight;
+    s32 marginY     = 0.25f*pixelHeight;
     
-    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, c->currFont->pixelHeight);
+    UIRect rect    = ls_uiGlyphStringRect(c, c->currFont, label, pixelHeight);
     s32 rectWidth  = rect.w + 2*marginX;
-    s32 rectHeight = rect.h + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
+    s32 rectHeight = rect.h + 2*marginY;
     
-    s32 labelOffset = rect.h - c->currFont->pixelHeight;
-    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY + labelOffset, textColor, zLayer);
-    ls_uiRect(c, xPos, yPos, rectWidth, rectHeight, bkgColor, borderColor, zLayer);
+    if(rectWidth  < minW) { marginX += (minW - rectWidth) / 2;  rectWidth  = minW; }
+    if(rectHeight < minH) { marginY += (minH - rectHeight) / 2; rectHeight = minH; }
+    
+    s32 labelOffset = rect.h - pixelHeight;
+    ls_uiLabel(c, label, x + marginX, y + 2*marginY + labelOffset, text, zLayer);
+    ls_uiRect(c, x, y, rectWidth, rectHeight, bkg, border, zLayer);
 }
 
-void ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos,
-                      Color bkgColor, Color borderColor, Color textColor, s32 zLayer = 0)
+template<typename T>
+void ls_uiLabelInRect(UIContext *c, T label, s32 x, s32 y, Color bkg, Color border, Color text, s32 zLayer = 0)
 {
-    s32 marginX    = 0.3f*c->currFont->pixelHeight;
-    s32 marginY    = 0.25f*c->currFont->pixelHeight;
-    
-    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, c->currFont->pixelHeight);
-    s32 rectWidth  = rect.w + 2*marginX;
-    s32 rectHeight = rect.h + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
-    
-    s32 labelOffset = rect.h - c->currFont->pixelHeight;
-    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY + labelOffset, textColor, zLayer);
-    ls_uiRect(c, xPos, yPos, rectWidth, rectHeight, bkgColor, borderColor, zLayer);
+    const s32 max_positive = 0x7FFFFFFF;
+    return ls_uiLabelInRect(c, label, x, y, max_positive, max_positive, bkg, border, text, zLayer);
 }
 
-void ls_uiLabelInRect(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 minWidth, s32 minHeight,
-                      Color bkgColor, Color borderColor, Color textColor, s32 zLayer = 0)
-{
-    s32 marginX    = 0.3f*c->currFont->pixelHeight;
-    s32 marginY    = 0.25f*c->currFont->pixelHeight;
-    
-    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, c->currFont->pixelHeight);
-    s32 rectWidth  = rect.w + 2*marginX;
-    s32 rectHeight = rect.h + 2*marginY; //TODO: Ascent/Descent, not this bullshit.
-    
-    if(rectWidth  < minWidth)  { marginX += (minWidth - rectWidth) / 2; rectWidth = minWidth; }
-    if(rectHeight < minHeight) { marginY += (minHeight - rectHeight) / 2; rectHeight = minHeight; }
-    
-    s32 labelOffset = rect.h - c->currFont->pixelHeight;
-    ls_uiLabel(c, label, xPos + marginX, yPos + 2*marginY + labelOffset, textColor, zLayer);
-    ls_uiRect(c, xPos, yPos, rectWidth, rectHeight, bkgColor, borderColor, zLayer);
-}
+
 
 void ls_uiLabel(UIContext *c, utf32 label, f32 relX, f32 relY, Color textColor, s32 zLayer = 0)
 {
@@ -5098,71 +4883,58 @@ void ls_uiLabel(UIContext *c, utf32 label, f32 relX, f32 relY, Color textColor, 
     ls_uiLabel(c, label, xPos, yPos, textColor, zLayer);
 }
 
-void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer = 0)
+//TODO: Think about memory management. constant literal values are accepted and not re-allocated
+// Which must happen otherwise the memory would be constantly leaked (unless we used the frameArena)
+// So it works, BUT ONLY FOR LITERALS!
+// Nothing is stopping the user from constructing a string programmatically and passing
+// a manually casted const char32_t or const u8 pointer. And fucking up memory.
+template<typename T>
+void ls_uiLabel(UIContext *c, T label, s32 x, s32 y, Color textColor, s32 zLayer = 0)
 {
     AssertMsg(c, "Context pointer was null");
     AssertMsg(c->currFont, "No font was selected before sizing a label\n");
     
-    if(label.len == 0) { return; }
-    
-    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, c->currPixelHeight);
-    s32 yBaseOff = rect.h - c->currPixelHeight;
-    
-    RenderCommand command = { UI_RC_LABEL32, xPos, yPos - yBaseOff, rect.w, rect.h };
-    command.label32 = label;
+    s32 pixelHeight = c->currPixelHeight;
+    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, pixelHeight);
+    s32 yBaseOff = rect.h - pixelHeight;
+    RenderCommand command = { UI_RC_LABEL32, x, y - yBaseOff, rect.w, rect.h };
     command.textColor = textColor;
+    if constexpr(typeid(T) == typeid(utf32))
+    {
+        if(label.len == 0) { return; }
+        command.label32 = label;
+    }
+    else if constexpr(typeid(T) == typeid(utf8))
+    {
+        if(label.len == 0) { return; }
+        command.type = UI_RC_LABEL8;
+        command.label8 = label;
+    }
+    else if constexpr(typeid(T) == typeid(const char32_t*))
+    {
+        utf32 lab = ls_utf32Constant(label);
+        
+        if(label.len == 0) { return; }
+        command.label32 = label;
+    }
+    else if constexpr(typeid(T) == typeid(const u8*))
+    {
+        utf8 lab = ls_utf8Constant(label);
+        
+        if(label.len == 0) { return; }
+        command.type = UI_RC_LABEL8;
+        command.label8 = label;
+    }
+    
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
-void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer = 0)
+template<typename T>
+void ls_uiLabel(UIContext *c, T label, s32 x, s32 y, s32 zLayer = 0)
 {
-    utf32 lab = ls_utf32Constant(label);
-    ls_uiLabel(c, lab, xPos, yPos, textColor, zLayer);
+    return ls_uiLabel(c, label, x, y, c->textColor, zLayer);
 }
 
-void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, Color textColor, s32 zLayer = 0)
-{
-    AssertMsg(c, "Context pointer was null");
-    AssertMsg(c->currFont, "No font was selected before sizing a label\n");
-    
-    if(label.len == 0) { return; }
-    
-    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, c->currPixelHeight);
-    s32 yBaseOff = rect.h - c->currPixelHeight;
-    
-    RenderCommand command = { UI_RC_LABEL8, xPos, yPos - yBaseOff, rect.w, rect.h };
-    command.label8 = label;
-    command.textColor = textColor;
-    ls_uiPushRenderCommand(c, command, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, Color textColor, s32 zLayer = 0)
-{
-    utf8 lab = ls_utf8Constant(label);
-    ls_uiLabel(c, lab, xPos, yPos, textColor, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, utf32 label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    ls_uiLabel(c, label, xPos, yPos, c->textColor, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, const char32_t *label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    utf32 lab = ls_utf32Constant(label);
-    ls_uiLabel(c, lab, xPos, yPos, c->textColor, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, utf8 label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    ls_uiLabel(c, label, xPos, yPos, c->textColor, zLayer);
-}
-
-void ls_uiLabel(UIContext *c, const u8 *label, s32 xPos, s32 yPos, s32 zLayer = 0)
-{
-    utf8 lab = ls_utf8Constant(label);
-    ls_uiLabel(c, lab, xPos, yPos, c->textColor, zLayer);
-}
 
 UILayoutRect ls_uiLabelLayout(UIContext *c, utf32 label, UILayoutRect layout, UIRect deltaPos,
                               Color textColor, s32 zLayer = 0)
@@ -5247,7 +5019,7 @@ void ls_uiTextBoxClear(UIContext *c, UITextBox *box)
     ls_arenaUse(prev);
 }
 
-//TODO: Now that viewEndIdx is deprecated these functions are a lot less usefuk
+//TODO: Now that viewEndIdx is deprecated these functions are a lot less useful
 void ls_uiTextBoxSet(UIContext *c, UITextBox *box, const char32_t *s)
 {
     Arena prev = ls_arenaUse(c->widgetArena);
@@ -5302,9 +5074,6 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
     //TODO: Hardcoded values.
     const s32 horzOff      = 12;
     const s32 viewAddWidth = w - 2*horzOff;
-    
-    //TODO: This shit is kinda strange.
-    //const s32 maxIndexDiff = ls_uiMonoGlyphMaxIndexDiff(c, c->currFont, viewAddWidth);
     const s32 maxIndexDiff = c->currPixelHeight;
     
     auto lineBeginIdx = [box](s32 index) -> u32 {
