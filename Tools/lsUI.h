@@ -543,6 +543,7 @@ const char* RenderCommandTypeAsString[] = {
     "UI_RC_SCROLLBAR",
     "UI_RC_TEXTURED_RECT",
     "UI_RC_COLOR_PICKER",
+    "UI_RC_BITMAP",
 };
 
 enum RenderCommandType
@@ -567,6 +568,7 @@ enum RenderCommandType
     UI_RC_SCROLLBAR,
     UI_RC_TEXTURED_RECT,
     UI_RC_COLOR_PICKER,
+    UI_RC_BITMAP,
 };
 
 static s32 RenderCommandUID = 0;
@@ -811,6 +813,8 @@ void         ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWid
 
 template<typename T> UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, T *text, UICallback onClick,
                                               UICallback onHold, void *userData);
+
+void         ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
 
 b32          ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgColor, s32 zLayer);
 b32          ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer);
@@ -3139,8 +3143,7 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
 #endif
 }
 
-void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
-                   UIRect threadRect, UIRect scissor, Color col)
+void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor, Color col)
 {
 #ifdef LS_UI_OPENGL_BACKEND
     
@@ -3524,7 +3527,7 @@ void ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Colo
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
-void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *bmp)
+void ls_uiStretchBitmap(UIContext *c, UIBitmap *bmp, UIRect dst, UIRect threadRect, UIRect scissor)
 {
 #ifdef LS_UI_OPENGL_BACKEND
     
@@ -3589,6 +3592,25 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
     u32 *At = (u32 *)c->drawBuffer;
     Color *SrcBmp = (Color *)bmp->data;
     
+    f64 bmpY = 0;
+    for(s32 y = startY; y < dst.y+dst.h; y++)
+    {
+        f64 bmpX = 0;
+        for(s32 x = startX; x < dst.x+dst.w; x++)
+        {
+            s32 srcX = (s32)bmpX;
+            s32 srcY = (s32)bmpY;
+            Color finalColor = {.value = At[y*c->width + x]};
+            Color SrcPixel = SrcBmp[srcY*bmp->w + srcX];
+            finalColor = ls_uiAlphaBlend(SrcPixel, finalColor);
+            At[y*c->width + x] = finalColor.value;
+            
+            bmpX += factorW;
+        }
+        bmpY += factorH;
+    }
+    
+#if 0
     if(scaleW > 1.0f && scaleH > 1.0f)
     {
         //NOTE: Enlarging the bitmap (Scaling up)
@@ -3642,9 +3664,12 @@ void ls_uiStretchBitmap(UIContext *c, UIRect threadRect, UIRect dst, UIBitmap *b
     {
         TODO;
     }
+#endif
     
 #endif
 }
+
+#if 0
 
 void ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, UIRect threadRect)
 {
@@ -3696,6 +3721,15 @@ void ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, UIRect threadRe
     }
     
 #endif
+}
+
+#endif
+
+void ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer = 0)
+{
+    RenderCommand command = { UI_RC_BITMAP, xPos, yPos, w, h };
+    command.bitmap        = bmp;
+    ls_uiPushRenderCommand(c, command, zLayer);
 }
 
 s32 ls_uiGetKernAdvance(UIContext *c, s32 codepoint1, s32 codepoint2)
@@ -3974,184 +4008,33 @@ s32 ls_uiGlyphAdv(UIContext *c, UIFont *f, u32 cp, u32 cpNext, f64 scale)
 #endif
 }
 
-void ls_uiRenderAlignedStringOnRect(UIContext *c, UIFont *font, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, 
-                                    UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
+void ls_uiRenderStringOnRect(UIContext *c, UIFont *f, UITextBox *box, s32 pixelHeight, s32 x, s32 y, s32 w, s32 h, UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
 {
     AssertMsg(c, "Context is null\n");
     AssertMsg(box, "TextBox is null\n");
-    AssertMsg(c->currFont, "Current Font is null\n");
+    AssertMsg(f, "Passed Font is null\n");
     
-    s32 cIdx = box->caretIndex-box->currLineBeginIdx;
+    s32 cIdx = box->caretIndex - box->currLineBeginIdx;
     
-    //NOTETODO Hacky shit.
-    const s32 lineHeight = font->pixelHeight*1.1f;
+    const f64 scaling    = (f64)pixelHeight / (f64)f->pixelHeight;
+    const s32 lineHeight = f->ascent*scaling -  f->descent*scaling +  f->lineGap*scaling;
+    const u32 horzOff    = (u32)(c->width*0.01f);
+    const u32 strMaxX    = x + (w - 2*horzOff);
     
-    //NOTETODO: Hacky shit.
-    const u32 horzOff = font->pixelHeight*0.40f;
-    const u32 strMaxX = xPos + (w - 2*horzOff);
-    
-    //NOTETODO: Hacky shit.
-    const u32 vertOff = 8;
-    const u32 strMaxH = (h-(vertOff*2));
-    const u32 vertGlyphOff = 3;
+    //TODO: do I even need padding?
+    const s32 maxLines   = h / lineHeight;
     
     s32 xOffset = box->viewBeginIdx;
     s32 yOffset = 0;
     
-    s32 maxLines = strMaxH / lineHeight;
-    
     //TODO: SIMD this?
-    s32 i = 0;
-    if(box->caretLineIdx > maxLines) { 
-        yOffset = box->caretLineIdx - maxLines;
-        
-        //NOTE: Advance the string vertically to the nth line
-        while(yOffset)
-        {
-            u32 code = box->text.data[i];
-            AssertMsgF(code <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
-            
-            if(code == (char32_t)'\n') { yOffset -= 1; }
-            i += 1;
-        }
-    }
-    
-    s32 currXPos = xPos;
-    s32 currYPos = yPos;
-    u32 code     = 0;
-    u32 codeNext = 0xFFFFFFFF;
-    
-    utf32 realString = { box->text.data + i, box->text.len - i, box->text.size - i };
-    uview lineView = ls_uviewCreate(realString);
-    utf32 firstLine = ls_uviewNextLine(lineView).s;
-    
-    switch(box->align)
-    {
-        case UI_TB_ALIGN_LEFT: {
-            currXPos = xPos;
-        } break;
-        
-        case UI_TB_ALIGN_RIGHT: {
-            currXPos = xPos+w-horzOff - ls_uiGlyphStringRect(c, font, firstLine, font->pixelHeight).w;
-        } break;
-        
-        case UI_TB_ALIGN_CENTER: {
-            currXPos = xPos+w-horzOff - (ls_uiGlyphStringRect(c, font, firstLine, font->pixelHeight).w / 2);
-        } break;
-        
-        default: { AssertMsg(FALSE, "Unhandled TextBox Alignement\n"); } break;
-    }
-    
-    for(u32 lineIdx = 0; lineIdx < (box->lineCount+1-yOffset); lineIdx++)
-    {
-        lineView = ls_uviewNextLine(lineView);
-        utf32 line = lineView.s;
-        
-        i += xOffset;
-        u32 lIdx = xOffset;
-        s32 caretX = currXPos-3;
-        for(; lIdx < line.len; lIdx++, i++)
-        {
-            if((lineIdx == box->caretLineIdx) && (cIdx == lIdx)) { caretX = currXPos-3; }
-            if(currXPos > strMaxX)
-            {
-                if((lineIdx == box->caretLineIdx) && (cIdx == lIdx+1)) { caretX = currXPos-3; }
-                i += line.len - lIdx; break;
-            }
-            
-            code = line.data[lIdx];
-            if(lIdx < line.len-1) { codeNext = line.data[lIdx+1]; }
-            AssertMsgF(code <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
-            
-            Color actualColor = textColor;
-            UIGlyph *currGlyph = &font->glyph[code];
-            
-            //TODO: Pretty inefficient to keep redrawing the background all the time.
-            if(box->isSelecting && (box->selectBeginLine <= lineIdx) && (box->selectEndLine >= lineIdx)
-               && (box->selectBeginIdx <= i) && (box->selectEndIdx > i))
-            { 
-                actualColor = invTextColor;
-                ls_uiFillRect(c, currXPos, currYPos, currGlyph->xAdv, lineHeight-vertGlyphOff, 
-                              threadRect, scissor, c->invWidgetColor);
-            }
-            
-#if 0
-            ls_uiGlyph(c, font, currXPos, currYPos+vertGlyphOff, 1.0, threadRect, scissor, currGlyph, actualColor);
-            
-            s32 kernAdvance = 0;
-            if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
-            currXPos += (currGlyph->xAdv + kernAdvance);
-#endif
-            s32 xAdvance = ls_uiGlyph(c, font, code, codeNext, currXPos, currYPos+vertGlyphOff, 1.0, threadRect, scissor, actualColor);
-            currXPos += xAdvance;
-            
-        }
-        
-        if(((lineIdx == box->caretLineIdx) && cIdx == line.len)) { caretX = currXPos-3; }
-        
-        if(box->isCaretOn && (c->currentFocus == (u64 *)box) && (lineIdx == box->caretLineIdx))
-        {
-#if 0
-            UIGlyph *currGlyph = &font->glyph[(char32_t)'|'];
-            ls_uiGlyph(c, font, caretX, currYPos+vertGlyphOff, 1.0, threadRect, scissor, currGlyph, textColor);
-#endif
-            ls_uiGlyph(c, font, (u32)'|', 0xFFFFFFFF, caretX, currYPos+vertGlyphOff, 1.0, threadRect, scissor, textColor);
-        }
-        
-        currYPos -= lineHeight;
-        switch(box->align)
-        {
-            case UI_TB_ALIGN_LEFT: {
-                currXPos = xPos;
-            } break;
-            
-            case UI_TB_ALIGN_RIGHT: {
-                currXPos = xPos+w-horzOff - ls_uiGlyphStringRect(c, font, firstLine, font->pixelHeight).w;
-            } break;
-            
-            case UI_TB_ALIGN_CENTER: {
-                currXPos = xPos+w-horzOff - (ls_uiGlyphStringRect(c, font, firstLine, font->pixelHeight).w / 2);
-            } break;
-            
-            default: { AssertMsg(FALSE, "Unhandled TextBox Alignement\n"); } break;
-        }
-    }
-}
-
-//TODO: This sucks, and does not allow to choose between sdf or not.
-void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UITextBox *box, s32 xPos, s32 yPos, 
-                             s32 w, s32 h, UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
-{
-    AssertMsg(c, "Context is null\n");
-    AssertMsg(box, "TextBox is null\n");
-    AssertMsg(c->currFont, "Current Font is null\n");
-    
-    s32 cIdx = box->caretIndex-box->currLineBeginIdx;
-    
-    f64 scaling    = (f64)pixelHeight / (f64)font->pixelHeight;
-    s32 lineHeight = font->pixelHeight*1.1f;
-    if(font->isAtlas) { lineHeight = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling; }
-    
-    //NOTETODO: Hacky shit. Maybe use first glyph x0? Or a fraction of the client width?
-    const u32 horzOff = 8;
-    const u32 strMaxX = xPos + (w - 2*horzOff);
-    
-    //NOTETODO: Hacky shit. Maybe use first glyph y0? Or a fraction of the client height?
-    const u32 vertOff = 8;
-    const u32 strMaxH = (h-(vertOff*2));
-    const u32 vertGlyphOff = 3;
-    
-    s32 xOffset = box->viewBeginIdx;
-    s32 yOffset = 0;
-    
-    s32 maxLines = strMaxH / lineHeight;
-    
-    //TODO: SIMD this?
-    //NOTE: This is used to offset the textbox string data, and start rendering from the actually visible part
-    //      Since when scrolled the earlier characters should not be rendered.
+    //TODO: If we stored the text differently (maybe store an index array of the start of every line...)
+    //      this entire thing does not need to loop. (and the memory cost would not be too large)
+    //NOTE: If the caret line index is currently larger than the maximum renderable lines
+    // we need to skip the first N lines.
     s32 viewStartIdx = 0;
-    if(box->caretLineIdx > maxLines) {
-        yOffset = box->caretLineIdx - maxLines;
+    if(box->caretLineIdx > maxLines) { 
+        yOffset = box->caretLineIdx - maxLines + 1;
         s32 tmpYOff = yOffset;
         
         //NOTE: Advance the string vertically to the nth line
@@ -4165,13 +4048,35 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
         }
     }
     
-    s32 currXPos = xPos;
-    s32 currYPos = yPos;
+    s32 currX = x;
+    s32 currY = y;
     s32 relativeCaretLineIdx = box->caretLineIdx - yOffset;
-    u32 code    = 0;
+    u32 code     = 0;
+    u32 codeNext = 0xFFFFFFFF;
     
     utf32 realString = { box->text.data + viewStartIdx, box->text.len - viewStartIdx, box->text.size - viewStartIdx };
     uview lineView = ls_uviewCreate(realString);
+    utf32 firstLine = ls_uviewNextLine(lineView).s;
+    
+    s32 initialXPos = x;
+    switch(box->align)
+    {
+        case UI_TB_ALIGN_LEFT: {
+            initialXPos = x;
+        } break;
+        
+        case UI_TB_ALIGN_RIGHT: {
+            initialXPos = x+w-horzOff - ls_uiGlyphStringRect(c, f, firstLine, pixelHeight).w;
+        } break;
+        
+        case UI_TB_ALIGN_CENTER: {
+            initialXPos = x+w-horzOff - (ls_uiGlyphStringRect(c, f, firstLine, pixelHeight).w / 2);
+        } break;
+        
+        default: { AssertMsg(FALSE, "Unhandled TextBox Alignement\n"); } break;
+    }
+    
+    currX = initialXPos;
     
     //NOTE: This is the index into the entire original string data for the textbox.
     //      This is necessary because some textbox metadata (like selection begin/end indices) are absolute
@@ -4179,119 +4084,64 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *font, s32 pixelHeight, UIText
     //      compare against them, we need an absolute index into the string, rather then an index relative to the
     //      currently rendered line.
     s32 absoluteTextIdx = viewStartIdx;
-    for(u32 lineIdx = 0; lineIdx < box->lineCount; lineIdx++)
+    for(u32 lineIdx = 0; lineIdx < maxLines; lineIdx++)
     {
-        //NOTE: Stop rendering lines below the border of the box
-        if(lineIdx > maxLines) { break; }
         s32 relativeLineIdx = lineIdx + yOffset;
         
         lineView = ls_uviewNextLine(lineView);
         utf32 line = lineView.s;
         
         //NOTE: xOffset will only be > 0 when scrolled right.
-        // We must not advance more than a given line's length,
-        // Otherwise the successive lines will have their absoluteTextIdx
-        // wrongly offsetted
+        // We must not advance more than a given line's length, otherwise the successive lines
+        // will have their absoluteTextIdx wrongly offsetted.
         if(line.len < xOffset) { absoluteTextIdx += line.len; }
         else                   { absoluteTextIdx += xOffset; }
         
-        u32 lIdx = xOffset;
-        s32 caretX = currXPos-3;
-        for(; lIdx < line.len; lIdx++, absoluteTextIdx++)
+        s32 caretX = currX - 3; //TODO: hardcoded pixel diff...
+        for(u32 lIdx = xOffset; lIdx < line.len; lIdx++, absoluteTextIdx++)
         {
-            if((lineIdx == relativeCaretLineIdx) && (cIdx == lIdx)) { caretX = currXPos-3; }
+            if((lineIdx == relativeCaretLineIdx) && (cIdx == lIdx)) { caretX = currX-3; }
             
             //NOTE: If we're trying to render data past the current view (scrolled away to the right)
             //      We just stop. We re-adjust the caret position if necessary, and advance the
             //      absoluteTextIdx to take into consideration the missed iterations.
-            if(currXPos > strMaxX)
+            if(currX > strMaxX)
             {
-                if((lineIdx == relativeCaretLineIdx) && (cIdx == lIdx+1)) { caretX = currXPos-3; }
+                if((lineIdx == relativeCaretLineIdx) && (cIdx == lIdx+1)) { caretX = currX-3; }
                 absoluteTextIdx += (line.len - lIdx); break;
             }
             
             code = line.data[lIdx];
+            if(lIdx < line.len-1) { codeNext = line.data[lIdx+1]; }
             AssertMsgF(code <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
             
             Color actualColor = textColor;
-            UIGlyph currGlyph = {};
-            
-            if(font->isAtlas) { currGlyph = ls_uiGetGlyphFromAtlas(c, font, code); }
-            else              { currGlyph = c->currFont->glyph[code]; }
             
             //TODO: Pretty inefficient to keep redrawing the background all the time.
             if(box->isSelecting && (box->selectBeginLine <= relativeLineIdx) && (box->selectEndLine >= relativeLineIdx)
                && (box->selectBeginIdx <= absoluteTextIdx) && (box->selectEndIdx > absoluteTextIdx))
-            { 
+            {
                 actualColor = invTextColor;
-                
-                s32 xAdv = currGlyph.xAdv;
-                if(font->isAtlas) { xAdv *= scaling; }
-                ls_uiFillRect(c, currXPos, currYPos, xAdv, lineHeight, threadRect, scissor, c->invWidgetColor);
+                s32 xAdv    = ls_uiGlyphAdv(c, f, code, codeNext, scaling);
+                ls_uiFillRect(c, currX, currY, xAdv, lineHeight, threadRect, scissor, c->invWidgetColor);
             }
             
-#if 0
-            if(font->isAtlas)
-            {
-#ifdef LS_UI_OPENGL_BACKEND
-                UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(c, font, code);
-                s32 y1 = map->height*scaling + map->y0*scaling;
-                s32 realY = (currYPos - y1) - (font->baselineOffset*scaling);
-                
-                ls_uiSDFGlyph(c, font, code, currXPos, realY, scaling,
-                              threadRect, scissor, actualColor);
-#else
-                ls_uiSDFGlyph(c, &currGlyph, currXPos, currYPos+vertGlyphOff, font->atlasWidth, scaling,
-                              threadRect, scissor, actualColor);
-#endif
-                currXPos += currGlyph.xAdv*scaling;
-            }
-            else {
-                ls_uiGlyph(c, font, currXPos, currYPos+vertGlyphOff, scaling, threadRect, scissor, &currGlyph, actualColor);
-                
-                s32 kernAdvance = 0;
-                if(lIdx < line.len-1) { kernAdvance = ls_uiGetKernAdvance(c, line.data[lIdx], line.data[lIdx+1]); }
-                currXPos += (currGlyph.xAdv + kernAdvance);
-            }
-#endif
-            s32 xAdvance = ls_uiGlyph(c, font, code, 0xFFFFFFFF, currXPos, currYPos+vertGlyphOff, scaling, threadRect, scissor, actualColor);
-            currXPos += xAdvance;
+            s32 xAdvance = ls_uiGlyph(c, f, code, codeNext, currX, currY, scaling, threadRect, scissor, actualColor);
+            currX += xAdvance;
         }
         
-        if((lineIdx == relativeCaretLineIdx) && (cIdx == line.len)) { caretX = currXPos-3; }
+        if((lineIdx == relativeCaretLineIdx) && (cIdx == line.len)) { caretX = currX-3; }
         
         if(box->isCaretOn && (c->currentFocus == (u64 *)box) && (lineIdx == relativeCaretLineIdx))
         {
-#if 0
-            if(font->isAtlas)
-            {
-#ifdef LS_UI_OPENGL_BACKEND
-                UIAtlasMapEntry *map = ls_uiGetAtlasMapEntry(c, font, (u32)'|');
-                s32 y1 = map->height*scaling + map->y0*scaling;
-                s32 realY = (currYPos - y1) - (font->baselineOffset*scaling);
-                
-                ls_uiSDFGlyph(c, font, (u32)'|', caretX, realY+vertGlyphOff, scaling,
-                              threadRect, scissor, textColor);
-#else
-                UIGlyph caretGlyph = ls_uiGetGlyphFromAtlas(c, font, (u32)'|');
-                ls_uiSDFGlyph(c, &caretGlyph, caretX, currYPos+vertGlyphOff, font->atlasWidth, scaling,
-                              threadRect, scissor, textColor);
-#endif
-            }
-            else
-            {
-                UIGlyph *currGlyph = &c->currFont->glyph[(char32_t)'|'];
-                ls_uiGlyph(c, font, caretX, currYPos+vertGlyphOff, scaling, threadRect, scissor, currGlyph, textColor);
-            }
-#endif
-            ls_uiGlyph(c, font, (u32)'|', 0xFFFFFFFF, caretX, currYPos+vertGlyphOff, scaling, threadRect, scissor, textColor);
+            ls_uiGlyph(c, f, (u32)'|', 0xFFFFFFFF, caretX, currY, scaling, threadRect, scissor, textColor);
         }
         
-        currYPos -= lineHeight;
-        currXPos  = xPos;
+        currY -= lineHeight;
+        currX  = initialXPos;
     }
-    
 }
+
 
 template<typename T>
 void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32 yPos,
@@ -6979,18 +6829,8 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
             s32 strX = xPos + horzOff;
             s32 strY = yPos + h - pixelHeight;
             
-            //TODO: There should only be 1 method. RenderStringOnRect which takes an `alignment` param.
-            //      Or each widget should have a `style`, and the textbox tells how to align things.
-            if(box->align == UI_TB_ALIGN_RIGHT || box->align == UI_TB_ALIGN_CENTER)
-            {
-                ls_uiRenderAlignedStringOnRect(c, font, box, strX, strY, w, h, threadRect, scissor, textColor, c->invTextColor);
-            }
-            else
-            {
-                //NOTETODO: For now we double draw for selected strings. We can improve with 3-segment drawing.
-                ls_uiRenderStringOnRect(c, font, pixelHeight, box, strX, strY, w, h, threadRect, scissor, 
-                                        textColor, c->invTextColor);
-            }
+            
+            ls_uiRenderStringOnRect(c, font, box, pixelHeight, strX, strY, w, h, threadRect, scissor, textColor, c->invTextColor);
         } break;
         
         case UI_RC_LISTBOX:
@@ -7101,7 +6941,8 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
             }
             else if(button->style == UIBUTTON_BMP)
             {
-                ls_uiBitmap(c, button->bmp, xPos, yPos, threadRect);
+                UIBitmap bmp = button->bmp;
+                ls_uiStretchBitmap(c, &bmp, {xPos, yPos, bmp.w, bmp.h}, threadRect, scissor);
             }
             else { AssertMsg(FALSE, "Unhandled button style\n"); }
             
@@ -7119,12 +6960,12 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                     UIBitmap active   = { check->bmpActive, check->w, check->h };
                     
                     UIBitmap chosen = check->isActive ? active : inactive;
-                    ls_uiBitmap(c, chosen, xPos, yPos, threadRect);
+                    ls_uiStretchBitmap(c, &chosen, {xPos, yPos, chosen.w, chosen.h}, threadRect, scissor);
                 }
                 else if(check->bmpInactive && check->bmpAdditive)
                 {
                     UIBitmap inactive = { check->bmpInactive, check->w, check->h };
-                    ls_uiBitmap(c, inactive, xPos, yPos, threadRect);
+                    ls_uiStretchBitmap(c, &inactive, {xPos, yPos, inactive.w, inactive.h}, threadRect, scissor);
                     if(check->isActive)
                     {
                         s32 addX = xPos;
@@ -7140,7 +6981,7 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
 #ifdef LS_UI_OPENGL_BACKEND
                         c->zLayer += 1;
 #endif
-                        ls_uiBitmap(c, additive, addX, addY, threadRect);
+                        ls_uiStretchBitmap(c, &additive, {addX, addY, additive.w, additive.h}, threadRect, scissor);
 #ifdef LS_UI_OPENGL_BACKEND
                         c->zLayer -= 1;
 #endif
@@ -7339,7 +7180,7 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
         
         case UI_RC_TEXTURED_RECT:
         {
-            ls_uiStretchBitmap(c, threadRect, curr->rect, &curr->bitmap);
+            ls_uiStretchBitmap(c, &curr->bitmap, curr->rect, threadRect, scissor);
         } break;
         
         case UI_RC_COLOR_PICKER:
@@ -7421,6 +7262,12 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                 ls_uiGlyphString(c, font, pixelHeight, hsvX, hsvY, threadRect, scissor, tmp, textColor);
                 
             }
+        } break;
+        
+        case UI_RC_BITMAP:
+        {
+            UIBitmap bmp = curr->bitmap;
+            ls_uiStretchBitmap(c, &bmp, {xPos, yPos, w, h}, threadRect, scissor);
         } break;
         
         default: { 
