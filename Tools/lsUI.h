@@ -544,6 +544,7 @@ const char* RenderCommandTypeAsString[] = {
     "UI_RC_TEXTURED_RECT",
     "UI_RC_COLOR_PICKER",
     "UI_RC_BITMAP",
+    "UI_RC_CIRCLE",
 };
 
 enum RenderCommandType
@@ -569,6 +570,7 @@ enum RenderCommandType
     UI_RC_TEXTURED_RECT,
     UI_RC_COLOR_PICKER,
     UI_RC_BITMAP,
+    UI_RC_CIRCLE,
 };
 
 static s32 RenderCommandUID = 0;
@@ -810,6 +812,7 @@ void         ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor,
 
 void         ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
 void         ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer);
+void         ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness, Color col, s32 zLayer);
 
 template<typename T> UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, T *text, UICallback onClick,
                                               UICallback onHold, void *userData);
@@ -3289,16 +3292,15 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect thread
 #endif //LS_UI_OPENGL_BACKEND
 }
 
-
-void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness,
+void ls_uiDrawCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness,
                  UIRect threadRect, UIRect scissor, Color col)
 {
 #ifdef LS_UI_OPENGL_BACKEND
     
     glUseProgram(c->circleShader);
     
-    s32 leftCornerX = centerX;// - radius;
-    s32 leftCornerY = centerY;// - radius;
+    s32 leftCornerX = centerX - radius;
+    s32 leftCornerY = centerY - radius;
     
     f64 xf = (f64)leftCornerX;
     f64 yf = (f64)leftCornerY;
@@ -3348,8 +3350,8 @@ void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickne
     s32 endX   = centerX + radius + 1;
     s32 endY   = centerY + radius + 1;
     
-    if(endX > maxX) { endX = maxX+1; }
-    if(endY > maxY) { endY = maxY+1; }
+    if(endX > maxX) { endX = maxX; }
+    if(endY > maxY) { endY = maxY; }
     
     u32 *At = (u32 *)c->drawBuffer;
     for(s32 y = startY; y < endY; y++)
@@ -3370,56 +3372,6 @@ void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickne
             }
         }
     }
-#endif
-}
-
-
-void ls_uiFillCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius,
-                     UIRect threadRect, UIRect scissor, Color col)
-{
-#ifdef LS_UI_OPENGL_BACKEND
-    
-    ls_uiCircle(c, centerX, centerY, radius, radius, threadRect, scissor, col);
-    return;
-    
-#else
-    
-    s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
-    s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
-    s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
-    s32 maxY = threadRect.maxY < scissor.y+scissor.h ? threadRect.maxY : scissor.y+scissor.h;
-    
-    s32 startX = centerX - radius;
-    s32 startY = centerY - radius;
-    
-    if(startX < minX) { startX = minX; }
-    if(startY < minY) { startY = minY; }
-    
-    s32 endX   = centerX + radius + 1;
-    s32 endY   = centerY + radius + 1;
-    
-    if(endX > maxX) { endX = maxX+1; }
-    if(endY > maxY) { endY = maxY+1; }
-    
-    u32 *At = (u32 *)c->drawBuffer;
-    for(s32 y = startY; y < endY; y++)
-    {
-        for(s32 x = startX; x < endX; x++)
-        {
-            s32 cX = x - centerX;
-            s32 cY = y - centerY;
-            
-            b32 cond = (cY*cY + cX*cX) <= (radius*radius);
-            
-            if(cond)
-            {
-                Color base         = { .value = At[y*c->width + x] };
-                Color blendedColor = ls_uiAlphaBlend(col, base);
-                At[y*c->width + x] = blendedColor.value;
-            }
-        }
-    }
-    
 #endif
 }
 
@@ -3527,6 +3479,13 @@ void ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Colo
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
+void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness, Color col, s32 zLayer = 0)
+{
+    RenderCommand command = { UI_RC_CIRCLE, centerX, centerY, radius, thickness };
+    command.bkgColor = col;
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
 void ls_uiStretchBitmap(UIContext *c, UIBitmap *bmp, UIRect dst, UIRect threadRect, UIRect scissor)
 {
 #ifdef LS_UI_OPENGL_BACKEND
@@ -3609,121 +3568,9 @@ void ls_uiStretchBitmap(UIContext *c, UIBitmap *bmp, UIRect dst, UIRect threadRe
         }
         bmpY += factorH;
     }
-    
-#if 0
-    if(scaleW > 1.0f && scaleH > 1.0f)
-    {
-        //NOTE: Enlarging the bitmap (Scaling up)
-        TODO;
-    }
-    else if(scaleW < 1.0f && scaleH < 1.0f)
-    {
-        //NOTE: Shrinking the bitmap (Scaling down)
-        //      factorW tells me how many pixels horiz. of the bmp I need to blend
-        //      to obtain a single pixel of the destination
-        f32 eY = 0.0f;
-        for(s32 y = startY; y < dst.y+dst.h; y++)
-        {
-            AssertMsg(y <= maxY, "Should never happen. Height was precomputed\n");
-            
-            f32 eX = 0.0f;
-            for(s32 x = startX; x < dst.x+dst.w; x++)
-            {
-                AssertMsg(x <= maxX, "Should never happen. Width was precomputed\n");
-                
-                if(x < 0 || x >= c->width)  continue;
-                if(y < 0 || y >= c->height) continue;
-                
-                u32 *DstPixel    = &At[(y * c->width) + x];
-                Color finalColor = {.value = *DstPixel};
-                
-                for(u32 heightIdx = 0; heightIdx < factorH; heightIdx++)
-                {
-                    for(u32 widthIdx = 0; widthIdx < factorW; widthIdx++)
-                    {
-                        s32 bmpY = eY + heightIdx;
-                        s32 bmpX = eX + widthIdx;
-                        
-                        if(bmpY >= bmp->h) break;
-                        if(bmpX >= bmp->w) break;
-                        
-                        Color SrcPixel = SrcBmp[bmpY*bmp->w + bmpX];
-                        finalColor = ls_uiAlphaBlend(SrcPixel, finalColor);
-                    }
-                }
-                
-                *DstPixel = finalColor.value;
-                
-                eX += factorW;
-            }
-            
-            eY += factorH;
-        }
-    }
-    else
-    {
-        TODO;
-    }
-#endif
-    
+
 #endif
 }
-
-#if 0
-
-void ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, UIRect threadRect)
-{
-#ifdef LS_UI_OPENGL_BACKEND
-    ls_uiStretchBitmap(c, threadRect, {xPos, yPos, bmp.w, bmp.h}, &bmp);
-#else
-    
-    s32 minX = threadRect.minX;
-    s32 minY = threadRect.minY;
-    s32 maxX = threadRect.maxX;
-    s32 maxY = threadRect.maxY;
-    
-    u32 *data = (u32 *)bmp.data;
-    s32 w = bmp.w;
-    s32 h = bmp.h;
-    
-    s32 startY = yPos;
-    s32 startEY = 0;
-    s32 rH = h;
-    if(startY < minY) { rH -= (minY-startY); startEY += (minY-startY); startY = minY;  }
-    
-    s32 startX = xPos;
-    s32 startEX = 0;
-    s32 rW = w;
-    if(startX < minX) { rW -= (minX-startX); startEX += (minX-startX); startX = minX; }
-    
-    if(startX+rW > maxX) { rW = maxX-startX+1; }
-    if(startY+rH > maxY) { rH = maxY-startY+1; }
-    
-    u32 *At = (u32 *)c->drawBuffer;
-    
-    for(s32 y = startY, eY = startEY; y < startY+rH; y++, eY++)
-    {
-        AssertMsg(y <= maxY, "Should never happen. Height was precomputed\n");
-        
-        for(s32 x = startX, eX = startEX; x < startX+rW; x++, eX++)
-        {
-            AssertMsg(x <= maxX, "Should never happen. Width was precomputed\n");
-            
-            if(x < 0 || x >= c->width)  continue;
-            if(y < 0 || y >= c->height) continue;
-            
-            Color src  = { .value = data[eY*w + eX] };
-            Color base = { .value = At[y*c->width + x] };
-            
-            Color blendedColor = ls_uiAlphaBlend(src, base);
-            At[y*c->width + x] = blendedColor.value;
-        }
-    }
-    
-#endif
-}
-
-#endif
 
 void ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer = 0)
 {
@@ -7212,9 +7059,9 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                 picker->pickedColor = ls_uiHSVtoRGB(hue, saturation, picker->value);
                 
                 //NOTE: Draw a small circle around the selected color
-                ls_uiCircle(c, picker->pickedX, picker->pickedY, 
+                ls_uiDrawCircle(c, picker->pickedX, picker->pickedY, 
                             picker->radius*0.1f+2, 2, threadRect, scissor, RGBg(0x0));
-                ls_uiCircle(c, picker->pickedX, picker->pickedY, 
+                ls_uiDrawCircle(c, picker->pickedX, picker->pickedY, 
                             picker->radius*0.1f, 2, threadRect, scissor, RGBg(0xFF));
                 
                 
@@ -7268,6 +7115,11 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
         {
             UIBitmap bmp = curr->bitmap;
             ls_uiStretchBitmap(c, &bmp, {xPos, yPos, w, h}, threadRect, scissor);
+        } break;
+
+        case UI_RC_CIRCLE:
+        {
+            ls_uiDrawCircle(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
         } break;
         
         default: { 
