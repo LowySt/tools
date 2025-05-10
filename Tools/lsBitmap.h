@@ -109,9 +109,9 @@ Bitmap ls_bitmapLoad(string Path, BitmapPixelFormat desired)
         u8 G = c8[2];
         u8 R = c8[3];
         
-        c8[0] = R;
+        c8[0] = B;
         c8[1] = G;
-        c8[2] = B;
+        c8[2] = R;
         c8[3] = A;
         
         return c;
