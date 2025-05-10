@@ -3,5 +3,6 @@
 *.exe
 *.pdb
 *.4coder
+*.swp
 Tools/test/
 Libraries/raylib/
