@@ -708,6 +708,8 @@ struct UIContext
     u32 textShader;
     u32 rectShader;
     u32 rectVAO;
+    u32 gradientRectShader;
+    u32 rectGradientVAO;
     u32 texturedRectShader;
     u32 circleShader;
     u32 colorWheelShader;
@@ -1586,22 +1588,20 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     //NOTE: SHARED Vertex Shader
     //
     const char *vertShader = R"LONGLONG(
-#version 330 core
+    #version 330 core
 
-layout(location = 0) in vec2 inPosition;   // Vertex position
-layout(location = 1) in vec2 inTexCoord;   // Texture coordinates
+    layout(location = 0) in vec2 inPosition;      // Vertex position
+    layout(location = 1) in vec2 inTexCoord;      // Texture coordinates
 
-out vec2 TexCoord;
+    out vec2 TexCoord;
 
-uniform mat4 transform;
+    uniform mat4 transform;
 
-void main() {
-
-    gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
-TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
-
-}
-)LONGLONG";
+    void main() {
+        gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
+        TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
+    }
+    )LONGLONG";
     
     
     // --------------------------------
@@ -1609,29 +1609,28 @@ TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
     //
     
     const char *rectFragShader = R"LONGLONG(
-#version 330 core
+    #version 330 core
 
-in vec2 TexCoord;
-out vec4 FragColor;
+    in vec2 TexCoord;
+    out vec4 FragColor;
 
-uniform uvec4 color;        // Premultiplied RGBA color
-uniform float zLayer;       // zLayer used to determine frag depth
+    uniform uvec4 color;        // Premultiplied RGBA color
+    uniform float zLayer;       // zLayer used to determine frag depth
 
-vec4 convertIntColToFloat(uvec4 inC) {
+    vec4 convertIntColToFloat(uvec4 inC) {
+        vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+        result.rgba /= 255.0;
+        return result;
+    }
 
-vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
-result.rgba /= 255.0;
-return result;
-}
+    void main() {
+        vec4 converted = convertIntColToFloat(color);
+        if(converted.a < 0.01) { discard; }
 
-void main() {
-vec4 converted = convertIntColToFloat(color);
-if(converted.a < 0.01) { discard; }
-
-gl_FragDepth = zLayer;
-FragColor = converted;
-}
-)LONGLONG";
+        gl_FragDepth = zLayer;
+        FragColor = converted;
+    }
+    )LONGLONG";
     
     c->rectShader = ls_glCreateShader(vertShader, rectFragShader);
     
@@ -1690,39 +1689,124 @@ FragColor = converted;
     
     //
     // --------------------------------
+
+    // --------------------------------
+    //NOTE: Gradient Rect VAO
+    //
+    const char *gradientRectVertShader = R"LONGLONG(
+    #version 330 core
+
+    layout(location = 0) in vec2 inPosition;      // Vertex position
+    layout(location = 1) in vec2 inTexCoord;      // Texture coordinates
+    layout(location = 2) in float gradientFactor; // 0.0 is Black, 1.0 is White
+
+    out vec2 TexCoord;
+    out vec4 VertColor;
+    uniform mat4 transform;
+    uniform uvec4 color;        // Premultiplied RGBA color
+
+    vec4 convertIntColToFloat(uvec4 inC) {
+        vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+        result.rgba /= 255.0;
+        return result;
+    }
+
+    void main() {
+        gl_Position = transform * vec4(inPosition, 0.0, 1.0);  // Transform into clip space
+        TexCoord = inTexCoord;  // Pass texture coordinates to fragment shader
+
+        vec4 gradientColor = vec4(gradientFactor, gradientFactor, gradientFactor, 1.0);
+        vec4 convertedColor = convertIntColToFloat(color);
+        if (convertedColor.a > 0.0) {
+            gradientColor *= convertedColor;
+        }
+        VertColor = gradientColor;
+    }
+    )LONGLONG";
+    
+    const char *gradientRectFragShader = R"LONGLONG(
+    #version 330 core
+
+    in  vec2 TexCoord;
+    in  vec4 VertColor;
+    out vec4 FragColor;
+
+    uniform float zLayer;       // zLayer used to determine frag depth
+    void main() {
+        gl_FragDepth = zLayer;
+        FragColor    = VertColor;
+    }
+    )LONGLONG";
+    
+    c->gradientRectShader = ls_glCreateShader(gradientRectVertShader, gradientRectFragShader);
+    
+    // NOTE: The extra float is either 0.0 or 1.0 and indicates if the vertex should be
+    // black of white in color.
+    f32 rectGradientVertices[6][5] =
+    {
+        {-1.0, -1.0, 0.0, 0.0, 0.0},  // Bot-left
+        {-1.0,  1.0, 0.0, 1.0, 1.0},  // Top-left
+        { 1.0, -1.0, 1.0, 0.0, 0.0},  // Bot-right
+        
+        { 1.0, -1.0, 1.0, 0.0, 0.0},  // Bot-right
+        {-1.0,  1.0, 0.0, 1.0, 1.0},  // Top-left
+        { 1.0,  1.0, 1.0, 1.0, 1.0},  // Top-right
+    };
+    
+    GLuint rectGradientVBO;
+    glGenVertexArrays(1, &c->rectGradientVAO);
+    glGenBuffers(1, &rectGradientVBO);
+    glBindVertexArray(c->rectGradientVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, rectGradientVBO);
+    
+    glBufferData(GL_ARRAY_BUFFER, sizeof(rectGradientVertices), rectGradientVertices, GL_STATIC_DRAW);
+    
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+    
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(4 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    //
+    // --------------------------------
     
     // --------------------------------
     //NOTE: Textured Rect Shader Compilation
     //
     
     const char *texRectFragShader = R"LONGLONG(
-#version 330 core
+    #version 330 core
 
-in vec2 TexCoord;
-out vec4 FragColor;
+    in vec2 TexCoord;
+    out vec4 FragColor;
 
-uniform sampler2D tex;
-uniform uvec4 color;        // Premultiplied RGBA color
-uniform float zLayer;       // zLayer used to determine frag depth
+    uniform sampler2D tex;
+    uniform uvec4 color;        // Premultiplied RGBA color
+    uniform float zLayer;       // zLayer used to determine frag depth
 
-vec4 convertIntColToFloat(uvec4 inC) {
+    vec4 convertIntColToFloat(uvec4 inC) {
+        vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+        result.rgba /= 255.0;
+        return result;
+    }
 
-vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
-result.rgba /= 255.0;
-return result;
-}
+    void main() {
+        vec4 texColor = texture(tex, TexCoord);
+        vec4 converted = convertIntColToFloat(color);
 
-void main() {
- vec4 texColor = texture(tex, TexCoord);
-vec4 converted = convertIntColToFloat(color);
+        vec4 finalColor = texColor * converted;
+        if(finalColor.a < 0.01) { discard; }
 
-vec4 finalColor = texColor * converted;
-if(finalColor.a < 0.01) { discard; }
-
-gl_FragDepth = zLayer;
-FragColor = finalColor;
-}
-)LONGLONG";
+        gl_FragDepth = zLayer;
+        FragColor = finalColor;
+    }
+    )LONGLONG";
     
     c->texturedRectShader = ls_glCreateShader(vertShader, texRectFragShader);
     
@@ -6173,23 +6257,33 @@ UIColorPicker ls_uiColorPickerInit(UIContext *c, void *userData)
 void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor)
 {
 #ifdef LS_UI_OPENGL_BACKEND
-#if 0 
-    UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, xPos, yPos, w, h);
     
-    glBegin(GL_TRIANGLES);
-    glColor4ub(0, 0, 0, 0xFF);
-    glVertex3f(normRect.leftX,  normRect.botY, c->zLayer);
-    glVertex3f(normRect.rightX, normRect.botY, c->zLayer);
+    glUseProgram(c->gradientRectShader);
+    glUniform4ui(glGetUniformLocation(c->gradientRectShader, "color"), 0, 0, 0, 0);
     
-    glColor4ub(0xFF, 0xFF, 0xFF, 0xFF);
-    glVertex3f(normRect.leftX,  normRect.topY, c->zLayer);
-    glVertex3f(normRect.leftX,  normRect.topY, c->zLayer);
-    glVertex3f(normRect.rightX, normRect.topY, c->zLayer);
+    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->gradientRectShader, "zLayer"), normZ);
     
-    glColor4ub(0, 0, 0, 0xFF);
-    glVertex3f(normRect.rightX, normRect.botY, c->zLayer);
-    glEnd();
-#endif
+    f64 xf = (f64)xPos;
+    f64 yf = (f64)yPos;
+    f64 wf = (f64)c->width;
+    f64 hf = (f64)c->height;
+    
+    // Positions need to be adjusted by the width and height... for some reason?
+    f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
+    f64 yp = ((yf + (f64)h / 2.0) / (hf / 2.0)) - 1.0;
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+    
+    glUniformMatrix4fv(glGetUniformLocation(c->gradientRectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    
+    glBindVertexArray(c->rectGradientVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    
+    glBindVertexArray(0);
+    glUseProgram(0);
+
 #else
     
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
@@ -6361,9 +6455,7 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
     f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
     glUniform1f(glGetUniformLocation(c->colorWheelShader, "zLayer"), normZ);
     
-    //glBindVertexArray(c->circleVAO);
     glBindVertexArray(c->rectVAO);
-    //glDrawArrays(GL_TRIANGLE_FAN, 0, c->circleVertCount);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     
     glBindVertexArray(0);
