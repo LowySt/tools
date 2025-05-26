@@ -710,6 +710,7 @@ struct UIContext
     u32 rectVAO;
     u32 texturedRectShader;
     u32 circleShader;
+    u32 colorWheelShader;
     u32 circleVAO;
     s32 circleVertCount;
 #endif
@@ -1725,6 +1726,8 @@ FragColor = finalColor;
     
     c->texturedRectShader = ls_glCreateShader(vertShader, texRectFragShader);
     
+    //TODO: Pass center and radius to specialized vertex shader for
+    // circles and do the position calcs there!
     
     // --------------------------------
     //NOTE: Circle Shader Compilation
@@ -1765,6 +1768,54 @@ FragColor = converted;
 )LONGLONG";
     
     c->circleShader = ls_glCreateShader(vertShader, circleFragShader);
+
+    // --------------------------------
+    //NOTE: Circle Color Wheel Shader Compilation
+    //
+
+    const char *colorWheelFragShader = R"LONGLONG(
+        #version 330 core
+
+        in vec2 TexCoord;
+        out vec4 FragColor;
+
+        uniform vec2 centerInScreenSpace;
+        uniform float radiusInScreenSpace;
+
+        uniform float brightness;
+        uniform float zLayer;       // zLayer used to determine frag depth
+
+        void main() {
+            float dist_from_center = distance(gl_FragCoord.xy, centerInScreenSpace);
+            if (dist_from_center > radiusInScreenSpace) {
+                discard;
+            }
+
+            vec2 delta = gl_FragCoord.xy - centerInScreenSpace;
+            float angle = atan(delta.y, delta.x); // Angle in Radians
+            float hue = (angle + 3.14159265) / (2.0 * 3.14159265); // Normalize to [0, 1]
+            float saturation = dist_from_center / radiusInScreenSpace;
+
+            //Convert HSV to RGB
+            float c = brightness * saturation;
+            float x = c * (1.0 - abs(mod(hue * 6.0, 2.0) - 1.0));
+            float m = brightness - c;
+            
+            vec3 color;
+            if (hue < 1.0 / 6.0)      { color = vec3(c, x, 0.0); }
+            else if (hue < 2.0 / 6.0) { color = vec3(x, c, 0.0); }
+            else if (hue < 3.0 / 6.0) { color = vec3(0.0, c, x); }
+            else if (hue < 4.0 / 6.0) { color = vec3(0.0, x, c); }
+            else if (hue < 5.0 / 6.0) { color = vec3(x, 0.0, c); }
+            else                      { color = vec3(c, 0.0, x); }
+            color += vec3(m);
+
+            gl_FragDepth = zLayer;
+            FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+        }
+    )LONGLONG";
+    
+    c->colorWheelShader = ls_glCreateShader(vertShader, colorWheelFragShader);
     
     constexpr s32 circleVertCount = 80;
     f32 circleVertices[circleVertCount][4] = {};
@@ -6122,7 +6173,7 @@ UIColorPicker ls_uiColorPickerInit(UIContext *c, void *userData)
 void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor)
 {
 #ifdef LS_UI_OPENGL_BACKEND
-    
+#if 0 
     UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, xPos, yPos, w, h);
     
     glBegin(GL_TRIANGLES);
@@ -6138,6 +6189,7 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
     glColor4ub(0, 0, 0, 0xFF);
     glVertex3f(normRect.rightX, normRect.botY, c->zLayer);
     glEnd();
+#endif
 #else
     
     s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
@@ -6275,58 +6327,47 @@ f32 ls_uiLerp(f32 base, f32 towards, f32 step)
     //return (1.0f - step) * base + step * towards;
 }
 
-//TODO: On my laptop the color wheel appears with a fucked up single tone color. Why?
 void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32 value,
                          UIRect threadRect, UIRect scissor)
 {
 #ifdef LS_UI_OPENGL_BACKEND
-    //TODO: This is not actually equivalent to the software renderer version.
-    //      It's kinda annoying to do in immediate mode.
-    const s32 triangleCount = 100;
     
-    f32 normCx   = (2.0f*(f32)centerX / (f32)c->width)-1.0f;
-    f32 normCy   = (2.0f*(f32)centerY / (f32)c->height)-1.0f;
-    f32 normRadX = ((f32)radius / (f32)c->width);
-    f32 normRadY = ((f32)radius / (f32)c->height);
+    glUseProgram(c->colorWheelShader);
     
-    //NOTE: We start at angle 0, and create triangles by moving one angle step at a time
-    f32 angleStep = TAU / triangleCount;
-    f32 p1X = normCx+normRadX;
-    f32 p1Y = normCy;
-    f32 p2X = normCx+normRadX * cos(angleStep);
-    f32 p2Y = normCy+normRadY * sin(angleStep);
+    s32 leftCornerX = centerX - radius;
+    s32 leftCornerY = centerY - radius;
     
-    f32 baseR = 1.0f;
-    f32 baseG = 0.0f;
-    f32 baseB = 0.0f;
-    f32 step  = 1.0f / ((f32)(triangleCount+1) / 3.0f);
+    f64 xf = (f64)leftCornerX;
+    f64 yf = (f64)leftCornerY;
+    f64 wf = (f64)c->width;
+    f64 hf = (f64)c->height;
     
-    glBegin(GL_TRIANGLE_FAN);
+    s32 w = radius*2;
+    s32 h = radius*2;
     
-    glColor4ub(0xFF*value, 0xFF*value, 0xFF*value, 0xFF);
-    glVertex3f(normCx, normCy, c->zLayer);
-    for(s32 i = 0; i < triangleCount+1; i++)
-    {
-        glColor4ub(baseR*0xFF, baseG*0xFF, baseB*0xFF, 0xFF);
-        glVertex3f(p1X, p1Y, c->zLayer);
-        p1X = normCx+normRadX * cos(i*angleStep);
-        p1Y = normCy+normRadY * sin(i*angleStep);
-        
-        if (i < (triangleCount+1)/3) {
-            baseR -= step; if(baseR < 0.0005f) { baseR = 0.0f; }
-            baseG += step; if(baseG > 1.0f)    { baseG = 1.0f; }
-        }
-        else if (i < 2*(triangleCount+1)/3) {
-            baseG -= step; if(baseG < 0.0005f) { baseG = 0.0f; }
-            baseB += step; if(baseB > 1.0f)    { baseB = 1.0f; }
-        }
-        else {
-            baseR += step; if(baseR > 1.0f)    { baseR = 1.0f; }
-            baseB -= step; if(baseB < 0.0005f) { baseB = 0.0f; }
-        }
-    }
-    glVertex3f(normCx+normRadX, normCy, c->zLayer);
-    glEnd();
+    f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
+    f64 yp = ((yf + (f64)h / 2.0) / (hf / 2.0)) - 1.0;
+    
+    f64 aspectRatio = wf/hf;
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+
+    glUniformMatrix4fv(glGetUniformLocation(c->colorWheelShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniform2f(glGetUniformLocation(c->colorWheelShader, "centerInScreenSpace"), (f64)centerX, (f64)centerY);
+    glUniform1f(glGetUniformLocation(c->colorWheelShader, "radiusInScreenSpace"), (f64)radius);
+    glUniform1f(glGetUniformLocation(c->colorWheelShader, "brightness"), value);
+
+    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->colorWheelShader, "zLayer"), normZ);
+    
+    //glBindVertexArray(c->circleVAO);
+    glBindVertexArray(c->rectVAO);
+    //glDrawArrays(GL_TRIANGLE_FAN, 0, c->circleVertCount);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    
+    glBindVertexArray(0);
+    glUseProgram(0);
     
 #else
     
