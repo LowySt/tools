@@ -2,8 +2,6 @@
 #define LS_UI_H
 
 /*TODOs
--Implement the OpenGL backend
-
 -@Alpha-Un-Multiply
 -Fix pre-multiplied alpha for LightenRGB and DarkenRGB
 
@@ -631,13 +629,11 @@ struct RenderCommand
 };
 
 const u32 UI_Z_LAYERS = 4;
-#ifndef LS_UI_OPENGL_BACKEND
 struct RenderGroup
 {
     stack RenderCommands[UI_Z_LAYERS];
     volatile b32 isDone;
 };
-#endif
 
 struct UIContext;
 typedef void (*RenderCallback)(UIContext *);
@@ -694,8 +690,8 @@ struct UIContext
     
     u64 *mouseCapture;
     
-#ifndef LS_UI_OPENGL_BACKEND
     RenderGroup renderGroups[LS_UI_RENDER_GROUP_COUNT];
+#ifndef LS_UI_OPENGL_BACKEND
     UIRect      renderUIRects[LS_UI_RENDER_GROUP_COUNT];
     
     CONDITION_VARIABLE startRender;
@@ -703,7 +699,6 @@ struct UIContext
 #endif
     
 #ifdef LS_UI_OPENGL_BACKEND
-    f64 zLayer; //TODO: Temporary to make passing zLayer to primitive drawing funcs easier
     u32 sdfTextShader;
     u32 textShader;
     u32 rectShader;
@@ -830,6 +825,7 @@ UICheck      ls_uiCheckInit(UIContext *c, UICheckStyle s,
                             u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, UICallback onChange, void *data);
 UICheck      ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32 h,
                             u8 *bmpAdditive, s32 addW, s32 addH, UICallback onChange, void *data);
+b32          ls_uiCheck(UIContext *c, UICheck *check, s32 x, s32 y, s32 zLayer);
 
 template<typename T>
 void ls_uiLabelInRect(UIContext *c, T label, s32 x, s32 y, s32 minW, s32 minH, Color bkg, Color border, Color text, s32 zLayer);
@@ -2209,8 +2205,8 @@ HWND ls_uiCreateWindow(UIContext *c, const char *name)
     return c->Window;
 }
 
-#ifndef LS_UI_OPENGL_BACKEND
 void ls_uiRender__(UIContext *c, u32 threadID);
+#ifndef LS_UI_OPENGL_BACKEND
 DWORD ls_uiRenderThreadProc(void *param)
 {
     ___threadCtx *t = (___threadCtx *)param;
@@ -2333,6 +2329,13 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
     
     //NOTE: Set the Render UIRect for every Thread.
     __ls_ui_fillRenderThreadUIRects(uiContext);
+#else
+    uiContext->renderGroups[0].RenderCommands[0] = ls_stackInit(sizeof(RenderCommand), 512);
+    
+    for(s32 zLayer = 1; zLayer < UI_Z_LAYERS; zLayer++)
+    {
+        uiContext->renderGroups[0].RenderCommands[zLayer] = ls_stackInit(sizeof(RenderCommand), 256);
+    }
 #endif
     
     //------------------------------------------------------
@@ -3219,17 +3222,32 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
 {
 #ifdef LS_UI_OPENGL_BACKEND
     
-    UIRect normRect = ls_uiScreenCoordsToUnitSquare(c, startX, startY, w, h);
+    glUseProgram(c->rectShader);
+    glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
     
-    glColor3ub(col.r, col.g, col.b);
-    glBegin(GL_TRIANGLES);
-    glVertex3f(normRect.leftX,  normRect.topY, c->zLayer);
-    glVertex3f(normRect.leftX,  normRect.botY, c->zLayer);
-    glVertex3f(normRect.rightX, normRect.topY, c->zLayer);
-    glVertex3f(normRect.rightX, normRect.topY, c->zLayer);
-    glVertex3f(normRect.leftX,  normRect.botY, c->zLayer);
-    glVertex3f(normRect.rightX, normRect.botY, c->zLayer);
-    glEnd();
+    f32 normZ = 1.0f; //1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->rectShader, "zLayer"), normZ);
+    
+    f64 xf = (f64)startY;
+    f64 yf = (f64)startY;
+    f64 wf = (f64)c->width;
+    f64 hf = (f64)c->height;
+    
+    // Positions need to be adjusted by the width and height... for some reason?
+    f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
+    f64 yp = ((yf + (f64)h / 2.0) / (hf / 2.0)) - 1.0;
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+    
+    glUniformMatrix4fv(glGetUniformLocation(c->rectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    
+    glBindVertexArray(c->rectVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    
+    glBindVertexArray(0);
+    glUseProgram(0);
+    
 #else
     s32 diffWidth = (w % 4);
     s32 simdWidth = w - diffWidth;
@@ -3288,7 +3306,7 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect thread
     glUseProgram(c->rectShader);
     glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
     
-    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
     glUniform1f(glGetUniformLocation(c->rectShader, "zLayer"), normZ);
     
     f64 xf = (f64)xPos;
@@ -3457,7 +3475,7 @@ void ls_uiDrawCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thi
     glUniformMatrix4fv(glGetUniformLocation(c->circleShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
     glUniform4ui(glGetUniformLocation(c->circleShader, "color"), col.r, col.g, col.b, col.a);
     
-    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
     glUniform1f(glGetUniformLocation(c->circleShader, "zLayer"), normZ);
     
     f32 uvThickness = (f32)thickness / (f32)radius;
@@ -3648,7 +3666,7 @@ void ls_uiStretchBitmap(UIContext *c, UIBitmap *bmp, UIRect dst, UIRect threadRe
     glUniformMatrix4fv(glGetUniformLocation(c->texturedRectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
     glUniform4ui(glGetUniformLocation(c->texturedRectShader, "color"), 255, 255, 255, 255);
     
-    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
     glUniform1f(glGetUniformLocation(c->texturedRectShader, "zLayer"), normZ);
     
     glBindVertexArray(c->rectVAO);
@@ -3759,7 +3777,7 @@ void __ls_uiOGLGlyph(UIContext *c, UIFont *f, s32 cp, s32 x, s32 y, f64 scale, C
         glUniform1f(glGetUniformLocation(c->sdfTextShader, "smoothing"), smoothingValue);
     }
     
-    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
     glUniform1f(glGetUniformLocation(shader, "zLayer"), normZ);
     
     //NOTE: Correctly mapping the glyphs coordinates and dimensions is very annoying
@@ -5565,7 +5583,7 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
     glUseProgram(c->rectShader);
     glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
     
-    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
     glUniform1f(glGetUniformLocation(c->rectShader, "zLayer"), normZ);
     
     f64 xf = (f64)startX;
@@ -6261,7 +6279,7 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
     glUseProgram(c->gradientRectShader);
     glUniform4ui(glGetUniformLocation(c->gradientRectShader, "color"), 0, 0, 0, 0);
     
-    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
     glUniform1f(glGetUniformLocation(c->gradientRectShader, "zLayer"), normZ);
     
     f64 xf = (f64)xPos;
@@ -6452,7 +6470,7 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
     glUniform1f(glGetUniformLocation(c->colorWheelShader, "radiusInScreenSpace"), (f64)radius);
     glUniform1f(glGetUniformLocation(c->colorWheelShader, "brightness"), value);
 
-    f32 normZ = 1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
     glUniform1f(glGetUniformLocation(c->colorWheelShader, "zLayer"), normZ);
     
     glBindVertexArray(c->rectVAO);
@@ -6479,8 +6497,6 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
     
     if(endX > maxX) { endX = maxX+1; }
     if(endY > maxY) { endY = maxY+1; }
-    
-    static u32 stupidIdx = 0;
     
     u32 *At = (u32 *)c->drawBuffer;
     for(s32 y = startY; y < endY; y++)
@@ -6708,13 +6724,12 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     
     command.selectedFont    = c->currFont;
     command.pixelHeight     = c->currPixelHeight;
+
+    stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
+    AssertMsgF(renderStack->used < renderStack->capacity, "Out of space in RenderGroup %d\n", i);
+    ls_stackPush(renderStack, (void *)&command);
     
-    //NOTETODO: This is done to keep using the same zLayer logic in the Software Renderer,
-    // But make it work for OpenGL Immediate Mode
-    c->zLayer = zLayer;
-    ls_uiRenderSingleCommand(c, &command);
-    c->zLayer = 0;
-    
+    //ls_uiRenderSingleCommand(c, &command);
     return;
 }
 #endif
@@ -6724,13 +6739,16 @@ void ls_uiRender(UIContext *c)
 #ifndef LS_UI_OPENGL_BACKEND
     AssertMsg(c->drawBuffer != NULL, "Trying to Call ls_uiRender on a Fake UIContext "
               "which doesn't have a draw buffer allocated!\n");
-    if(__LS_UI_THREAD_COUNT == 0)
+#endif
+
+    if(__LS_UI_THREAD_COUNT < 2)
     {
         ls_uiRender__(c, 0);
         c->renderFunc(c);
         return;
     }
     
+#ifndef LS_UI_OPENGL_BACKEND
     WakeAllConditionVariable(&c->startRender);
     
     volatile b32 areAllDone = FALSE;
@@ -6769,7 +6787,6 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
     
     UIFont *font            = curr->selectedFont;
     
-    //TODO: I don't know if this is good
     s32 pixelHeight         = curr->pixelHeight;
     
 #if _DEBUG
@@ -6780,9 +6797,7 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
     {
         case UI_RC_LABEL8:
         {
-            //TODO: I don't like this.
             s32 yBaseOff = h - pixelHeight;
-            //ls_uiGlyphString_8(c, font, xPos, yPos + yBaseOff, threadRect, scissor, curr->label8, textColor);
             ls_uiGlyphString(c, font, pixelHeight, xPos, yPos + yBaseOff, threadRect, scissor, curr->label8, textColor);
         } break;
         
@@ -6958,13 +6973,7 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
                         //NOTE: If the additive goes on top of the base bitmap, it would be rendered
                         // below in OpenGL (because render ordering is opposed to the Software Backend
                         // To avoid it, we artificially increase the zLayer
-#ifdef LS_UI_OPENGL_BACKEND
-                        c->zLayer += 1;
-#endif
                         ls_uiStretchBitmap(c, &additive, {addX, addY, additive.w, additive.h}, threadRect, scissor);
-#ifdef LS_UI_OPENGL_BACKEND
-                        c->zLayer -= 1;
-#endif
                     }
                 }
                 else { AssertMsg(FALSE, "Unhandled check bmp collection\n"); }
@@ -7266,7 +7275,6 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
     }
 }
 
-#ifndef LS_UI_OPENGL_BACKEND
 void ls_uiRender__(UIContext *c, u32 threadID)
 {
     //NOTE: First clear the background
@@ -7339,6 +7347,5 @@ void ls_uiRender__(UIContext *c, u32 threadID)
     
     return;
 }
-#endif //LS_UI_OPENGL_BACKEND
 
 #endif //LS_UI_IMPLEMENTATION
