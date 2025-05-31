@@ -324,7 +324,7 @@ void *callback2Data;                                                            
 /*NOTE: This will be called whenever the element looses focus*/                               \
 UICallback OnFocusLost;                                                                       \
 void *onFocusLostData;                                                                        \
-}                                                                                                 \
+}                                                                                             \
 
 
 enum UIButtonStyle { UIBUTTON_CLASSIC, UIBUTTON_LINK, UIBUTTON_TEXT_NOBORDER, UIBUTTON_NO_TEXT, UIBUTTON_BMP };
@@ -635,7 +635,6 @@ struct RenderGroup
     volatile b32 isDone;
 };
 
-struct UIContext;
 typedef void (*RenderCallback)(UIContext *);
 typedef void (*onDestroyFunc)(UIContext *);
 struct UIContext
@@ -699,6 +698,7 @@ struct UIContext
 #endif
     
 #ifdef LS_UI_OPENGL_BACKEND
+    HGLRC OGLContext;
     u32 sdfTextShader;
     u32 textShader;
     u32 rectShader;
@@ -760,8 +760,8 @@ struct ___threadCtx
 
 //NOTE: Functions
 
-HWND         ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, const char *name);
-HWND         ls_uiCreateWindow(UIContext *c, const char *name);
+HWND         ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, const char *name, UIContext *PrimaryContext);
+HWND         ls_uiCreateWindow(UIContext *c, const char *name, UIContext *PrimaryContext);
 UIContext *  ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height,
                                      s32 contextArenaSize, s32 frameArenaSize, s32 widgetArenaSize, RenderCallback cb);
 UIContext *  ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
@@ -793,7 +793,7 @@ void         ls_uiFocusChangeSameFrame(UIContext *c, u64 *focus);
 void         ls_uiFocusChange(UIContext *c, u64 *focus);
 b32          ls_uiInFocus(UIContext *c, void *p);
 b32          ls_uiHasCapture(UIContext *c, void *p);
-void         ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight);
+u32          ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight);
 
 UIRect       ls_uiScreenCoordsToUnitSquare(UIContext *c, s32 x, s32 y, s32 w, s32 h);
 
@@ -812,7 +812,7 @@ void         ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidt
 void         ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer);
 void         ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness, Color col, s32 zLayer);
 
-template<typename T> UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, T *text, UICallback onClick,
+template<typename T> UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, T text, UICallback onClick,
                                               UICallback onHold, void *userData);
 
 void         ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
@@ -1414,11 +1414,16 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 #ifdef LS_UI_OPENGL_BACKEND
 void __ui_InitOpenGLExtensions()
 {
+    static s32 ___stupid_fucking_counter = 0;
+    char dummyName[64] = {};
+    ls_sprintf(dummyName, 64, "Dummy_WGL___%d", ___stupid_fucking_counter);
+    ___stupid_fucking_counter += 1;
+
     WNDCLASSA DummyClass = {
         .style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
         .lpfnWndProc = DefWindowProcA,
         .hInstance = GetModuleHandleA(0),
-        .lpszClassName = "Dummy_WGL_ijsdaijsda",
+        .lpszClassName = dummyName,
     };
     
     if(!RegisterClassA(&DummyClass))
@@ -1480,106 +1485,9 @@ void __ui_InitOpenGLExtensions()
     DestroyWindow(DummyWindow);
     
 }
-#endif
 
-void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
+void __ui_CreateDefaultShaders(UIContext *c)
 {
-    
-    u32 prop = CS_VREDRAW | CS_HREDRAW; //CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
-    
-    WNDCLASSA WindowClass = { 0 };
-    WindowClass.style = prop;
-    WindowClass.lpfnWndProc = ls_uiWindowProc;
-    WindowClass.hInstance = MainInstance;
-    WindowClass.lpszClassName = name;
-    
-    //NOTE: If we don't load the cursor here, windows wouldn't reset it to the correct bitmap
-    //      after it changes (for example during resizing)
-    WindowClass.hCursor = LoadCursorA(NULL, IDC_ARROW);
-    
-    if (!RegisterClassA(&WindowClass))
-    {
-        DWORD Error = GetLastError();
-        ls_printf("When Registering WindowClass in Win32_SetupScreen got error: %d", Error);
-    }
-}
-
-HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowName)
-{
-    u32 style = LS_THICK_BORDER | LS_POPUP;// | LS_RESIZE;// | LS_VISIBLE; //| LS_OVERLAPPEDWINDOW;
-    BOOL Result;
-    
-    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
-    int screenWidth  = GetSystemMetrics(SM_CXSCREEN);
-    
-    const int taskbarHeight = 20;
-    
-    int spaceX = (screenWidth - c->backbufferW) / 2;
-    int spaceY = ((screenHeight - c->backbufferH) / 2);// - taskbarHeight;
-    if(spaceX < 0) { spaceX = 0; }
-    if(spaceY < 0) { spaceY = 0; }
-    
-    //NOTE: We repliacate windowName in both the windowClass name and the actual window name, to avoid conflict
-    //      when creating multiple windows under the same process.
-    HWND WindowHandle;
-    if ((WindowHandle = CreateWindowExA(0 /*WS_EX_LAYERED*/, windowName, windowName, style,
-                                        spaceX, spaceY, c->backbufferW, c->backbufferH,
-                                        0, 0, MainInstance, c)) == nullptr)
-    {
-        DWORD Error = GetLastError();
-        ls_printf("When Retrieving a WindowHandle in Win32_SetupScreen got error: %d", Error);
-    }
-    
-    HCURSOR DefaultArrow = LoadCursorA(NULL, IDC_ARROW);
-    SetCursor(DefaultArrow);
-    
-#ifdef LS_UI_OPENGL_BACKEND
-    __ui_InitOpenGLExtensions();
-    
-    s32 pixelFormatAttribs[] {
-        WGL_DRAW_TO_WINDOW_ARB,     GL_TRUE,
-        WGL_SUPPORT_OPENGL_ARB,     GL_TRUE,
-        WGL_DOUBLE_BUFFER_ARB,      GL_TRUE,
-        WGL_ACCELERATION_ARB,       WGL_FULL_ACCELERATION_ARB,
-        WGL_PIXEL_TYPE_ARB,         WGL_TYPE_RGBA_ARB,
-        WGL_COLOR_BITS_ARB,         32,
-        WGL_DEPTH_BITS_ARB,         24,
-        WGL_STENCIL_BITS_ARB,       8,
-        0
-    };
-    
-    s32 pixelFormat;
-    u32 numFormats;
-    c->WindowDC = GetDC(WindowHandle);
-    wglChoosePixelFormatARB(c->WindowDC, pixelFormatAttribs, 0, 1, &pixelFormat, &numFormats);
-    if(!numFormats) {
-        AssertMsg(FALSE, "Failed to set OpenGL Pixel Format");
-    }
-    
-    PIXELFORMATDESCRIPTOR pfd;
-    DescribePixelFormat(c->WindowDC, pixelFormat, sizeof(pfd), &pfd);
-    if(!SetPixelFormat(c->WindowDC, pixelFormat, &pfd)) {
-        AssertMsg(FALSE, "Failed to set OpenGL Pixel Format");
-    }
-    
-    s32 gl33Attribs[] = {
-        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-        WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-        0,
-    };
-    
-    HGLRC gl33Context = wglCreateContextAttribsARB(c->WindowDC, 0, gl33Attribs);
-    if(!gl33Context) {
-        AssertMsg(FALSE, "Failed to create OpenGL 3.3 context");
-    }
-    
-    if(!wglMakeCurrent(c->WindowDC, gl33Context)) {
-        AssertMsg(FALSE, "Failed to Activate OpenGL 3.3 context");
-    }
-    
-    ls_glLoadFunc(c->WindowDC);
-    
     // --------------------------------
     //NOTE: SHARED Vertex Shader
     //
@@ -1814,38 +1722,37 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     //
     
     const char *circleFragShader = R"LONGLONG(
-#version 330 core
+    #version 330 core
 
-in vec2 TexCoord;
-out vec4 FragColor;
+    in vec2 TexCoord;
+    out vec4 FragColor;
 
-uniform uvec4 color;        // Premultiplied RGBA color
-uniform float thickness;    // Thickness of the outline
-uniform float zLayer;       // zLayer used to determine frag depth
+    uniform uvec4 color;        // Premultiplied RGBA color
+    uniform float thickness;    // Thickness of the outline
+    uniform float zLayer;       // zLayer used to determine frag depth
 
-vec4 convertIntColToFloat(uvec4 inC) {
+    vec4 convertIntColToFloat(uvec4 inC) {
+        vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+        result.rgba /= 255.0;
+        return result;
+    }
 
-vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
-result.rgba /= 255.0;
-return result;
-}
+    void main() {
+        vec2 center = vec2(0.5, 0.5);
+        float dist = distance(TexCoord, center);
+        float innerRadius = 0.5 - thickness;
 
-void main() {
-vec2 center = vec2(0.5, 0.5);
-float dist = distance(TexCoord, center);
-float innerRadius = 0.5 - thickness;
+        if (dist > 0.5 || dist < innerRadius) {
+            discard;
+        }
 
-if (dist > 0.5 || dist < innerRadius) {
- discard;
-}
+        vec4 converted = convertIntColToFloat(color);
+        if(converted.a < 0.01) { discard; }
 
-vec4 converted = convertIntColToFloat(color);
-if(converted.a < 0.01) { discard; }
-
-gl_FragDepth = zLayer;
-FragColor = converted;
-}
-)LONGLONG";
+        gl_FragDepth = zLayer;
+        FragColor = converted;
+    }
+    )LONGLONG";
     
     c->circleShader = ls_glCreateShader(vertShader, circleFragShader);
 
@@ -1945,171 +1852,170 @@ FragColor = converted;
     //
     
     const char *textVertShader = R"LONGLONG(
-#version 330 core
+    #version 330 core
 
-layout(location = 0) in vec2 localPositions;   // Vertex position (0 to glyph pixel's Width/Height)
-layout(location = 1) in vec2 inTexCoord;       // Texture coordinates
-layout(location = 2) in vec2 yOffset;          // y0,y1 font pixel offsets
+    layout(location = 0) in vec2 localPositions;   // Vertex position (0 to glyph pixel's Width/Height)
+    layout(location = 1) in vec2 inTexCoord;       // Texture coordinates
+    layout(location = 2) in vec2 yOffset;          // y0,y1 font pixel offsets
 
-uniform vec2 viewportSize; // Screen pixel dimensions
-uniform mat4 transform;
+    uniform vec2 viewportSize; // Screen pixel dimensions
+    uniform mat4 transform;
 
-out vec2 TexCoord;
+    out vec2 TexCoord;
 
-void main() {
-float scaledY1 = yOffset.y / viewportSize.y;
+    void main() {
+        float scaledY1 = yOffset.y / viewportSize.y;
 
-vec2 realPos = localPositions / viewportSize;
-realPos.y   -= scaledY1;
+        vec2 realPos = localPositions / viewportSize;
+        realPos.y   -= scaledY1;
 
-    gl_Position = transform * vec4(realPos, 0.0, 1.0);  // Transform into clip space
-TexCoord    = inTexCoord;                           // Pass texture coordinates to fragment shader
-
-}
-)LONGLONG";
+        gl_Position = transform * vec4(realPos, 0.0, 1.0);  // Transform into clip space
+        TexCoord    = inTexCoord;                           // Pass texture coordinates to fragment shader
+    }
+    )LONGLONG";
     
     const char *sdfFragShader = R"LONGLONG(
-#version 330 core
+    #version 330 core
 
-//#define SUPERSAMPLED_SUBPIXEL_AA
-//#define SUBPIXELAA
-//#define SUPERSAMPLING
+    //#define SUPERSAMPLED_SUBPIXEL_AA
+    //#define SUBPIXELAA
+    //#define SUPERSAMPLING
 
-in vec2 TexCoord;
-out vec4 FragColor;
+    in vec2 TexCoord;
+    out vec4 FragColor;
 
-uniform sampler2D tex;  // SDF font texture
-uniform uvec4 textColor;       // Premultiplied RGBA color
-uniform float smoothing;       // Smoothing factor for the SDF edge
-uniform float zLayer;          // zLayer used to determine frag depth
+    uniform sampler2D tex;  // SDF font texture
+    uniform uvec4 textColor;       // Premultiplied RGBA color
+    uniform float smoothing;       // Smoothing factor for the SDF edge
+    uniform float zLayer;          // zLayer used to determine frag depth
 
-const float gamma = 2.2;
+    const float gamma = 2.2;
 
-vec4 convertIntColToFloat(uvec4 inC) {
+    vec4 convertIntColToFloat(uvec4 inC) {
 
-vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
-result.rgba /= 255.0;
-return result;
-}
+    vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+    result.rgba /= 255.0;
+    return result;
+    }
 
-void main() {
+    void main() {
 
-// Convert color from integer to float and apply alpha
-vec4 fColor = convertIntColToFloat(textColor);
+    // Convert color from integer to float and apply alpha
+    vec4 fColor = convertIntColToFloat(textColor);
 
-#ifdef SUPERSAMPLING
+    #ifdef SUPERSAMPLING
 
-//2X Supersampling
-vec2 offset = vec2(0.5) / textureSize(tex, 0);
+    //2X Supersampling
+    vec2 offset = vec2(0.5) / textureSize(tex, 0);
 
-float sdfValues[4];
-sdfValues[0] = texture(tex, TexCoord + vec2(-offset.x, -offset.y)).r;
-sdfValues[1] = texture(tex, TexCoord + vec2( offset.x, -offset.y)).r;
-sdfValues[2] = texture(tex, TexCoord + vec2(-offset.x,  offset.y)).r;
-sdfValues[3] = texture(tex, TexCoord + vec2( offset.x,  offset.y)).r;
+    float sdfValues[4];
+    sdfValues[0] = texture(tex, TexCoord + vec2(-offset.x, -offset.y)).r;
+    sdfValues[1] = texture(tex, TexCoord + vec2( offset.x, -offset.y)).r;
+    sdfValues[2] = texture(tex, TexCoord + vec2(-offset.x,  offset.y)).r;
+    sdfValues[3] = texture(tex, TexCoord + vec2( offset.x,  offset.y)).r;
 
-    // Compute the alpha value using a threshold (0.5 is the middle distance)
-float base  = 0.65;
-float alpha = 0.0;
-for (int i = 0; i < 4; ++i) {
-alpha += smoothstep(base - smoothing, base + smoothing, sdfValues[i]);
-}
+        // Compute the alpha value using a threshold (0.5 is the middle distance)
+    float base  = 0.65;
+    float alpha = 0.0;
+    for (int i = 0; i < 4; ++i) {
+    alpha += smoothstep(base - smoothing, base + smoothing, sdfValues[i]);
+    }
 
-alpha /= 4.0; // Average the alphas
+    alpha /= 4.0; // Average the alphas
 
-    // Output color with pre-multiplied alpha
-vec4 result = vec4(fColor.rgb * alpha, fColor.a * alpha);
+        // Output color with pre-multiplied alpha
+    vec4 result = vec4(fColor.rgb * alpha, fColor.a * alpha);
 
-#elif defined(SUBPIXELAA)
+    #elif defined(SUBPIXELAA)
 
-vec2 redOff = vec2(-0.33, 0.0) / textureSize(tex, 0); // Left of Pixel
-vec2 greOff = vec2(  0.0, 0.0) / textureSize(tex, 0); // Center
-vec2 bluOff = vec2( 0.33, 0.0) / textureSize(tex, 0); // Right of Pixel
+    vec2 redOff = vec2(-0.33, 0.0) / textureSize(tex, 0); // Left of Pixel
+    vec2 greOff = vec2(  0.0, 0.0) / textureSize(tex, 0); // Center
+    vec2 bluOff = vec2( 0.33, 0.0) / textureSize(tex, 0); // Right of Pixel
 
-// Sample the Texture at each subpixel offset and calc alpha
-float base = 0.65;
-float alphaRed = smoothstep(base - smoothing, base + smoothing, texture(tex, TexCoord + redOff).r);
-float alphaGre = smoothstep(base - smoothing, base + smoothing, texture(tex, TexCoord + greOff).r);
-float alphaBlu = smoothstep(base - smoothing, base + smoothing, texture(tex, TexCoord + bluOff).r);
+    // Sample the Texture at each subpixel offset and calc alpha
+    float base = 0.65;
+    float alphaRed = smoothstep(base - smoothing, base + smoothing, texture(tex, TexCoord + redOff).r);
+    float alphaGre = smoothstep(base - smoothing, base + smoothing, texture(tex, TexCoord + greOff).r);
+    float alphaBlu = smoothstep(base - smoothing, base + smoothing, texture(tex, TexCoord + bluOff).r);
 
-// Gamma-correct
-alphaRed = pow(alphaRed, 1.0 / gamma);
-alphaGre = pow(alphaGre, 1.0 / gamma);
- alphaBlu = pow(alphaBlu, 1.0 / gamma);
+    // Gamma-correct
+    alphaRed = pow(alphaRed, 1.0 / gamma);
+    alphaGre = pow(alphaGre, 1.0 / gamma);
+     alphaBlu = pow(alphaBlu, 1.0 / gamma);
 
-// Blend to reduce noticeable fringing
-alphaRed = mix(alphaRed, alphaGre, 0.3);
-alphaBlu = mix(alphaBlu, alphaGre, 0.3);
+    // Blend to reduce noticeable fringing
+    alphaRed = mix(alphaRed, alphaGre, 0.3);
+    alphaBlu = mix(alphaBlu, alphaGre, 0.3);
 
-// Set each channel to its corresponding subpixel alpha intensity
-vec3 subpixelColor = vec3(fColor.r * alphaRed, fColor.g * alphaGre, fColor.b * alphaBlu);
+    // Set each channel to its corresponding subpixel alpha intensity
+    vec3 subpixelColor = vec3(fColor.r * alphaRed, fColor.g * alphaGre, fColor.b * alphaBlu);
 
-// Average alpha value for visibility control (not premultiplied alpha)
-float finalAlpha = (alphaRed + alphaGre + alphaBlu) / 3.0;
+    // Average alpha value for visibility control (not premultiplied alpha)
+    float finalAlpha = (alphaRed + alphaGre + alphaBlu) / 3.0;
 
-vec4 result = vec4(subpixelColor, finalAlpha);
+    vec4 result = vec4(subpixelColor, finalAlpha);
 
-#elif defined(SUPERSAMPLED_SUBPIXEL_AA)
+    #elif defined(SUPERSAMPLED_SUBPIXEL_AA)
 
-//2X Supersampling
- vec2 offset = vec2(0.5) / textureSize(tex, 0);
+    //2X Supersampling
+     vec2 offset = vec2(0.5) / textureSize(tex, 0);
 
- vec2 redOff = vec2(-0.33, 0.0) / textureSize(tex, 0); // Left of Pixel
- vec2 greOff = vec2(  0.0, 0.0) / textureSize(tex, 0); // Center
- vec2 bluOff = vec2( 0.33, 0.0) / textureSize(tex, 0); // Right of Pixel
+     vec2 redOff = vec2(-0.33, 0.0) / textureSize(tex, 0); // Left of Pixel
+     vec2 greOff = vec2(  0.0, 0.0) / textureSize(tex, 0); // Center
+     vec2 bluOff = vec2( 0.33, 0.0) / textureSize(tex, 0); // Right of Pixel
 
- vec2 offsetFrags[4];
-offsetFrags[0] = TexCoord + vec2(-offset.x, -offset.y);
-offsetFrags[1] = TexCoord + vec2( offset.x, -offset.y);
-offsetFrags[2] = TexCoord + vec2(-offset.x,  offset.y);
-offsetFrags[3] = TexCoord + vec2( offset.x,  offset.y);
+     vec2 offsetFrags[4];
+    offsetFrags[0] = TexCoord + vec2(-offset.x, -offset.y);
+    offsetFrags[1] = TexCoord + vec2( offset.x, -offset.y);
+    offsetFrags[2] = TexCoord + vec2(-offset.x,  offset.y);
+    offsetFrags[3] = TexCoord + vec2( offset.x,  offset.y);
 
-float base = 0.65;
-float red;
-float green;
-float blue;
-vec3 subpix;
-float finalAlpha;
-for (int i = 0; i < 4; ++i) {
-  red   = smoothstep(base - smoothing, base + smoothing, texture(tex, offsetFrags[i] + redOff).r);
- green = smoothstep(base - smoothing, base + smoothing, texture(tex, offsetFrags[i] + greOff).r);
- blue  = smoothstep(base - smoothing, base + smoothing, texture(tex, offsetFrags[i] + bluOff).r);
+    float base = 0.65;
+    float red;
+    float green;
+    float blue;
+    vec3 subpix;
+    float finalAlpha;
+    for (int i = 0; i < 4; ++i) {
+      red   = smoothstep(base - smoothing, base + smoothing, texture(tex, offsetFrags[i] + redOff).r);
+     green = smoothstep(base - smoothing, base + smoothing, texture(tex, offsetFrags[i] + greOff).r);
+     blue  = smoothstep(base - smoothing, base + smoothing, texture(tex, offsetFrags[i] + bluOff).r);
 
-red = pow(red, 1.0 / gamma);
-green = pow(green, 1.0 / gamma);
- blue = pow(blue, 1.0 / gamma);
+    red = pow(red, 1.0 / gamma);
+    green = pow(green, 1.0 / gamma);
+     blue = pow(blue, 1.0 / gamma);
 
-red = mix(red, green, 0.3);
-blue = mix(blue, green, 0.3);
+    red = mix(red, green, 0.3);
+    blue = mix(blue, green, 0.3);
 
-  subpix += vec3(fColor.r * red, fColor.g * green, fColor.b * blue);
+      subpix += vec3(fColor.r * red, fColor.g * green, fColor.b * blue);
 
-// Average alpha value for visibility control (not premultiplied alpha)
- finalAlpha += (red + green + blue) / 3.0;
-}
+    // Average alpha value for visibility control (not premultiplied alpha)
+     finalAlpha += (red + green + blue) / 3.0;
+    }
 
-finalAlpha /= 4.0;
-subpix /= 4.0;
+    finalAlpha /= 4.0;
+    subpix /= 4.0;
 
-vec4 result = vec4(subpix * finalAlpha, finalAlpha);
+    vec4 result = vec4(subpix * finalAlpha, finalAlpha);
 
-#else //NO FILTERS
+    #else //NO FILTERS
 
-// Sample the SDF texture, values range from 0 to 1
-    float sdfValue = texture(tex, TexCoord).r;
-float base  = 0.58;
-float alpha = smoothstep(base - smoothing, base + smoothing, sdfValue);
+    // Sample the SDF texture, values range from 0 to 1
+        float sdfValue = texture(tex, TexCoord).r;
+    float base  = 0.58;
+    float alpha = smoothstep(base - smoothing, base + smoothing, sdfValue);
 
-    // Output color with pre-multiplied alpha
-vec4 result = vec4(fColor.rgb * alpha, fColor.a * alpha);
+        // Output color with pre-multiplied alpha
+    vec4 result = vec4(fColor.rgb * alpha, fColor.a * alpha);
 
-#endif
+    #endif
 
-if(result.a < 0.01) { discard; }
-gl_FragDepth = zLayer;
-FragColor = result;
-}
-  )LONGLONG";
+    if(result.a < 0.01) { discard; }
+    gl_FragDepth = zLayer;
+    FragColor = result;
+    }
+    )LONGLONG";
     
     c->sdfTextShader = ls_glCreateShader(textVertShader, sdfFragShader);
     
@@ -2119,43 +2025,177 @@ FragColor = result;
     //
     
     const char *textFragShader = R"LONGLONG(
-#version 330 core
+    #version 330 core
 
-in vec2 TexCoord;
-out vec4 FragColor;
+    in vec2 TexCoord;
+    out vec4 FragColor;
 
-uniform sampler2D tex;   // Atlas font texture
-uniform uvec4 textColor; // Premultiplied RGBA color
-uniform float zLayer;    // zLayer used to determine frag depth
+    uniform sampler2D tex;   // Atlas font texture
+    uniform uvec4 textColor; // Premultiplied RGBA color
+    uniform float zLayer;    // zLayer used to determine frag depth
 
-vec4 convertIntColToFloat(uvec4 inC) {
+    vec4 convertIntColToFloat(uvec4 inC) {
+        vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
+        result.rgba /= 255.0;
+        return result;
+    }
 
-vec4 result = vec4(float(inC.r), float(inC.g), float(inC.b), float(inC.a));
-result.rgba /= 255.0;
-return result;
-}
+    void main() {
+        vec4 texColor = texture(tex, TexCoord);
+        vec4 converted = convertIntColToFloat(textColor);
 
-void main() {
-vec4 texColor = texture(tex, TexCoord);
-vec4 converted = convertIntColToFloat(textColor);
+        vec4 finalColor = texColor * converted;
+        if(finalColor.a < 0.01) { discard; }
 
-vec4 finalColor = texColor * converted;
-if(finalColor.a < 0.01) { discard; }
-
-gl_FragDepth = zLayer;
-FragColor = finalColor;
-}
-  )LONGLONG";
+        gl_FragDepth = zLayer;
+        FragColor = finalColor;
+    }
+    )LONGLONG";
     
     c->textShader = ls_glCreateShader(textVertShader, textFragShader);
     
     //
     // --------------------------------
+}
+#endif
+
+void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
+{
     
+    u32 prop = CS_VREDRAW | CS_HREDRAW; //CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
+    
+    WNDCLASSA WindowClass = { 0 };
+    WindowClass.style = prop;
+    WindowClass.lpfnWndProc = ls_uiWindowProc;
+    WindowClass.hInstance = MainInstance;
+    WindowClass.lpszClassName = name;
+    
+    //NOTE: If we don't load the cursor here, windows wouldn't reset it to the correct bitmap
+    //      after it changes (for example during resizing)
+    WindowClass.hCursor = LoadCursorA(NULL, IDC_ARROW);
+    
+    if (!RegisterClassA(&WindowClass))
+    {
+        DWORD Error = GetLastError();
+        ls_printf("When Registering WindowClass in Win32_SetupScreen got error: %d", Error);
+    }
+}
+
+HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowName, UIContext *PrimaryContext = NULL)
+{
+    u32 style = LS_THICK_BORDER | LS_POPUP;// | LS_RESIZE;// | LS_VISIBLE; //| LS_OVERLAPPEDWINDOW;
+    BOOL Result;
+    
+    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+    int screenWidth  = GetSystemMetrics(SM_CXSCREEN);
+    
+    const int taskbarHeight = 20;
+    
+    int spaceX = (screenWidth - c->backbufferW) / 2;
+    int spaceY = ((screenHeight - c->backbufferH) / 2);// - taskbarHeight;
+    if(spaceX < 0) { spaceX = 0; }
+    if(spaceY < 0) { spaceY = 0; }
+    
+    //NOTE: We repliacate windowName in both the windowClass name and the actual window name, to avoid conflict
+    //      when creating multiple windows under the same process.
+    HWND WindowHandle;
+    if ((WindowHandle = CreateWindowExA(0 /*WS_EX_LAYERED*/, windowName, windowName, style,
+                                        spaceX, spaceY, c->backbufferW, c->backbufferH,
+                                        0, 0, MainInstance, c)) == nullptr)
+    {
+        DWORD Error = GetLastError();
+        ls_printf("When Retrieving a WindowHandle in Win32_SetupScreen got error: %d", Error);
+    }
+    
+    HCURSOR DefaultArrow = LoadCursorA(NULL, IDC_ARROW);
+    SetCursor(DefaultArrow);
+    
+#ifdef LS_UI_OPENGL_BACKEND
+    if(PrimaryContext == NULL)
+    {
+        __ui_InitOpenGLExtensions();
+    }
+    
+    s32 pixelFormatAttribs[] {
+        WGL_DRAW_TO_WINDOW_ARB,     GL_TRUE,
+        WGL_SUPPORT_OPENGL_ARB,     GL_TRUE,
+        WGL_DOUBLE_BUFFER_ARB,      GL_TRUE,
+        WGL_ACCELERATION_ARB,       WGL_FULL_ACCELERATION_ARB,
+        WGL_PIXEL_TYPE_ARB,         WGL_TYPE_RGBA_ARB,
+        WGL_COLOR_BITS_ARB,         32,
+        WGL_DEPTH_BITS_ARB,         24,
+        WGL_STENCIL_BITS_ARB,       8,
+        0
+    };
+    
+    s32 pixelFormat;
+    u32 numFormats;
+    c->WindowDC = GetDC(WindowHandle);
+    wglChoosePixelFormatARB(c->WindowDC, pixelFormatAttribs, 0, 1, &pixelFormat, &numFormats);
+    if(!numFormats) {
+        AssertMsg(FALSE, "Failed to set OpenGL Pixel Format");
+    }
+    
+    PIXELFORMATDESCRIPTOR pfd;
+    DescribePixelFormat(c->WindowDC, pixelFormat, sizeof(pfd), &pfd);
+    if(!SetPixelFormat(c->WindowDC, pixelFormat, &pfd)) {
+        AssertMsg(FALSE, "Failed to set OpenGL Pixel Format");
+    }
+    
+    s32 gl33Attribs[] = {
+        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+        WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        0,
+    };
+    
+    HGLRC gl33Context = wglCreateContextAttribsARB(c->WindowDC, 0, gl33Attribs);
+    if(!gl33Context) {
+        AssertMsg(FALSE, "Failed to create OpenGL 3.3 context");
+    }
+    
+    if(!wglMakeCurrent(c->WindowDC, gl33Context)) {
+        AssertMsg(FALSE, "Failed to Activate OpenGL 3.3 context");
+    }
+    c->OGLContext = gl33Context;
+    
+    ls_glLoadFunc(c->WindowDC);
+ 
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
+
+    if(PrimaryContext != NULL)
+    {
+        if(wglShareLists(PrimaryContext->OGLContext, gl33Context) == FALSE)
+        {
+            GLenum Error = glGetError();
+            AssertMsgF(FALSE, "In getGLVersion error: %d\n", (u32)Error);
+        }
+
+        c->sdfTextShader      = PrimaryContext->sdfTextShader;
+        c->textShader         = PrimaryContext->textShader;
+        c->rectShader         = PrimaryContext->rectShader;
+        c->rectVAO            = PrimaryContext->rectVAO;
+        c->gradientRectShader = PrimaryContext->gradientRectShader;
+        c->rectGradientVAO    = PrimaryContext->rectGradientVAO;
+        c->texturedRectShader = PrimaryContext->texturedRectShader;
+        c->circleShader       = PrimaryContext->circleShader;
+        c->colorWheelShader   = PrimaryContext->colorWheelShader;
+        c->circleVAO          = PrimaryContext->circleVAO;
+        c->circleVertCount    = PrimaryContext->circleVertCount;
+
+        //TODO: This is inefficient, but it ensures on first frame the *Main* context and window
+        // are immediately current and rendered?
+        if(!wglMakeCurrent(PrimaryContext->WindowDC, PrimaryContext->OGLContext)) {
+            AssertMsg(FALSE, "Failed to Activate OpenGL 3.3 context");
+        }
+    }
+    else
+    {
+        __ui_CreateDefaultShaders(c);
+    }
     
 #else
     
@@ -2172,7 +2212,18 @@ FragColor = finalColor;
     c->DibSection         = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
                                              DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
     SelectObject(c->BackBufferDC, c->DibSection);
+
 #endif
+
+    //NOTE TODO: We are assuming a font atlas was setup... this assumption is
+    // not guaranteed by anything. It's very error prone!
+    // Maybe add a flag that says wether fonts were set or not?
+    if(PrimaryContext != NULL)
+    {
+        c->fontGroup       = PrimaryContext->fontGroup;
+        c->currFont        = PrimaryContext->currFont;
+        c->currPixelHeight = PrimaryContext->currPixelHeight;
+    }
     
     c->windowPosX = (s16)spaceX;
     c->windowPosY = (s16)spaceY;
@@ -2180,19 +2231,19 @@ FragColor = finalColor;
     return WindowHandle;
 }
 
-HWND ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, const char *name)
+HWND ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, const char *name, UIContext *PrimaryContext = NULL)
 {
     __ui_RegisterWindow(MainInstance, name);
     
     c->UserInput.Keyboard.getClipboard = windows_GetClipboard;
     c->UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
-    c->Window = __ui_CreateWindow(MainInstance, c, name);
+    c->Window = __ui_CreateWindow(MainInstance, c, name, PrimaryContext);
     
     return c->Window;
 }
 
-HWND ls_uiCreateWindow(UIContext *c, const char *name)
+HWND ls_uiCreateWindow(UIContext *c, const char *name, UIContext *PrimaryContext = NULL)
 {
     HINSTANCE MainInstance = NULL;
     __ui_RegisterWindow(MainInstance, name);
@@ -2200,7 +2251,7 @@ HWND ls_uiCreateWindow(UIContext *c, const char *name)
     c->UserInput.Keyboard.getClipboard = windows_GetClipboard;
     c->UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
-    c->Window = __ui_CreateWindow(MainInstance, c, name);
+    c->Window = __ui_CreateWindow(MainInstance, c, name, PrimaryContext);
     
     return c->Window;
 }
@@ -2232,26 +2283,12 @@ DWORD ls_uiRenderThreadProc(void *param)
 void __ui_default_windows_render_callback(UIContext *c)
 {
 #ifdef LS_UI_OPENGL_BACKEND
+    if(!wglMakeCurrent(c->WindowDC, c->OGLContext)) {
+        AssertMsg(FALSE, "Failed to make current the OpenGL Context during reder callback");
+    }
     SwapBuffers(c->WindowDC);
 #else
-#if 1
     InvalidateRect(c->Window, NULL, TRUE);
-#else
-    //TODO: Works but appears transparent? My alpha is not being used?
-    BLENDFUNCTION BlendFunc = { 
-        .BlendOp = AC_SRC_OVER, 
-        .BlendFlags = 0, 
-        .SourceConstantAlpha = 0xFF, 
-        .AlphaFormat = AC_SRC_ALPHA
-    };
-    
-    if(UpdateLayeredWindow(c->Window, NULL, NULL, NULL, c->BackBufferDC, NULL, NULL, &BlendFunc, ULW_ALPHA) == 0)
-    {
-        DWORD Error = GetLastError();
-        AssertMsgF(FALSE, "When Updating a Layered Window got error: %d", Error);
-    }
-#endif
-    
 #endif //LS_UI_OPENGL_BACKEND
 }
 
@@ -2642,10 +2679,6 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     u8 *bitmapFile = NULL;
     u64 bytesRead = ls_readFile(path, (char **)&bitmapFile, 0);
     
-    //TODO: This is LEAKING memory, but it's just a few bytes and allowes me to swap between
-    // different fonts very quickly. It makes development easier. Will hopefully fix later
-    // (But tested swapping fonts dozens of time and it never created a problem, it's really
-    //  only leaking some bytes every time (the UIFont data))
     ls_arenaUse(c->contextArena);
     
     b32 isWindowyfied = FALSE;
@@ -2665,6 +2698,11 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     c->fontGroup.isSDF          = metaInfo[-2];
     c->fontGroup.codepointCount = metaInfo[-3];
     c->fontGroup.maxCodepoint   = metaInfo[-3];
+
+    //TODO: If ls_uiLoadPackedFontAtlas is called multiple times, it leaks memory
+    // because of this allocation being put in the contextArena without ever being freed
+    // first...
+    // For development it may be nice to test different fonts quickly, but it's a possible problem!
     c->fontGroup.fonts          = (UIFont *)ls_alloc(sizeof(UIFont)*c->fontGroup.fontCount);
     
     metaInfo -= 3;
@@ -2690,7 +2728,6 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     
     c->currFont                   = c->fontGroup.fonts;
     c->currPixelHeight            = c->fontGroup.fonts[0].pixelHeight;
-    
     
 #ifdef LS_UI_OPENGL_BACKEND
     // -------------------------------------------
@@ -2732,9 +2769,6 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     
     ls_arenaUse(c->scratchArena);
     
-    //TODO: Either make the AtlasIterator capable of iterating through the entire Atlas
-    //      Or still that will go through a single font (so a single size), but this will be performed
-    //      in a loop for every size. BUT I will still put everything in a single VAO.
     s32 glyphCountPerSize = c->fontGroup.codepointCount;
     s32 totalGlyphCount   = c->fontGroup.codepointCount*c->fontGroup.fontCount;
     
@@ -2784,7 +2818,6 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
         // cares about the 'fraction' of height of the glyph it needs to move below.
         // So we are not mapping to a -1..1 range here. Just taking the right fraction.
         
-        
         //NOTE: To make sure glyphs are resolution-indipendent, we are passing the glyph's dimensions
         // to the shader (and the viewport's dimensions as a uniform) and we map in the vertex shader itself.
         //NOTE: I guess... instead of dividing lenghts (like xAdv and yAdv) by 2, we can multiply widths/height by 2?
@@ -2808,83 +2841,6 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
         ls_memcpy(verticesCurrent, glyphVertexMap + glyphVertMapIdx, sizeOfSingleGlyphVertex);
         glyphVertMapIdx += (verticesPerGlyph * floatsPerVertex);
     }
-    
-#if 0
-    Assert(FALSE);
-    UIFont *font = &c->fonts[0];
-    
-    UIAtlasIterator atlasIt = ls_uiAtlasIterStart(font);
-    s32 glyphCount = atlasIt.count;
-    const s32 verticesPerGlyph = 6;
-    const s32 floatsPerVertex = 6;
-    const s32 sizeOfSingleGlyphVertex = verticesPerGlyph * floatsPerVertex * sizeof(f32);
-    s32 sizeOfVertexMap = glyphCount * sizeOfSingleGlyphVertex;
-    f32 *glyphVertexMap = (f32 *)ls_alloc(sizeOfVertexMap);
-    s32 glyphVertMapIdx = 0;
-    
-    //TODO: Investigate on LiberationMono glyphs like `o` and `T` having the top cut off?!?!?!
-    
-    //NOTE: @GlyphMapping
-    // To reduce the amount of computation done each frame, we are mapping each glyphs dimensions and position
-    // in the OpenGL's unit square directly when uploading to the GPU.
-    // This means mapping all dimensions to the [-1..1] OpenGL's NDC, and adjusting lengths.
-    // Adjusting lengths means bringing them to the [0..1] range, and multiplying them by 0.5
-    // Read more: @GlyphMapping
-    font->baselineOffset     = (s32)(((f32)font->ascent - (f32)font->descent) * 0.5);
-    for (; !ls_uiAtlasIterDone(atlasIt); ls_uiAtlasIterNext(&atlasIt))
-    {
-        UIAtlasMapEntry *map = atlasIt.curr;
-        
-        f32 texelLeft  = (f32)map->atlasX / (f32)font->atlasWidth;
-        f32 texelRight = (f32)(map->atlasX+map->width) / (f32)font->atlasWidth;
-        f32 texelBot   = (f32)map->atlasY / (f32)font->atlasHeight;
-        f32 texelTop   = (f32)(map->atlasY+map->height) / (f32)font->atlasHeight;
-        
-        //NOTE: To avoid headaches, all glyphs are positioned in the center of the unit square
-        // the x/y coordinates of the final glyph would have needed to be mapped to floats anyway,
-        // so going from 0..c->width/c->height -> -1..1 is not that big of a deal.
-        
-        //NOTE: Map lengths
-        map->xAdv   = (f32)map->xAdv * 0.5;
-        map->yAdv   = (f32)map->yAdv * 0.5;
-        
-        //NOTE:
-        // To align a glyph to the baseline, if the glyph extends below the baseline
-        // it needs to be adjusted by the amount it extends (either y0 or y1 based on if we measure y-up or y-down)
-        // BUT: The Normalized Device Unit of OpenGL should go from -1.0..1.0
-        // Which means, to normalize y1 to -1..1, we would need to:
-        //    divide by the max y1/height -> range 0..1
-        //    multiply by 2.0             -> range 0..2
-        //    subtract 1.0                -> range -1..1
-        //
-        // *BUT* I presume, that being a baseline-relative measurement, it is indipendent of a -1..1 range, and only
-        // cares about the 'fraction' of height of the glyph it needs to move below.
-        // So we are not mapping to a -1..1 range here. Just taking the right fraction.
-        
-        
-        //NOTE: To make sure glyphs are resolution-indipendent, we are passing the glyph's dimensions
-        // to the shader (and the viewport's dimensions as a uniform) and we map in the vertex shader itself.
-        f32 mw = (f32)map->width;
-        f32 mh = (f32)map->height;
-        f32 y0 = (f32)map->y0;
-        f32 y1 = (f32)map->y1;
-        
-        //Vertex Data (localX, localY, texU, texV, y0, y1)
-        f32 verticesCurrent[verticesPerGlyph][floatsPerVertex] =
-        {
-            { 0.0, 0.0, texelLeft,  texelTop, y0, y1 },  // Bottom-left
-            { 0.0,  mh, texelLeft,  texelBot, y0, y1 },  // Top-left
-            {  mw, 0.0, texelRight, texelTop, y0, y1 },  // Bot-right
-            
-            {  mw, 0.0, texelRight, texelTop, y0, y1 },  // Bot-right
-            { 0.0,  mh, texelLeft,  texelBot, y0, y1 },  // Top-left
-            {  mw,  mh, texelRight, texelBot, y0, y1 }   // Top-right
-        };
-        
-        ls_memcpy(verticesCurrent, glyphVertexMap + glyphVertMapIdx, sizeOfSingleGlyphVertex);
-        glyphVertMapIdx += (verticesPerGlyph * floatsPerVertex);
-    }
-#endif
     
     GLuint VBO;
     glGenVertexArrays(1, &c->fontGroup.atlasVAO);
@@ -4457,11 +4413,13 @@ b32 ls_uiAtlasIterDone(UIAtlasIterator iter)
     return FALSE;
 }
 
-void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
+u32 ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
 {
     LogMsg(c->fontGroup.fonts, "No fonts were loaded\n");
     //AssertMsg(c->currFont, "The currFont was not selected!\n");
-    if(!c->fontGroup.fonts) { return; }
+
+    u32 prevPixelHeight = c->currPixelHeight;
+    if(!c->fontGroup.fonts) { return prevPixelHeight; }
     c->currPixelHeight = pixelHeight;
     
     if(c->currFont->isAtlas)
@@ -4472,7 +4430,7 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
         if(bestMatchDiff < 0)
         {
             c->currFont = bestMatch;
-            return;
+            return prevPixelHeight;
         }
         
         for(s32 sizesIdx = c->fontGroup.fontCount-2; sizesIdx >= 0; sizesIdx--)
@@ -4483,52 +4441,53 @@ void ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
             //NOTETODO: This always picks the closest, but maybe I want to pick the
             // biggest pixelHeight that is closest, because shrinking is better than
             // enlarging without applying filters?
-            if(diff < 0) { return; }
+            if(diff < 0) { return prevPixelHeight; }
             
             if(curr->pixelHeight == pixelHeight)
             { 
                 c->currFont = curr;
-                return;
+                return prevPixelHeight;
             }
             
             if(diff < bestMatchDiff) { bestMatch = curr; bestMatchDiff = diff; }
         }
         
         c->currFont = bestMatch;
-        return;
+        return prevPixelHeight;
     }
     else
     {
         for(u32 i = 0; i < 4; i++)
-        { if(c->fontGroup.fonts[i].pixelHeight == pixelHeight) { c->currFont = &c->fontGroup.fonts[i]; return; } }
+        { if(c->fontGroup.fonts[i].pixelHeight == pixelHeight) { c->currFont = &c->fontGroup.fonts[i]; return prevPixelHeight; } }
     }
     
     AssertMsgF(FALSE, "Asked pixelHeight %d not available\n", pixelHeight);
+    return 0;
 }
 
 template<typename T>
-UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, T *text = NULL, UICallback onClick = NULL, UICallback onHold = NULL, void *userData = NULL)
+UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, T text, UICallback onClick = NULL, UICallback onHold = NULL, void *userData = NULL)
 {
     AssertNonNull(c);
     AssertMsg(c->currFont, "Font is not selected\n");
-    
-    //If no text pointer is provided, we just return an empty button
-    //  (for things like bitmap buttons)
-    if(text == NULL)
-    {
-        UIButton result = {
-            {onClick, userData, onHold, userData, NULL, NULL}, 
-            s, {}, 0, 0, 0, FALSE, FALSE 
-        };
-        return result;
-    }
     
     //NOTE: Otherwise we calculate the dimensions occupied by the text
     //      and use them to calculate the button's dimensions
     s32 pixelHeight = c->currPixelHeight;
     utf32 name = {};
-    if constexpr(typeid(T) == typeid(const char32_t))
+    if constexpr(typeid(T) == typeid(const char32_t *))
     {
+        //If no text pointer is provided, we just return an empty button
+        //  (for things like bitmap buttons)
+        if(text == NULL)
+        {
+            UIButton result = {
+                {onClick, userData, onHold, userData, NULL, NULL}, 
+                s, {}, 0, 0, 0, FALSE, FALSE 
+            };
+            return result;
+        }
+
         Arena prev = ls_arenaUse(c->widgetArena);
         name = ls_utf32FromUTF32(text);
         ls_arenaUse(prev);
@@ -4744,18 +4703,26 @@ void ls_uiLabel(UIContext *c, T label, s32 x, s32 y, Color textColor, s32 zLayer
     AssertMsg(c, "Context pointer was null");
     AssertMsg(c->currFont, "No font was selected before sizing a label\n");
     
-    s32 pixelHeight = c->currPixelHeight;
-    UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, pixelHeight);
-    s32 yBaseOff = rect.h - pixelHeight;
-    RenderCommand command = { UI_RC_LABEL32, x, y - yBaseOff, rect.w, rect.h };
-    command.textColor = textColor;
+    RenderCommand command = {};
     if constexpr(typeid(T) == typeid(utf32))
     {
+        s32 pixelHeight = c->currPixelHeight;
+        UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, pixelHeight);
+        s32 yBaseOff = rect.h - pixelHeight;
+        command = { UI_RC_LABEL32, x, y - yBaseOff, rect.w, rect.h };
+        command.textColor = textColor;
+
         if(label.len == 0) { return; }
         command.label32 = label;
     }
     else if constexpr(typeid(T) == typeid(utf8))
     {
+        s32 pixelHeight = c->currPixelHeight;
+        UIRect rect = ls_uiGlyphStringRect(c, c->currFont, label, pixelHeight);
+        s32 yBaseOff = rect.h - pixelHeight;
+        command = { UI_RC_LABEL32, x, y - yBaseOff, rect.w, rect.h };
+        command.textColor = textColor;
+
         if(label.len == 0) { return; }
         command.type = UI_RC_LABEL8;
         command.label8 = label;
@@ -4763,17 +4730,29 @@ void ls_uiLabel(UIContext *c, T label, s32 x, s32 y, Color textColor, s32 zLayer
     else if constexpr(typeid(T) == typeid(const char32_t*))
     {
         utf32 lab = ls_utf32Constant(label);
+
+        s32 pixelHeight = c->currPixelHeight;
+        UIRect rect = ls_uiGlyphStringRect(c, c->currFont, lab, pixelHeight);
+        s32 yBaseOff = rect.h - pixelHeight;
+        command = { UI_RC_LABEL32, x, y - yBaseOff, rect.w, rect.h };
+        command.textColor = textColor;
         
-        if(label.len == 0) { return; }
-        command.label32 = label;
+        if(lab.len == 0) { return; }
+        command.label32 = lab;
     }
     else if constexpr(typeid(T) == typeid(const u8*))
     {
         utf8 lab = ls_utf8Constant(label);
+
+        s32 pixelHeight = c->currPixelHeight;
+        UIRect rect = ls_uiGlyphStringRect(c, c->currFont, lab, pixelHeight);
+        s32 yBaseOff = rect.h - pixelHeight;
+        command = { UI_RC_LABEL32, x, y - yBaseOff, rect.w, rect.h };
+        command.textColor = textColor;
         
-        if(label.len == 0) { return; }
+        if(lab.len == 0) { return; }
         command.type = UI_RC_LABEL8;
-        command.label8 = label;
+        command.label8 = lab;
     }
     
     ls_uiPushRenderCommand(c, command, zLayer);
@@ -6597,11 +6576,11 @@ b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 w, s
 }
 
 
-#ifndef LS_UI_OPENGL_BACKEND
-
 #if _DEBUG
 static b32 __ui_shouldTag = FALSE;
 #endif
+
+#ifndef LS_UI_OPENGL_BACKEND
 
 void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
 {
@@ -6726,7 +6705,7 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     command.pixelHeight     = c->currPixelHeight;
 
     stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
-    AssertMsgF(renderStack->used < renderStack->capacity, "Out of space in RenderGroup %d\n", i);
+    AssertMsgF(renderStack->used < renderStack->capacity, "Out of space in RenderGroup %d\n", 0);
     ls_stackPush(renderStack, (void *)&command);
     
     //ls_uiRenderSingleCommand(c, &command);
