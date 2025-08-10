@@ -282,7 +282,7 @@ b32 ls_dangerousNotToBeCalledInitFunctionHere()
     if(success == 0)
     {
         DWORD Err = GetLastError();
-        ls_printf("Got error %d when calling Free Console in lsInit\n");
+        ls_printf("Got error %d when calling Free Console in ls_dangerousNotToBeCalledInitFunctionHere\n");
         return FALSE;
     }
     
@@ -290,7 +290,7 @@ b32 ls_dangerousNotToBeCalledInitFunctionHere()
     if(success == 0)
     {
         DWORD Err = GetLastError();
-        ls_printf("Got error %d when calling Alloc Console in lsInit\n");
+        ls_printf("Got error %d when calling Alloc Console in ls_dangerousNotToBeCalledInitFunctionHere\n");
         return FALSE;
     }
     
