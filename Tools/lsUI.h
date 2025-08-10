@@ -82,8 +82,7 @@ if(rp) { (UserInput->Keyboard.repeatState.k = 1); }
 #if defined(LS_UI_OPENGL_BACKEND)
 const     u32 __LS_UI_THREAD_COUNT     = 0;
 #elif defined(LS_UI_SOFTWARE_BACKEND)
-const     u32 __LS_UI_THREAD_COUNT     = 1;
-//const     u32 __LS_UI_THREAD_COUNT     = 8;
+const     u32 __LS_UI_THREAD_COUNT     = 8;
 #endif
 constexpr u32 LS_UI_RENDER_GROUP_COUNT = __LS_UI_THREAD_COUNT == 0 ? 1 : __LS_UI_THREAD_COUNT;
 
@@ -635,9 +634,7 @@ struct RenderGroup
     volatile b32 isDone;
 };
 
-typedef void (*RenderCallback)(UIContext *);
-typedef void (*onDestroyFunc)(UIContext *);
-struct UIContext
+struct UIWindow
 {
     //NOTE: This is the actual allocated memory
     //      It is slightly larger than the drawn window because it contains a border
@@ -645,16 +642,47 @@ struct UIContext
     u8 *drawBuffer;
     s32 backbufferW;
     s32 backbufferH;
-    
+
     //NOTE: This is the area that all systems reference to draw. It's the area you should draw into
     s32 width; 
     s32 height;
+
+    UIRect renderUIRects[LS_UI_RENDER_GROUP_COUNT];
+
+    //NOTE: Windows specific Handles to a window-related object...
+    HDC  WindowDC;
+    HDC  BackBufferDC;
+    HBITMAP DibSection;
+    HWND Window;
     
-#if 0//TODO: Currently not used anywhere... And I'm not sure I actually need it?
-    //NOTE: This is sligtly smaller than the draw area, because it doesn't include the menu bar
-    s32 clientWidth;
-    s32 clientHeight;
-#endif
+    s32 windowPosX, windowPosY;
+    b32 isDragging;
+    s32 prevMousePosX, prevMousePosY;
+    
+    //IMPORTANT NOTE:
+    // As of right now lsUI DEPENDS on Input.
+    // I don't know if this is the right choice. I guess I'll discover it.
+    Input UserInput;
+    b32 hasReceivedInput;
+    
+    //Why did I even make this change? I just moved all the shit form UIContext to UIWindow
+    u64 *currentFocus;
+    u64 *lastFocus;
+    b32 focusWasSetThisFrame;
+    
+    b32 nextFrameFocusChange;
+    u64 *nextFrameFocus;
+    
+    u64 *mouseCapture;
+};
+
+typedef void (*RenderCallback)(UIContext *);
+typedef void (*onDestroyFunc)(UIContext *);
+struct UIContext
+{
+    //TODO: Do I actually need to store *ALL* the window information? Can't the user keep track of it?
+    //UIWindow *win;
+    UIWindow *currWindow;
     
     UIFontGroup fontGroup;
     UIFont *currFont;
@@ -680,19 +708,8 @@ struct UIContext
     
     UIScrollableRegion *scroll;
     
-    u64 *currentFocus;
-    u64 *lastFocus;
-    b32 focusWasSetThisFrame;
-    
-    b32 nextFrameFocusChange;
-    u64 *nextFrameFocus;
-    
-    u64 *mouseCapture;
-    
     RenderGroup renderGroups[LS_UI_RENDER_GROUP_COUNT];
 #ifndef LS_UI_OPENGL_BACKEND
-    UIRect      renderUIRects[LS_UI_RENDER_GROUP_COUNT];
-    
     CONDITION_VARIABLE startRender;
     CRITICAL_SECTION crit;
 #endif
@@ -712,30 +729,14 @@ struct UIContext
     s32 circleVertCount;
 #endif
     
-    HDC  WindowDC;
-    HDC  BackBufferDC;
-    HBITMAP DibSection;
     
 #if _DEBUG //NOTE: Tag to debug specific render commands
     b32 isTagged;
 #endif
     
-    //IMPORTANT NOTE:
-    // As of right now lsUI DEPENDS on Input.
-    // I don't know if this is the right choice. I guess I'll discover it.
-    Input UserInput;
-    
     RenderCallback renderFunc;
     u32 dt;
     RegionTimer frameTime;
-    
-    HWND Window;
-    
-    s32 windowPosX, windowPosY;
-    b32 isDragging;
-    s32 prevMousePosX, prevMousePosY;
-    
-    b32 hasReceivedInput;
     
     Arena frameArena;
     Arena contextArena;
@@ -760,13 +761,14 @@ struct ___threadCtx
 
 //NOTE: Functions
 
-HWND         ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, const char *name, UIContext *PrimaryContext);
-HWND         ls_uiCreateWindow(UIContext *c, const char *name, UIContext *PrimaryContext);
-UIContext *  ls_uiInitDefaultContext(u8 *drawBuffer, u32 width, u32 height,
-                                     s32 contextArenaSize, s32 frameArenaSize, s32 widgetArenaSize, RenderCallback cb);
-UIContext *  ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
-                                     Arena contextArena, Arena frameArena, Arena widgetArena, RenderCallback cb);
+UIWindow     ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name);
+UIWindow     ls_uiCreateWindow(UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name); 
+UIContext *  ls_uiInitDefaultContext(s32 contextArenaSize, s32 frameArenaSize,
+                                     s32 widgetArenaSize, RenderCallback cb);
+UIContext *  ls_uiInitDefaultContext(Arena contextArena, Arena frameArena,
+                                     Arena widgetArena, RenderCallback cb);
 
+void         ls_uiSelectWindowForRendering(UIContext *c, UIWindow *win);
 void         ls_uiFrameBegin(UIContext *c);
 void         ls_uiFrameBeginChild(UIContext *c);
 void         ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs);
@@ -920,7 +922,7 @@ void ls_uiDebugDrawInfo(UIContext *c)
 #ifndef LS_UI_OPENGL_BACKEND
     for(s32 i = 0; i < __LS_UI_THREAD_COUNT; i++)
     {
-        UIRect r = c->renderUIRects[i];
+        UIRect r = c->currWindow->renderUIRects[i];
         ls_uiRect(c, r.minX, r.minY, r.maxX - r.minX, r.maxY - r.minY, RGBA(0,0,0,0), RGB(253, 0, 255), 3);
     }
 #endif
@@ -936,36 +938,39 @@ void ls_uiDebugDrawInfo(UIContext *c)
 #ifndef LS_UI_OPENGL_BACKEND
 void __ls_ui_fillRenderThreadUIRects(UIContext *c)
 {
+    UIWindow *win = c->currWindow;
+    UIRect *renderUIRects = win->renderUIRects;
+
     //NOTE: All Thread Rects are inclusive on the left/bot, exclusive on the right/top
     switch(__LS_UI_THREAD_COUNT)
     {
         case 0:
-        case 1: { c->renderUIRects[0] = {0, 0, c->width, c->height }; } break;
+        case 1: { renderUIRects[0] = {0, 0, win->width, win->height }; } break;
         
         case 2:
         {
-            c->renderUIRects[0] = {          0, 0, c->width/2, c->height };
-            c->renderUIRects[1] = { c->width/2, 0, c->width,   c->height };
+            renderUIRects[0] = {            0, 0, win->width/2, win->height };
+            renderUIRects[1] = { win->width/2, 0, win->width,   win->height };
         } break;
         
         case 4:
         {
-            c->renderUIRects[0] = {          0,           0, c->width/2, c->height/2 };
-            c->renderUIRects[1] = { c->width/2,           0, c->width,   c->height/2 };
-            c->renderUIRects[2] = {          0, c->height/2, c->width/2, c->height   };
-            c->renderUIRects[3] = { c->width/2, c->height/2, c->width,   c->height   };
+            renderUIRects[0] = {            0,             0, win->width/2, win->height/2 };
+            renderUIRects[1] = { win->width/2,             0, win->width,   win->height/2 };
+            renderUIRects[2] = {            0, win->height/2, win->width/2, win->height   };
+            renderUIRects[3] = { win->width/2, win->height/2, win->width,   win->height   };
         } break;
         
         case 8:
         {
-            c->renderUIRects[0] = {            0,           0,   c->width/4, c->height/2 };
-            c->renderUIRects[1] = {   c->width/4,           0,   c->width/2, c->height/2 };
-            c->renderUIRects[2] = {   c->width/2,           0, 3*c->width/4, c->height/2 };
-            c->renderUIRects[3] = { 3*c->width/4,           0,   c->width,   c->height/2 };
-            c->renderUIRects[4] = {            0, c->height/2,   c->width/4, c->height   };
-            c->renderUIRects[5] = {   c->width/4, c->height/2,   c->width/2, c->height   };
-            c->renderUIRects[6] = {   c->width/2, c->height/2, 3*c->width/4, c->height   };
-            c->renderUIRects[7] = { 3*c->width/4, c->height/2,   c->width,   c->height   };
+            renderUIRects[0] = {              0,             0,   win->width/4, win->height/2 };
+            renderUIRects[1] = {   win->width/4,             0,   win->width/2, win->height/2 };
+            renderUIRects[2] = {   win->width/2,             0, 3*win->width/4, win->height/2 };
+            renderUIRects[3] = { 3*win->width/4,             0,   win->width,   win->height/2 };
+            renderUIRects[4] = {              0, win->height/2,   win->width/4, win->height   };
+            renderUIRects[5] = {   win->width/4, win->height/2,   win->width/2, win->height   };
+            renderUIRects[6] = {   win->width/2, win->height/2, 3*win->width/4, win->height   };
+            renderUIRects[7] = { 3*win->width/4, win->height/2,   win->width,   win->height   };
         } break;
         
         default: { AssertMsg(FALSE, "Unhandled Thread Count"); } break;
@@ -973,6 +978,8 @@ void __ls_ui_fillRenderThreadUIRects(UIContext *c)
     
     return;
 }
+#else
+#define __ls_ui_fillRenderThreadUIRects(...)
 #endif
 
 LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
@@ -980,8 +987,14 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
     LRESULT Result = 0;
     
     UIContext *c      = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);;
-    MouseInput *Mouse = &c->UserInput.Mouse;
-    Input *UserInput  = &c->UserInput;
+    UIWindow *win     = NULL;
+    MouseInput *Mouse = NULL;
+    Input *UserInput  = NULL;
+    if (c) {
+        win = c->currWindow;
+        Mouse = &win->UserInput.Mouse;
+        UserInput  = &win->UserInput;
+    }
     
     //static b32 mouseTracking = FALSE;
     
@@ -1039,7 +1052,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             CREATESTRUCTA *CreateStruct = (CREATESTRUCTA *)l;
             c = (UIContext *)CreateStruct->lpCreateParams;
             SetWindowLongPtrA(h, GWLP_USERDATA, (LONG_PTR)c);
-            c->hasReceivedInput = TRUE;
+            if (win) { win->hasReceivedInput = TRUE; }
             
         } break;
         
@@ -1048,17 +1061,17 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             if(w == WA_INACTIVE) { 
                 //SendMessageA(c->MainWindow, WM_LBUTTONUP, 0, 0);
                 //TODO: Maybe NULL everything in the deactivated window? Input should not matter there anymore
-                c->UserInput.Keyboard.currentState    = {};
-                c->UserInput.Keyboard.prevState       = {};
-                c->UserInput.Keyboard.repeatState     = {};
-                c->UserInput.Keyboard.hasPrintableKey = FALSE;
+                UserInput->Keyboard.currentState    = {};
+                UserInput->Keyboard.prevState       = {};
+                UserInput->Keyboard.repeatState     = {};
+                UserInput->Keyboard.hasPrintableKey = FALSE;
                 
-                c->UserInput.Mouse.isLeftPressed    = FALSE;
-                c->UserInput.Mouse.wasLeftPressed   = FALSE;
-                c->UserInput.Mouse.isMiddlePressed  = FALSE;
-                c->UserInput.Mouse.wasMiddlePressed = FALSE;
-                c->UserInput.Mouse.isRightPressed   = FALSE;
-                c->UserInput.Mouse.wasRightPressed  = FALSE;
+                UserInput->Mouse.isLeftPressed    = FALSE;
+                UserInput->Mouse.wasLeftPressed   = FALSE;
+                UserInput->Mouse.isMiddlePressed  = FALSE;
+                UserInput->Mouse.wasMiddlePressed = FALSE;
+                UserInput->Mouse.isRightPressed   = FALSE;
+                UserInput->Mouse.wasRightPressed  = FALSE;
             }
         } break;
         
@@ -1067,18 +1080,19 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         case WM_SIZE:
         {
 #ifndef LS_UI_OPENGL_BACKEND
-            if(!c || !c->drawBuffer) { return DefWindowProcA(h, msg, w, l); }
+            if(!c || !c->currWindow) { return DefWindowProcA(h, msg, w, l); }
+            UIWindow *win = c->currWindow;
             
             u32 width       = LOWORD(l);
             u32 height      = HIWORD(l);
             
             //NOTE: Need to resize the backbuffer if the window grows.
-            if(width*height > c->backbufferW*c->backbufferH)
+            if(width*height > win->backbufferW * win->backbufferH)
             {
                 //NOTE: Delete the old DibSection AND the old BackBufferDC
                 //      Otherwise it would VERY quickly leak GBs of memory
-                DeleteObject(c->DibSection);
-                DeleteDC(c->BackBufferDC);
+                DeleteObject(win->DibSection);
+                DeleteDC(win->BackBufferDC);
                 
                 //NOTE: Create a new DC
                 BITMAPINFO BackBufferInfo              = {};
@@ -1089,25 +1103,28 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                 BackBufferInfo.bmiHeader.biBitCount    = 32;
                 BackBufferInfo.bmiHeader.biCompression = BI_RGB;
                 
-                c->BackBufferDC       = CreateCompatibleDC(c->WindowDC);
-                c->DibSection         = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
-                                                         DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
-                SelectObject(c->BackBufferDC, c->DibSection);
+                win->BackBufferDC       = CreateCompatibleDC(win->WindowDC);
+                win->DibSection         = CreateDIBSection(win->BackBufferDC, &BackBufferInfo,
+                                                         DIB_RGB_COLORS, (void **)&(win->drawBuffer), NULL, 0);
+                SelectObject(win->BackBufferDC, win->DibSection);
                 
-                c->backbufferW = width;
-                c->backbufferH = height;
+                win->backbufferW = width;
+                win->backbufferH = height;
             }
             
             //NOTE: Draw Buffer Dimensions
-            c->width        = width;
-            c->height       = height;
+            if(win)
+            {
+                win->width        = width;
+                win->height       = height;
+            }
             
             //NOTE: Client window position.
             RECT windowRect = {};
             if(GetWindowRect(h, &windowRect) != 0)
             {
-                c->windowPosX = windowRect.left;
-                c->windowPosY = windowRect.top;
+                win->windowPosX = windowRect.left;
+                win->windowPosY = windowRect.top;
             }
             else { LogMsg(FALSE, "GetWindowRect failed after resize."); }
             
@@ -1115,8 +1132,8 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             POINT currMouse = {};
             if(GetCursorPos(&currMouse) != 0)
             {
-                c->prevMousePosX = currMouse.x;
-                c->prevMousePosY = currMouse.y;
+                win->prevMousePosX = currMouse.x;
+                win->prevMousePosY = currMouse.y;
             }
             else { LogMsg(FALSE, "GetCursorPos failed after resize."); }
             
@@ -1128,38 +1145,43 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             u32 width       = LOWORD(l);
             u32 height      = HIWORD(l);
             
-            //NOTE: Draw Buffer Dimensions
-            c->width        = width;
-            c->height       = height;
-            
-            //NOTE: Client window position.
-            RECT windowRect = {};
-            if(GetWindowRect(h, &windowRect) != 0)
+            if(win)
             {
-                c->windowPosX = windowRect.left;
-                c->windowPosY = windowRect.top;
+                //NOTE: Draw Buffer Dimensions
+                //
+                win->width        = width;
+                win->height       = height;
+                
+                //NOTE: Client window position.
+                RECT windowRect = {};
+                if(GetWindowRect(h, &windowRect) != 0)
+                {
+                    win->windowPosX = windowRect.left;
+                    win->windowPosY = windowRect.top;
+                }
+                else { LogMsg(FALSE, "GetWindowRect failed after resize."); }
+                
+                //NOTE: Mouse position
+                POINT currMouse = {};
+                if(GetCursorPos(&currMouse) != 0)
+                {
+                    win->prevMousePosX = currMouse.x;
+                    win->prevMousePosY = currMouse.y;
+                }
+                else { LogMsg(FALSE, "GetCursorPos failed after resize."); }
+                
+                const f64 aspectRatio = (f64)width / (f64)height;
+                f64 xSpan = 1.0;
+                f64 ySpan = 1.0;
+                
+                //NOTE: Width > Height, so scale xSpan accordingly
+                if(aspectRatio > 1.0) { xSpan *= aspectRatio; }
+                //NOTE: Width < Height, so scale ySpan accordingly
+                else                  { ySpan *= aspectRatio; }
+
+                wglMakeCurrent(win->WindowDC, c->OGLContext);
             }
-            else { LogMsg(FALSE, "GetWindowRect failed after resize."); }
             
-            //NOTE: Mouse position
-            POINT currMouse = {};
-            if(GetCursorPos(&currMouse) != 0)
-            {
-                c->prevMousePosX = currMouse.x;
-                c->prevMousePosY = currMouse.y;
-            }
-            else { LogMsg(FALSE, "GetCursorPos failed after resize."); }
-            
-            const f64 aspectRatio = (f64)width / (f64)height;
-            f64 xSpan = 1.0;
-            f64 ySpan = 1.0;
-            
-            //NOTE: Width > Height, so scale xSpan accordingly
-            if(aspectRatio > 1.0) { xSpan *= aspectRatio; }
-            //NOTE: Width < Height, so scale ySpan accordingly
-            else                  { ySpan *= aspectRatio; }
-            
-            //glOrtho(-1.0*xSpan, xSpan, -1.0*ySpan, ySpan, -1.0, 1.0);
             glViewport(0, 0, width, height);
             //glScissor(0, 0, width, height); TODO: Support scissoring in OpenGL?
 #endif
@@ -1170,6 +1192,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         {
             PAINTSTRUCT ps = {};
             RECT r;
+            UIWindow *win = c->currWindow;
             
             //NOTE: I have to call BeginPaint() - EndPaint() Anyway.
             //If I don't, the message loop is gonna get stuck in PAINT calls.
@@ -1180,17 +1203,17 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             
             BITMAPINFO BitmapInfo = {};
             BitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-            BitmapInfo.bmiHeader.biWidth = c->width;
-            BitmapInfo.bmiHeader.biHeight = c->height;
+            BitmapInfo.bmiHeader.biWidth = win->width;
+            BitmapInfo.bmiHeader.biHeight = win->height;
             BitmapInfo.bmiHeader.biPlanes = 1;
             BitmapInfo.bmiHeader.biBitCount = 32;
             BitmapInfo.bmiHeader.biCompression = BI_RGB;
             
-            StretchDIBits(c->BackBufferDC, 0, 0, c->width, c->height,
-                          0, 0, c->width, c->height,
-                          c->drawBuffer, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+            StretchDIBits(win->BackBufferDC, 0, 0, win->width, win->height,
+                          0, 0, win->width, win->height,
+                          win->drawBuffer, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
             
-            Result = BitBlt(c->WindowDC, 0, 0, c->width, c->height, c->BackBufferDC, 0, 0, SRCCOPY);
+            Result = BitBlt(win->WindowDC, 0, 0, win->width, win->height, win->BackBufferDC, 0, 0, SRCCOPY);
             
             if(Result == 0) {
                 DWORD Err = GetLastError();
@@ -1202,7 +1225,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_CHAR:
         {
-            c->hasReceivedInput = TRUE;
+            win->hasReceivedInput = TRUE;
             
             b32 wasPressed = (l >> 30) & 0x1;
             u16 repeat     = (u16)l;
@@ -1231,7 +1254,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_KEYDOWN:
         {
-            c->hasReceivedInput = TRUE;
+            win->hasReceivedInput = TRUE;
             
             //Repeat is the first 16 bits of the LPARAM. Bits [0-15];
             u16 rep = (u16)l;
@@ -1279,7 +1302,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_KEYUP:
         {
-            c->hasReceivedInput = TRUE;
+            win->hasReceivedInput = TRUE;
             
             switch(w)
             { 
@@ -1323,28 +1346,28 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_LBUTTONDOWN:
         {
-            c->hasReceivedInput  = TRUE;
+            win->hasReceivedInput  = TRUE;
             Mouse->isLeftPressed = TRUE;
             return 0;
         } break;
         
         case WM_LBUTTONUP:
         {
-            c->hasReceivedInput  = TRUE;
+            win->hasReceivedInput  = TRUE;
             Mouse->isLeftPressed = FALSE;
             return 0;
         } break;
         
         case WM_RBUTTONDOWN:
         { 
-            c->hasReceivedInput   = TRUE;
+            win->hasReceivedInput   = TRUE;
             Mouse->isRightPressed = TRUE;
             return 0;
         } break;
         
         case WM_RBUTTONUP:
         { 
-            c->hasReceivedInput   = TRUE; 
+            win->hasReceivedInput   = TRUE; 
             Mouse->isRightPressed = FALSE;
             return 0;
         } break;
@@ -1354,9 +1377,9 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         {
             mouseTracking = FALSE;
             
-            c->UserInput.Mouse.isLeftPressed    = FALSE;
-            c->UserInput.Mouse.isMiddlePressed  = FALSE;
-            c->UserInput.Mouse.isRightPressed   = FALSE;
+            Mouse->isLeftPressed    = FALSE;
+            Mouse->isMiddlePressed  = FALSE;
+            Mouse->isRightPressed   = FALSE;
         } break;
         */
         case WM_MOUSEMOVE:
@@ -1376,9 +1399,9 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             
             POINTS currMouseClient = *((POINTS *)&l);
             Mouse->currPosX = currMouseClient.x;
-            Mouse->currPosY = c->height - currMouseClient.y;
+            Mouse->currPosY = win->height - currMouseClient.y;
             
-            c->hasReceivedInput = TRUE;
+            win->hasReceivedInput = TRUE;
             
             
             //NOTETODO: Is setting the cursor every single MOUSEMOVE bad?
@@ -1394,7 +1417,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_MOUSEWHEEL:
         {
-            c->hasReceivedInput   = TRUE;
+            win->hasReceivedInput   = TRUE;
             Mouse->wheelDelta     = GET_WHEEL_DELTA_WPARAM(w); //((s16)(w >> 16))*WHEEL_DELTA;
             Mouse->isWheelRotated = TRUE;
         } break;
@@ -1914,7 +1937,7 @@ void __ui_CreateDefaultShaders(UIContext *c)
     sdfValues[2] = texture(tex, TexCoord + vec2(-offset.x,  offset.y)).r;
     sdfValues[3] = texture(tex, TexCoord + vec2( offset.x,  offset.y)).r;
 
-        // Compute the alpha value using a threshold (0.5 is the middle distance)
+    // Compute the alpha value using a threshold (0.5 is the middle distance)
     float base  = 0.65;
     float alpha = 0.0;
     for (int i = 0; i < 4; ++i) {
@@ -1923,7 +1946,7 @@ void __ui_CreateDefaultShaders(UIContext *c)
 
     alpha /= 4.0; // Average the alphas
 
-        // Output color with pre-multiplied alpha
+    // Output color with pre-multiplied alpha
     vec4 result = vec4(fColor.rgb * alpha, fColor.a * alpha);
 
     #elif defined(SUBPIXELAA)
@@ -2081,8 +2104,15 @@ void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
     }
 }
 
-HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowName, UIContext *PrimaryContext = NULL)
+UIWindow __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer, s32 width, s32 height, const char *windowName)
 {
+    UIWindow win        = {};
+    win.drawBuffer      = backBuffer;
+    win.backbufferW     = width;
+    win.backbufferH     = height;
+    win.width           = width;
+    win.height          = height;
+
     u32 style = LS_THICK_BORDER | LS_POPUP;// | LS_RESIZE;// | LS_VISIBLE; //| LS_OVERLAPPEDWINDOW;
     BOOL Result;
     
@@ -2091,32 +2121,35 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     
     const int taskbarHeight = 20;
     
-    int spaceX = (screenWidth - c->backbufferW) / 2;
-    int spaceY = ((screenHeight - c->backbufferH) / 2);// - taskbarHeight;
+    int spaceX = (screenWidth - win.backbufferW) / 2;
+    int spaceY = ((screenHeight - win.backbufferH) / 2);// - taskbarHeight;
     if(spaceX < 0) { spaceX = 0; }
     if(spaceY < 0) { spaceY = 0; }
     
     //NOTE: We repliacate windowName in both the windowClass name and the actual window name, to avoid conflict
     //      when creating multiple windows under the same process.
+    //TODO: Will MsgPump work with multiple windows but only 1 context?
     HWND WindowHandle;
     if ((WindowHandle = CreateWindowExA(0 /*WS_EX_LAYERED*/, windowName, windowName, style,
-                                        spaceX, spaceY, c->backbufferW, c->backbufferH,
+                                        spaceX, spaceY, win.backbufferW, win.backbufferH,
                                         0, 0, MainInstance, c)) == nullptr)
     {
         DWORD Error = GetLastError();
         ls_printf("When Retrieving a WindowHandle in Win32_SetupScreen got error: %d", Error);
     }
+    win.Window = WindowHandle;
     
     HCURSOR DefaultArrow = LoadCursorA(NULL, IDC_ARROW);
     SetCursor(DefaultArrow);
     
 #ifdef LS_UI_OPENGL_BACKEND
-    if(PrimaryContext == NULL)
+
+    if(c->OGLContext == NULL)
     {
         __ui_InitOpenGLExtensions();
     }
     
-    s32 pixelFormatAttribs[] {
+    s32 pixelFormatAttribs[] = {
         WGL_DRAW_TO_WINDOW_ARB,     GL_TRUE,
         WGL_SUPPORT_OPENGL_ARB,     GL_TRUE,
         WGL_DOUBLE_BUFFER_ARB,      GL_TRUE,
@@ -2130,70 +2163,44 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     
     s32 pixelFormat;
     u32 numFormats;
-    c->WindowDC = GetDC(WindowHandle);
-    wglChoosePixelFormatARB(c->WindowDC, pixelFormatAttribs, 0, 1, &pixelFormat, &numFormats);
+    win.WindowDC = GetDC(WindowHandle);
+    wglChoosePixelFormatARB(win.WindowDC, pixelFormatAttribs, 0, 1, &pixelFormat, &numFormats);
     if(!numFormats) {
         AssertMsg(FALSE, "Failed to set OpenGL Pixel Format");
     }
     
     PIXELFORMATDESCRIPTOR pfd;
-    DescribePixelFormat(c->WindowDC, pixelFormat, sizeof(pfd), &pfd);
-    if(!SetPixelFormat(c->WindowDC, pixelFormat, &pfd)) {
+    DescribePixelFormat(win.WindowDC, pixelFormat, sizeof(pfd), &pfd);
+    if(!SetPixelFormat(win.WindowDC, pixelFormat, &pfd)) {
         AssertMsg(FALSE, "Failed to set OpenGL Pixel Format");
     }
-    
-    s32 gl33Attribs[] = {
-        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-        WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-        0,
-    };
-    
-    HGLRC gl33Context = wglCreateContextAttribsARB(c->WindowDC, 0, gl33Attribs);
-    if(!gl33Context) {
-        AssertMsg(FALSE, "Failed to create OpenGL 3.3 context");
-    }
-    
-    if(!wglMakeCurrent(c->WindowDC, gl33Context)) {
-        AssertMsg(FALSE, "Failed to Activate OpenGL 3.3 context");
-    }
-    c->OGLContext = gl33Context;
-    
-    ls_glLoadFunc(c->WindowDC);
- 
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);
 
-    if(PrimaryContext != NULL)
+    if(c->OGLContext == NULL)
     {
-        if(wglShareLists(PrimaryContext->OGLContext, gl33Context) == FALSE)
-        {
-            GLenum Error = glGetError();
-            AssertMsgF(FALSE, "In getGLVersion error: %d\n", (u32)Error);
+        s32 gl33Attribs[] = {
+            WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+            WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+            WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+            0,
+        };
+        
+        HGLRC gl33Context = wglCreateContextAttribsARB(win.WindowDC, 0, gl33Attribs);
+        if(!gl33Context) {
+            AssertMsg(FALSE, "Failed to create OpenGL 3.3 context");
         }
-
-        c->sdfTextShader      = PrimaryContext->sdfTextShader;
-        c->textShader         = PrimaryContext->textShader;
-        c->rectShader         = PrimaryContext->rectShader;
-        c->rectVAO            = PrimaryContext->rectVAO;
-        c->gradientRectShader = PrimaryContext->gradientRectShader;
-        c->rectGradientVAO    = PrimaryContext->rectGradientVAO;
-        c->texturedRectShader = PrimaryContext->texturedRectShader;
-        c->circleShader       = PrimaryContext->circleShader;
-        c->colorWheelShader   = PrimaryContext->colorWheelShader;
-        c->circleVAO          = PrimaryContext->circleVAO;
-        c->circleVertCount    = PrimaryContext->circleVertCount;
-
-        //TODO: This is inefficient, but it ensures on first frame the *Main* context and window
-        // are immediately current and rendered?
-        if(!wglMakeCurrent(PrimaryContext->WindowDC, PrimaryContext->OGLContext)) {
+        
+        if(!wglMakeCurrent(win.WindowDC, gl33Context)) {
             AssertMsg(FALSE, "Failed to Activate OpenGL 3.3 context");
         }
-    }
-    else
-    {
+        c->OGLContext = gl33Context;
+        
+        ls_glLoadFunc(win.WindowDC);
+     
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+
         __ui_CreateDefaultShaders(c);
     }
     
@@ -2201,59 +2208,51 @@ HWND __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, const char *windowN
     
     BITMAPINFO BackBufferInfo = {};
     BackBufferInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    BackBufferInfo.bmiHeader.biWidth = c->backbufferW;
-    BackBufferInfo.bmiHeader.biHeight = c->backbufferH;
+    BackBufferInfo.bmiHeader.biWidth = win.backbufferW;
+    BackBufferInfo.bmiHeader.biHeight = win.backbufferH;
     BackBufferInfo.bmiHeader.biPlanes = 1;
     BackBufferInfo.bmiHeader.biBitCount = 32;
     BackBufferInfo.bmiHeader.biCompression = BI_RGB;
     
-    c->WindowDC           = GetDC(WindowHandle);
-    c->BackBufferDC       = CreateCompatibleDC(c->WindowDC);
-    c->DibSection         = CreateDIBSection(c->BackBufferDC, &BackBufferInfo,
-                                             DIB_RGB_COLORS, (void **)&(c->drawBuffer), NULL, 0);
-    SelectObject(c->BackBufferDC, c->DibSection);
+    win.WindowDC           = GetDC(WindowHandle);
+    win.BackBufferDC       = CreateCompatibleDC(win.WindowDC);
+    win.DibSection         = CreateDIBSection(win.BackBufferDC, &BackBufferInfo,
+                                             DIB_RGB_COLORS, (void **)&(win.drawBuffer), NULL, 0);
+    SelectObject(win.BackBufferDC, win.DibSection);
 
 #endif
-
-    //NOTE TODO: We are assuming a font atlas was setup... this assumption is
-    // not guaranteed by anything. It's very error prone!
-    // Maybe add a flag that says wether fonts were set or not?
-    if(PrimaryContext != NULL)
-    {
-        c->fontGroup       = PrimaryContext->fontGroup;
-        c->currFont        = PrimaryContext->currFont;
-        c->currPixelHeight = PrimaryContext->currPixelHeight;
-    }
     
-    c->windowPosX = (s16)spaceX;
-    c->windowPosY = (s16)spaceY;
+    win.windowPosX = (s16)spaceX;
+    win.windowPosY = (s16)spaceY;
     
-    return WindowHandle;
+    return win;
 }
 
-HWND ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, const char *name, UIContext *PrimaryContext = NULL)
+UIWindow ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name)
 {
     __ui_RegisterWindow(MainInstance, name);
     
-    c->UserInput.Keyboard.getClipboard = windows_GetClipboard;
-    c->UserInput.Keyboard.setClipboard = windows_SetClipboard;
+    UIWindow win = __ui_CreateWindow(MainInstance, c, backBuffer, w, h, name);
+    win.UserInput.Keyboard.getClipboard = windows_GetClipboard;
+    win.UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
-    c->Window = __ui_CreateWindow(MainInstance, c, name, PrimaryContext);
+    __ls_ui_fillRenderThreadUIRects(c);
     
-    return c->Window;
+    return win;
 }
 
-HWND ls_uiCreateWindow(UIContext *c, const char *name, UIContext *PrimaryContext = NULL)
+UIWindow ls_uiCreateWindow(UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name)
 {
     HINSTANCE MainInstance = NULL;
     __ui_RegisterWindow(MainInstance, name);
     
-    c->UserInput.Keyboard.getClipboard = windows_GetClipboard;
-    c->UserInput.Keyboard.setClipboard = windows_SetClipboard;
+    UIWindow win = __ui_CreateWindow(MainInstance, c, backBuffer, w, h, name);
+    win.UserInput.Keyboard.getClipboard = windows_GetClipboard;
+    win.UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
-    c->Window = __ui_CreateWindow(MainInstance, c, name, PrimaryContext);
+    __ls_ui_fillRenderThreadUIRects(c);
     
-    return c->Window;
+    return win;
 }
 
 void ls_uiRender__(UIContext *c, u32 threadID);
@@ -2283,35 +2282,24 @@ DWORD ls_uiRenderThreadProc(void *param)
 void __ui_default_windows_render_callback(UIContext *c)
 {
 #ifdef LS_UI_OPENGL_BACKEND
-    if(!wglMakeCurrent(c->WindowDC, c->OGLContext)) {
-        AssertMsg(FALSE, "Failed to make current the OpenGL Context during reder callback");
-    }
-    SwapBuffers(c->WindowDC);
+    SwapBuffers(c->currWindow->WindowDC);
 #else
-    InvalidateRect(c->Window, NULL, TRUE);
+    InvalidateRect(c->currWindow->Window, NULL, TRUE);
 #endif //LS_UI_OPENGL_BACKEND
 }
 
-UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
-                                   Arena contextArena, Arena frameArena, Arena widgetArena,
+UIContext *ls_uiInitDefaultContext(Arena contextArena, Arena frameArena, Arena widgetArena,
                                    RenderCallback cb = __ui_default_windows_render_callback)
 {
     ls_arenaUse(contextArena);
     
     UIContext *uiContext       = (UIContext *)ls_alloc(sizeof(UIContext));
+    uiContext->currWindow      = NULL;
     uiContext->contextArena    = contextArena;
     uiContext->frameArena      = frameArena;
     uiContext->widgetArena     = widgetArena;
-    uiContext->scratchArena    = ls_arenaCreate(MBytes(4), (char*)"scratchArena");
-    
-    uiContext->drawBuffer      = backBuffer;
-    
-    uiContext->backbufferW     = width;
-    uiContext->backbufferH     = height;
-    
-    uiContext->width           = width;
-    uiContext->height          = height;
-    
+    uiContext->scratchArena    = ls_arenaCreate(MBytes(4), (char*)"scratchArena"); //TODO: Not a superfan of 4MB
+
     uiContext->renderFunc      = cb;
     uiContext->backgroundColor = RGB(34, 40, 49);
     uiContext->borderColor     = RGBg(0x22);
@@ -2328,8 +2316,8 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
     uiContext->scissor         = UIRect { 0, 0, 999999, 999999 };
     uiContext->frameTime       = {};
     
-#ifndef LS_UI_OPENGL_BACKEND
     //TODO: Make number of zLayers and zLayer Storage more customizable!
+#ifdef LS_UI_SOFTWARE_BACKEND
     if(__LS_UI_THREAD_COUNT != 0)
     {
         for(u32 i = 0; i < __LS_UI_THREAD_COUNT; i++)
@@ -2363,17 +2351,17 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
             uiContext->renderGroups[0].RenderCommands[zLayer] = ls_stackInit(sizeof(RenderCommand), 256);
         }
     }
-    
-    //NOTE: Set the Render UIRect for every Thread.
-    __ls_ui_fillRenderThreadUIRects(uiContext);
-#else
+#elif defined(LS_UI_OPENGL_BACKEND)
     uiContext->renderGroups[0].RenderCommands[0] = ls_stackInit(sizeof(RenderCommand), 512);
     
     for(s32 zLayer = 1; zLayer < UI_Z_LAYERS; zLayer++)
     {
         uiContext->renderGroups[0].RenderCommands[zLayer] = ls_stackInit(sizeof(RenderCommand), 256);
     }
+#else
+    AssertMsg(FALSE, "Missing backend...");
 #endif
+
     
     //------------------------------------------------------
     //NOTE: This shit is necessary to request millisecond-precision sleeps.
@@ -2397,14 +2385,29 @@ UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
     return uiContext;
 }
 
-UIContext *ls_uiInitDefaultContext(u8 *backBuffer, u32 width, u32 height,
-                                   s32 contextArenaSize, s32 frameArenaSize, s32 widgetArenaSize,
+UIContext *ls_uiInitDefaultContext(s32 contextArenaSize, s32 frameArenaSize, s32 widgetArenaSize,
                                    RenderCallback cb = __ui_default_windows_render_callback)
 {
     Arena contextArena = ls_arenaCreate(contextArenaSize, (char*)"contextArena");
     Arena frameArena   = ls_arenaCreate(frameArenaSize, (char*)"frameArena");
     Arena widgetArena  = ls_arenaCreate(widgetArenaSize, (char*)"widgetArena");
-    return ls_uiInitDefaultContext(backBuffer, width, height, contextArena, frameArena, widgetArena, cb);
+    return ls_uiInitDefaultContext(contextArena, frameArena, widgetArena, cb);
+}
+
+void ls_uiSelectWindowForRendering(UIContext *c, UIWindow *win)
+{
+    c->currWindow = win;
+
+#ifdef LS_UI_OPENGL_BACKEND
+    if(!wglMakeCurrent(win->WindowDC, c->OGLContext)) {
+        GLenum err = glGetError();
+        AssertMsgF(FALSE, "Failed to make current the OpenGL Context during render callback: %d", (s32)err);
+    }
+
+    //glViewport(0, 0, win->width, win->height);
+#elif defined(LS_UI_SOFTWARE_BACKEND)
+    return;
+#endif
 }
 
 void ls_uiFrameBegin(UIContext *c)
@@ -2415,41 +2418,43 @@ void ls_uiFrameBegin(UIContext *c)
     
     RegionTimerBegin(c->frameTime);
     
-    c->UserInput.Keyboard.prevState = c->UserInput.Keyboard.currentState;
-    c->UserInput.Keyboard.repeatState = {};
+    UIWindow *win = c->currWindow;
+    win->UserInput.Keyboard.prevState       = win->UserInput.Keyboard.currentState;
+    win->UserInput.Keyboard.repeatState     = {};
+    win->UserInput.Keyboard.hasPrintableKey = FALSE;
+    win->UserInput.Keyboard.keyCodepoint    = 0;
     
-    c->UserInput.Keyboard.hasPrintableKey = FALSE;
-    c->UserInput.Keyboard.keyCodepoint    = 0;
-    
-    c->UserInput.Mouse.prevPosX         = c->UserInput.Mouse.currPosX;
-    c->UserInput.Mouse.prevPosY         = c->UserInput.Mouse.currPosY;
-    c->UserInput.Mouse.wasLeftPressed   = c->UserInput.Mouse.isLeftPressed;
-    c->UserInput.Mouse.wasRightPressed  = c->UserInput.Mouse.isRightPressed;
-    c->UserInput.Mouse.wasMiddlePressed = c->UserInput.Mouse.isMiddlePressed;
-    c->UserInput.Mouse.isWheelRotated   = FALSE;
+    win->UserInput.Mouse.prevPosX           = win->UserInput.Mouse.currPosX;
+    win->UserInput.Mouse.prevPosY           = win->UserInput.Mouse.currPosY;
+    win->UserInput.Mouse.wasLeftPressed     = win->UserInput.Mouse.isLeftPressed;
+    win->UserInput.Mouse.wasRightPressed    = win->UserInput.Mouse.isRightPressed;
+    win->UserInput.Mouse.wasMiddlePressed   = win->UserInput.Mouse.isMiddlePressed;
+    win->UserInput.Mouse.isWheelRotated     = FALSE;
     
     //NOTETODO: Is it possible to at the same time setting the focus this frame, and 
     //          Having a pending request for a focus change, thus executing both this and the 
     //          next if block?
-    if(!c->focusWasSetThisFrame) { c->lastFocus = c->currentFocus; }
+    //
+    //TODO: Will this create problems in multi-window applications??
+    if(!win->focusWasSetThisFrame) { win->lastFocus = win->currentFocus; }
     
-    c->focusWasSetThisFrame = FALSE;
-    if(c->nextFrameFocusChange == TRUE)
+    win->focusWasSetThisFrame = FALSE;
+    if(win->nextFrameFocusChange == TRUE)
     {
-        c->lastFocus            = c->currentFocus;
-        c->currentFocus         = c->nextFrameFocus;
-        c->nextFrameFocusChange = FALSE;
+        win->lastFocus            = win->currentFocus;
+        win->currentFocus         = win->nextFrameFocus;
+        win->nextFrameFocusChange = FALSE;
     }
     
-    if(c->lastFocus && c->currentFocus != c->lastFocus)
+    if(win->lastFocus && win->currentFocus != win->lastFocus)
     {
-        DummyUIWidgetBase *base = (DummyUIWidgetBase *)c->lastFocus;
+        DummyUIWidgetBase *base = (DummyUIWidgetBase *)win->lastFocus;
         if(base->OnFocusLost) {
             base->OnFocusLost(c, base->onFocusLostData);
         }
     }
     
-    c->hasReceivedInput = FALSE;
+    win->hasReceivedInput = FALSE;
     
     // Process Input
     MSG Msg;
@@ -2461,54 +2466,54 @@ void ls_uiFrameBegin(UIContext *c)
     }
     
     //NOTE: Make sure previous frame click is not put on hold this frame.
-    if(c->UserInput.Mouse.wasLeftPressed  ||
-       c->UserInput.Mouse.wasRightPressed || 
-       c->UserInput.Mouse.wasMiddlePressed)
-    { c->hasReceivedInput = TRUE; }
+    if(win->UserInput.Mouse.wasLeftPressed  ||
+       win->UserInput.Mouse.wasRightPressed || 
+       win->UserInput.Mouse.wasMiddlePressed)
+    { win->hasReceivedInput = TRUE; }
     
     //NOTE: Window starts hidden, and then is shown after the first frame, 
     //      to avoid flashing because initially the frame buffer is all white.
-    if(isStartup) { ShowWindow(c->Window, SW_SHOW); isStartup = FALSE; c->hasReceivedInput = TRUE; }
+    if(isStartup) { ShowWindow(win->Window, SW_SHOW); isStartup = FALSE; win->hasReceivedInput = TRUE; }
     
-    Input *UserInput = &c->UserInput;
+    Input *UserInput = &win->UserInput;
     //NOTE: Right-Alt Drag, only when nothing is in focus
-    if(KeyHeld(keyMap::RAlt) && LeftClick && c->currentFocus == 0)
+    if(KeyHeld(keyMap::RAlt) && LeftClick && win->currentFocus == 0)
     { 
-        c->isDragging = TRUE;
+        win->isDragging = TRUE;
         POINT currMouse = {};
         GetCursorPos(&currMouse);
-        c->prevMousePosX = currMouse.x;
-        c->prevMousePosY = currMouse.y;
+        win->prevMousePosX = currMouse.x;
+        win->prevMousePosY = currMouse.y;
     }
     
     //NOTE: Handle Dragging
-    if(c->isDragging && LeftHold)
+    if(win->isDragging && LeftHold)
     { 
-        MouseInput *Mouse = &c->UserInput.Mouse;
+        MouseInput *Mouse = &win->UserInput.Mouse;
         
         POINT currMouse = {};
         GetCursorPos(&currMouse);
         
-        POINT prevMouse = { c->prevMousePosX, c->prevMousePosY };
+        POINT prevMouse = { win->prevMousePosX, win->prevMousePosY };
         
         SHORT newX = prevMouse.x - currMouse.x;
         SHORT newY = prevMouse.y - currMouse.y;
         
-        SHORT newWinX = c->windowPosX - newX;
-        SHORT newWinY = c->windowPosY - newY;
+        SHORT newWinX = win->windowPosX - newX;
+        SHORT newWinY = win->windowPosY - newY;
         
-        c->windowPosX = newWinX;
-        c->windowPosY = newWinY;
+        win->windowPosX = newWinX;
+        win->windowPosY = newWinY;
         
-        c->prevMousePosX  = currMouse.x;
-        c->prevMousePosY  = currMouse.y;
+        win->prevMousePosX  = currMouse.x;
+        win->prevMousePosY  = currMouse.y;
         
-        SetWindowPos(c->Window, 0, newWinX, newWinY, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
+        SetWindowPos(win->Window, 0, newWinX, newWinY, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
     }
     
-    if(c->isDragging && LeftUp) { c->isDragging = FALSE; }
+    if(win->isDragging && LeftUp) { win->isDragging = FALSE; }
     
-    if(LeftUp || RightUp || MiddleUp) { c->mouseCapture = 0; }
+    if(LeftUp || RightUp || MiddleUp) { win->mouseCapture = 0; }
     
 #ifdef LS_UI_OPENGL_BACKEND
     f64 rLinear = ((f64)c->backgroundColor.r / 255.0);
@@ -2527,43 +2532,43 @@ void ls_uiFrameBeginChild(UIContext *c)
     
     ls_arenaUse(c->frameArena);
     
-    RegionTimerBegin(c->frameTime);
+    //RegionTimerBegin(c->frameTime);
     
-    c->UserInput.Keyboard.prevState = c->UserInput.Keyboard.currentState;
-    c->UserInput.Keyboard.repeatState = {};
+    UIWindow *win = c->currWindow;
+    win->UserInput.Keyboard.prevState       = win->UserInput.Keyboard.currentState;
+    win->UserInput.Keyboard.repeatState     = {};
+    win->UserInput.Keyboard.hasPrintableKey = FALSE;
+    win->UserInput.Keyboard.keyCodepoint    = 0;
     
-    c->UserInput.Keyboard.hasPrintableKey = FALSE;
-    c->UserInput.Keyboard.keyCodepoint    = 0;
-    
-    c->UserInput.Mouse.prevPosX         = c->UserInput.Mouse.currPosX;
-    c->UserInput.Mouse.prevPosY         = c->UserInput.Mouse.currPosY;
-    c->UserInput.Mouse.wasLeftPressed   = c->UserInput.Mouse.isLeftPressed;
-    c->UserInput.Mouse.wasRightPressed  = c->UserInput.Mouse.isRightPressed;
-    c->UserInput.Mouse.wasMiddlePressed = c->UserInput.Mouse.isMiddlePressed;
-    c->UserInput.Mouse.isWheelRotated   = FALSE;
+    win->UserInput.Mouse.prevPosX           = win->UserInput.Mouse.currPosX;
+    win->UserInput.Mouse.prevPosY           = win->UserInput.Mouse.currPosY;
+    win->UserInput.Mouse.wasLeftPressed     = win->UserInput.Mouse.isLeftPressed;
+    win->UserInput.Mouse.wasRightPressed    = win->UserInput.Mouse.isRightPressed;
+    win->UserInput.Mouse.wasMiddlePressed   = win->UserInput.Mouse.isMiddlePressed;
+    win->UserInput.Mouse.isWheelRotated     = FALSE;
     
     //NOTETODO: Is it possible to at the same time setting the focus this frame, and 
     //          Having a pending request for a focus change, thus executing both this and the 
     //          next if block?
-    if(!c->focusWasSetThisFrame) { c->lastFocus = c->currentFocus; }
+    if(!win->focusWasSetThisFrame) { win->lastFocus = win->currentFocus; }
     
-    c->focusWasSetThisFrame = FALSE;
-    if(c->nextFrameFocusChange == TRUE)
+    win->focusWasSetThisFrame = FALSE;
+    if(win->nextFrameFocusChange == TRUE)
     {
-        c->lastFocus            = c->currentFocus;
-        c->currentFocus         = c->nextFrameFocus;
-        c->nextFrameFocusChange = FALSE;
+        win->lastFocus            = win->currentFocus;
+        win->currentFocus         = win->nextFrameFocus;
+        win->nextFrameFocusChange = FALSE;
     }
     
-    if(c->lastFocus && c->currentFocus != c->lastFocus)
+    if(win->lastFocus && win->currentFocus != win->lastFocus)
     {
-        DummyUIWidgetBase *base = (DummyUIWidgetBase *)c->lastFocus;
+        DummyUIWidgetBase *base = (DummyUIWidgetBase *)win->lastFocus;
         if(base->OnFocusLost) {
             base->OnFocusLost(c, base->onFocusLostData);
         }
     }
     
-    c->hasReceivedInput = FALSE;
+    win->hasReceivedInput = FALSE;
     
     //NOTE: The child frame doesn't need a message pump, because windows
     //      Pumps messages to all windows that were created by this thread.
@@ -2572,47 +2577,47 @@ void ls_uiFrameBeginChild(UIContext *c)
     //      TODO: Maybe we want to move the message pump to a separate function
     //      to make the order of function calls more obvious and less error prone!
     
-    if(isStartup) { isStartup = FALSE; c->hasReceivedInput = TRUE; }
+    if(isStartup) { isStartup = FALSE; win->hasReceivedInput = TRUE; }
     
-    Input *UserInput = &c->UserInput;
+    Input *UserInput = &win->UserInput;
     //NOTE: Right-Alt Drag, only when nothing is in focus
-    if(KeyHeld(keyMap::RAlt) && LeftClick && c->currentFocus == 0)
+    if(KeyHeld(keyMap::RAlt) && LeftClick && win->currentFocus == 0)
     { 
-        c->isDragging = TRUE;
+        win->isDragging = TRUE;
         POINT currMouse = {};
         GetCursorPos(&currMouse);
-        c->prevMousePosX = currMouse.x;
-        c->prevMousePosY = currMouse.y;
+        win->prevMousePosX = currMouse.x;
+        win->prevMousePosY = currMouse.y;
     }
     
     //NOTE: Handle Dragging
-    if(c->isDragging && LeftHold)
+    if(win->isDragging && LeftHold)
     { 
-        MouseInput *Mouse = &c->UserInput.Mouse;
+        MouseInput *Mouse = &win->UserInput.Mouse;
         
         POINT currMouse = {};
         GetCursorPos(&currMouse);
         
-        POINT prevMouse = { c->prevMousePosX, c->prevMousePosY };
+        POINT prevMouse = { win->prevMousePosX, win->prevMousePosY };
         
         SHORT newX = prevMouse.x - currMouse.x;
         SHORT newY = prevMouse.y - currMouse.y;
         
-        SHORT newWinX = c->windowPosX - newX;
-        SHORT newWinY = c->windowPosY - newY;
+        SHORT newWinX = win->windowPosX - newX;
+        SHORT newWinY = win->windowPosY - newY;
         
-        c->windowPosX = newWinX;
-        c->windowPosY = newWinY;
+        win->windowPosX = newWinX;
+        win->windowPosY = newWinY;
         
-        c->prevMousePosX  = currMouse.x;
-        c->prevMousePosY  = currMouse.y;
+        win->prevMousePosX  = currMouse.x;
+        win->prevMousePosY  = currMouse.y;
         
-        SetWindowPos(c->Window, 0, newWinX, newWinY, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
+        SetWindowPos(win->Window, 0, newWinX, newWinY, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
     }
     
-    if(c->isDragging && LeftUp) { c->isDragging = FALSE; }
+    if(win->isDragging && LeftUp) { win->isDragging = FALSE; }
     
-    if(LeftUp || RightUp || MiddleUp) { c->mouseCapture = 0; }
+    if(LeftUp || RightUp || MiddleUp) { win->mouseCapture = 0; }
 }
 
 void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
@@ -2625,12 +2630,11 @@ void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
     __debug_frameNumber += 1;
 #endif
     
-    Input *UserInput = &c->UserInput;
+    UIWindow *win = c->currWindow;
+    Input *UserInput = &win->UserInput;
     //NOTE: If user clicked somewhere, but nothing set the focus, then we should reset the focus
-    if(LeftClick && !c->focusWasSetThisFrame)
-    { 
-        ls_uiFocusChange(c, 0);
-    }
+    if(LeftClick && !win->focusWasSetThisFrame)
+    { ls_uiFocusChange(c, 0); }
     
     RegionTimerEnd(c->frameTime);
     u32 frameTimeMs = RegionTimerGet(c->frameTime);
@@ -2651,22 +2655,23 @@ void ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs)
     
     static u32 lastFrameTime = 0;
     
-    Input *UserInput = &c->UserInput;
+    UIWindow *win = c->currWindow;
+    Input *UserInput = &win->UserInput;
     //NOTE: If user clicked somewhere, but nothing set the focus, then we should reset the focus
-    if(LeftClick && !c->focusWasSetThisFrame)
+    if(LeftClick && !win->focusWasSetThisFrame)
     { ls_uiFocusChange(c, 0); }
     
-    RegionTimerEnd(c->frameTime);
-    u32 frameTimeMs = RegionTimerGet(c->frameTime);
-    if(frameTimeMs < frameTimeTargetMs)
-    {
-        u32 deltaTimeInMs = frameTimeTargetMs - frameTimeMs;
-        Sleep(deltaTimeInMs);
-    }
-    
-    RegionTimerEnd(c->frameTime);
-    c->dt = RegionTimerGet(c->frameTime);
-    lastFrameTime = c->dt;
+    //RegionTimerEnd(c->frameTime);
+    //u32 frameTimeMs = RegionTimerGet(c->frameTime);
+    //if(frameTimeMs < frameTimeTargetMs)
+    //{
+    //    u32 deltaTimeInMs = frameTimeTargetMs - frameTimeMs;
+    //    Sleep(deltaTimeInMs);
+    //}
+    //
+    //RegionTimerEnd(c->frameTime);
+    //c->dt = RegionTimerGet(c->frameTime);
+    //lastFrameTime = c->dt;
 }
 
 void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
@@ -2745,9 +2750,6 @@ void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
     if(err != GL_NO_ERROR) {
         AssertMsgF(FALSE, "Couldn't Bind Generated Textures for Font Atlas, Error: %d", err);
     }
-    
-    //NOTE: This is not available past OpenGL 3.0, since INTENSITY AND LUMINANCE formats are deprecated
-    //glTexImage2D(GL_TEXTURE_2D, 0, GL_INTENSITY, Width, Height, 0, GL_RED, GL_UNSIGNED_BYTE, c->fonts[0].fontAtlasSDF);
     
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, Width, Height, 0, GL_RED, GL_UNSIGNED_BYTE, c->fontGroup.fonts[0].fontAtlas);
     
@@ -2902,26 +2904,28 @@ inline void ls_uiAddOnDestroyCallback(UIContext *c, onDestroyFunc f)
 
 void ls_uiFocusChangeSameFrame(UIContext *c, u64 *focus)
 {
-    c->lastFocus            = c->currentFocus;
-    c->currentFocus         = focus;
-    c->focusWasSetThisFrame = TRUE;
+    UIWindow *win             = c->currWindow;
+    win->lastFocus            = win->currentFocus;
+    win->currentFocus         = focus;
+    win->focusWasSetThisFrame = TRUE;
 }
 
 void ls_uiFocusChange(UIContext *c, u64 *focus)
 {
-    c->nextFrameFocusChange = TRUE;
-    c->nextFrameFocus = focus;
+    UIWindow *win             = c->currWindow;
+    win->nextFrameFocusChange = TRUE;
+    win->nextFrameFocus       = focus;
 }
 
 b32 ls_uiInFocus(UIContext *c, void *p)
 {
-    if(c->currentFocus == (u64 *)p) { return TRUE; }
+    if(c->currWindow->currentFocus == (u64 *)p) { return TRUE; }
     return FALSE;
 }
 
 b32 ls_uiHasCapture(UIContext *c, void *p)
 {
-    if(c->mouseCapture == (u64 *)p) { return TRUE; }
+    if(c->currWindow->mouseCapture == (u64 *)p) { return TRUE; }
     return FALSE;
 }
 
@@ -2930,7 +2934,7 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
     AssertMsg(c->scroll == NULL, "Starting a scrollable region inside a scrollable region is invalid\n");
     AssertMsg(scroll, "Invalid Scrollable Region\n");
     
-    Input *UserInput = &c->UserInput;
+    Input *UserInput = &c->currWindow->UserInput;
     
     if(LeftUp) { scroll->isHeld = FALSE; }
     
@@ -2956,7 +2960,7 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
     }
     else if(scroll->isHeld)
     {
-        s32 mouseDeltaY = (c->UserInput.Mouse.prevPosY - c->UserInput.Mouse.currPosY);
+        s32 mouseDeltaY = (UserInput->Mouse.prevPosY - UserInput->Mouse.currPosY);
         s32 scaledDeltaY = (s32)(((f64)mouseDeltaY / (f64)scroll->h)*(f64)totalHeight);
         
         deltaY = -scaledDeltaY;
@@ -2982,7 +2986,7 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
 void ls_uiEndScrollableRegion(UIContext *c)
 { 
     c->scroll  = NULL;
-    c->scissor = UIRect { 0, 0, s32(c->width), s32(c->height) };
+    c->scissor = UIRect { 0, 0, s32(c->currWindow->width), s32(c->currWindow->height) };
 }
 
 void ls_uiResetScrollableRegion(UIContext *c)
@@ -2999,10 +3003,10 @@ void ls_uiResetScrollableRegion(UIContext *c)
 UIRect ls_uiScreenCoordsToUnitSquare(UIContext *c, s32 x, s32 y, s32 w, s32 h)
 {
     UIRect result = {};
-    result.leftX  = (2.0f*(f32)x / (f32)c->width)-1.0f;
-    result.botY   = (2.0f*(f32)y / (f32)c->height)-1.0f;
-    result.rightX = (2.0f*(f32)(x+w) / (f32)c->width)-1.0f;
-    result.topY   = (2.0f*(f32)(y+h) / (f32)c->height)-1.0f;
+    result.leftX  = (2.0f*(f32)x / (f32)c->currWindow->width)-1.0f;
+    result.botY   = (2.0f*(f32)y / (f32)c->currWindow->height)-1.0f;
+    result.rightX = (2.0f*(f32)(x+w) / (f32)c->currWindow->width)-1.0f;
+    result.topY   = (2.0f*(f32)(y+h) / (f32)c->currWindow->height)-1.0f;
     return result;
 }
 
@@ -3176,6 +3180,7 @@ Color ls_uiHSVtoRGB(u32 h, f32 s, f32 v)
 
 void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color col)
 {
+    UIWindow *win = c->currWindow;
 #ifdef LS_UI_OPENGL_BACKEND
     
     glUseProgram(c->rectShader);
@@ -3186,14 +3191,14 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
     
     f64 xf = (f64)startY;
     f64 yf = (f64)startY;
-    f64 wf = (f64)c->width;
-    f64 hf = (f64)c->height;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
     
     // Positions need to be adjusted by the width and height... for some reason?
     f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
     f64 yp = ((yf + (f64)h / 2.0) / (hf / 2.0)) - 1.0;
     Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
-    Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
+    Mat4 scale     = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
     
     glUniformMatrix4fv(glGetUniformLocation(c->rectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
@@ -3218,8 +3223,8 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
     {
         for(s32 x = startX; x < startX+simdWidth; x += 4)
         {
-            u32 idx = ((y*c->width) + x)*sizeof(s32);
-            __m128i *At = (__m128i *)(c->drawBuffer + idx);
+            u32 idx = ((y*win->width) + x)*sizeof(s32);
+            __m128i *At = (__m128i *)(win->drawBuffer + idx);
             
             _mm_storeu_si128(At, color);
         }
@@ -3229,7 +3234,7 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
     //      We decide to have the right rectangle be full height
     //      And the top one be less-than-full width, to avoid over-drawing the small subrect
     //        in the top right corner.
-    u32 *At = (u32 *)c->drawBuffer;
+    u32 *At = (u32 *)win->drawBuffer;
     
     if(diffWidth) 
     {
@@ -3237,7 +3242,7 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
         {
             for(s32 x = startX+simdWidth; x < startX+w; x++)
             {
-                At[y*c->width + x] = col.value;
+                At[y*win->width + x] = col.value;
             }
         }
     }
@@ -3248,7 +3253,7 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
         {
             for(s32 x = startX; x < startX+simdWidth; x++)
             {
-                At[y*c->width + x] = col.value;
+                At[y*win->width + x] = col.value;
             }
         }
     }
@@ -3257,6 +3262,8 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
 
 void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor, Color col)
 {
+    UIWindow *win = c->currWindow;
+
 #ifdef LS_UI_OPENGL_BACKEND
     
     glUseProgram(c->rectShader);
@@ -3267,14 +3274,14 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect thread
     
     f64 xf = (f64)xPos;
     f64 yf = (f64)yPos;
-    f64 wf = (f64)c->width;
-    f64 hf = (f64)c->height;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
     
     // Positions need to be adjusted by the width and height... for some reason?
     f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
     f64 yp = ((yf + (f64)h / 2.0) / (hf / 2.0)) - 1.0;
     Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
-    Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
+    Mat4 scale     = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
     
     glUniformMatrix4fv(glGetUniformLocation(c->rectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
@@ -3325,11 +3332,11 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect thread
         {
             AssertMsg(x <= maxX, "Should never happen. Width was precomputed\n");
             
-            if(x < 0 || x >= c->width)  continue;
-            if(y < 0 || y >= c->height) continue;
+            if(x < 0 || x >= win->width)  continue;
+            if(y < 0 || y >= win->height) continue;
             
-            u32 idx = ((y*c->width) + x)*sizeof(s32);
-            __m128i *At = (__m128i *)(c->drawBuffer + idx);
+            u32 idx = ((y*win->width) + x)*sizeof(s32);
+            __m128i *At = (__m128i *)(win->drawBuffer + idx);
             
             __m128i val = _mm_loadu_si128(At);
             
@@ -3353,7 +3360,7 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect thread
     //      We decide to have the right rectangle be full height
     //      And the top one be less-than-full width, to avoid over-drawing the small subrect
     //        in the top right corner.
-    u32 *At = (u32 *)c->drawBuffer;
+    u32 *At = (u32 *)win->drawBuffer;
     
     if(diffWidth) 
     {
@@ -3368,12 +3375,12 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect thread
                     break; 
                 }
                 
-                if(x < 0 || x >= c->width)  continue;
-                if(y < 0 || y >= c->height) continue;
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
                 
-                Color base = {.value = At[y*c->width + x] };
+                Color base = {.value = At[y*win->width + x] };
                 Color blendedColor = ls_uiAlphaBlend(col, base);
-                At[y*c->width + x] = blendedColor.value;
+                At[y*win->width + x] = blendedColor.value;
             }
         }
     }
@@ -3389,12 +3396,12 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect thread
             {
                 if(x > maxX) { break; }
                 
-                if(x < 0 || x >= c->width)  continue;
-                if(y < 0 || y >= c->height) continue;
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
                 
-                Color base = { .value = At[y*c->width + x] };
+                Color base = { .value = At[y*win->width + x] };
                 Color blendedColor = ls_uiAlphaBlend(col, base);
-                At[y*c->width + x] = blendedColor.value;
+                At[y*win->width + x] = blendedColor.value;
             }
         }
     }
@@ -3404,6 +3411,7 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect thread
 void ls_uiDrawCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness,
                  UIRect threadRect, UIRect scissor, Color col)
 {
+    UIWindow *win = c->currWindow;
 #ifdef LS_UI_OPENGL_BACKEND
     
     glUseProgram(c->circleShader);
@@ -3413,8 +3421,8 @@ void ls_uiDrawCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thi
     
     f64 xf = (f64)leftCornerX;
     f64 yf = (f64)leftCornerY;
-    f64 wf = (f64)c->width;
-    f64 hf = (f64)c->height;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
     
     s32 w = radius*2;
     s32 h = radius*2;
@@ -3462,7 +3470,7 @@ void ls_uiDrawCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thi
     if(endX > maxX) { endX = maxX; }
     if(endY > maxY) { endY = maxY; }
     
-    u32 *At = (u32 *)c->drawBuffer;
+    u32 *At = (u32 *)win->drawBuffer;
     for(s32 y = startY; y < endY; y++)
     {
         for(s32 x = startX; x < endX; x++)
@@ -3475,9 +3483,9 @@ void ls_uiDrawCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thi
             
             if(cond1 && cond2)
             {
-                Color base         = { .value = At[y*c->width + x] };
+                Color base         = { .value = At[y*win->width + x] };
                 Color blendedColor = ls_uiAlphaBlend(col, base);
-                At[y*c->width + x] = blendedColor.value;
+                At[y*win->width + x] = blendedColor.value;
             }
         }
     }
@@ -3597,6 +3605,8 @@ void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickne
 
 void ls_uiStretchBitmap(UIContext *c, UIBitmap *bmp, UIRect dst, UIRect threadRect, UIRect scissor)
 {
+    UIWindow *win = c->currWindow;
+
 #ifdef LS_UI_OPENGL_BACKEND
     
     glUseProgram(c->texturedRectShader);
@@ -3606,8 +3616,8 @@ void ls_uiStretchBitmap(UIContext *c, UIBitmap *bmp, UIRect dst, UIRect threadRe
     
     f64 xf = (f64)dst.x;
     f64 yf = (f64)dst.y;
-    f64 wf = (f64)c->width;
-    f64 hf = (f64)c->height;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
     
     // Positions need to be adjusted by the width and height... for some reason?
     f64 xp = ((xf + (f64)dst.w / 2.0) / (wf / 2.0)) - 1.0;
@@ -3657,7 +3667,7 @@ void ls_uiStretchBitmap(UIContext *c, UIBitmap *bmp, UIRect dst, UIRect threadRe
     if(startX+dst.w > maxX) { dst.w = maxX-startX+1; }
     if(startY+dst.h > maxY) { dst.h = maxY-startY+1; }
     
-    u32 *At = (u32 *)c->drawBuffer;
+    u32 *At = (u32 *)win->drawBuffer;
     Color *SrcBmp = (Color *)bmp->data;
     
     f64 bmpY = 0;
@@ -3668,10 +3678,10 @@ void ls_uiStretchBitmap(UIContext *c, UIBitmap *bmp, UIRect dst, UIRect threadRe
         {
             s32 srcX = (s32)bmpX;
             s32 srcY = (s32)bmpY;
-            Color finalColor = {.value = At[y*c->width + x]};
+            Color finalColor = {.value = At[y*win->width + x]};
             Color SrcPixel = SrcBmp[srcY*bmp->w + srcX];
             finalColor = ls_uiAlphaBlend(SrcPixel, finalColor);
-            At[y*c->width + x] = finalColor.value;
+            At[y*win->width + x] = finalColor.value;
             
             bmpX += factorW;
         }
@@ -3713,6 +3723,7 @@ s32 ls_uiGetKernAdvance(UIFont *font, s32 codepoint1, s32 codepoint2)
 #if defined(LS_UI_OPENGL_BACKEND)
 void __ls_uiOGLGlyph(UIContext *c, UIFont *f, s32 cp, s32 x, s32 y, f64 scale, Color col)
 {
+    UIWindow *win = c->currWindow;
     const s32 verticesPerGlyph = 6;
     
     b32 isSDF = c->fontGroup.isSDF;
@@ -3751,8 +3762,8 @@ void __ls_uiOGLGlyph(UIContext *c, UIFont *f, s32 cp, s32 x, s32 y, f64 scale, C
     // performed again.
     f64 xf = (f64)x;
     f64 yf = (f64)y;
-    f64 wf = (f64)c->width;
-    f64 hf = (f64)c->height;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
     f64 xp = ((xf - wf/2.0) / wf)*2;
     f64 yp = ((yf - hf/2.0) / hf)*2;
     Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
@@ -3760,7 +3771,7 @@ void __ls_uiOGLGlyph(UIContext *c, UIFont *f, s32 cp, s32 x, s32 y, f64 scale, C
     Mat4 transform = ls_mat4x4Mul(scaleM, translate);
     
     glUniformMatrix4fv(glGetUniformLocation(shader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
-    glUniform2f(glGetUniformLocation(shader, "viewportSize"), (f32)c->width, (f32)c->height);
+    glUniform2f(glGetUniformLocation(shader, "viewportSize"), (f32)win->width, (f32)win->height);
     
     s32 vaoGlyphIndex = (f->idxInGroup * c->fontGroup.codepointCount) + cp;
     glBindVertexArray(c->fontGroup.atlasVAO);
@@ -3779,6 +3790,7 @@ void __ls_uiSoftwareGlyph(UIContext *c, UIGlyph *g, s32 xP, s32 yP, s32 stride, 
     AssertNonNull(g);
     if(g->width == 0 || g->height == 0) { return; }
     
+    UIWindow *win = c->currWindow;
     b32 isSDF = c->fontGroup.isSDF;
     
     auto bl_interp = [stride, scale](UIGlyph *glyph, s32 ix, s32 iy, s32 scaledHeight) -> f64 {
@@ -3814,7 +3826,7 @@ void __ls_uiSoftwareGlyph(UIContext *c, UIGlyph *g, s32 xP, s32 yP, s32 stride, 
         return realAlpha;
     };
     
-    u32 *At = (u32 *)c->drawBuffer;
+    u32 *At = (u32 *)win->drawBuffer;
     s32 startY = yP - g->y1*scale;
     s32 startX = xP + g->x0*scale;
     
@@ -3846,7 +3858,7 @@ void __ls_uiSoftwareGlyph(UIContext *c, UIGlyph *g, s32 xP, s32 yP, s32 stride, 
             s32 backbufferX = startX + x;
             f64 glyphX = ((f64)(x + xOff) / scale);
             
-            Color base  = { .value = At[backbufferY*c->width + backbufferX] };
+            Color base  = { .value = At[backbufferY*win->width + backbufferX] };
             
             f64 realAlpha = 0.0;
             if(isSDF)
@@ -3858,7 +3870,7 @@ void __ls_uiSoftwareGlyph(UIContext *c, UIGlyph *g, s32 xP, s32 yP, s32 stride, 
                 //NOTE: Dynamically adjust the aliasing around the edge. This is important
                 // since we want a sharp glyph at large pixel sizes and an aliased glyph 
                 // at small pixels sizes to make them more readable and less jagged!
-                f32 t = (f32)(scale*64.0) / ((f32)c->height * 0.26);
+                f32 t = (f32)(scale*64.0) / ((f32)win->height * 0.26);
                 if (t > 1.0) { t = 1.0f; }
                 u8 alphaCheck = (u8)(255.0 * t);
                 if(realAlpha < alphaCheck) { realAlpha = 0.0; }
@@ -3877,7 +3889,7 @@ void __ls_uiSoftwareGlyph(UIContext *c, UIGlyph *g, s32 xP, s32 yP, s32 stride, 
             };
             
             Color final = ls_uiAlphaBlend(actual, base);
-            At[backbufferY * c->width + backbufferX] = final.value;
+            At[backbufferY * win->width + backbufferX] = final.value;
         }
     }
 }
@@ -3970,11 +3982,12 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *f, UITextBox *box, s32 pixelH
     AssertMsg(box, "TextBox is null\n");
     AssertMsg(f, "Passed Font is null\n");
     
+    UIWindow *win = c->currWindow;
     s32 cIdx = box->caretIndex - box->currLineBeginIdx;
     
     const f64 scaling    = (f64)pixelHeight / (f64)f->pixelHeight;
     const s32 lineHeight = f->ascent*scaling -  f->descent*scaling +  f->lineGap*scaling;
-    const u32 horzOff    = (u32)(c->width*0.01f);
+    const u32 horzOff    = (u32)(win->width*0.01f);
     const u32 strMaxX    = x + (w - 2*horzOff);
     
     //TODO: do I even need padding?
@@ -4088,7 +4101,7 @@ void ls_uiRenderStringOnRect(UIContext *c, UIFont *f, UITextBox *box, s32 pixelH
         
         if((lineIdx == relativeCaretLineIdx) && (cIdx == line.len)) { caretX = currX-3; }
         
-        if(box->isCaretOn && (c->currentFocus == (u64 *)box) && (lineIdx == relativeCaretLineIdx))
+        if(box->isCaretOn && (win->currentFocus == (u64 *)box) && (lineIdx == relativeCaretLineIdx))
         {
             ls_uiGlyph(c, f, (u32)'|', 0xFFFFFFFF, caretX, currY, scaling, threadRect, scissor, textColor);
         }
@@ -4254,8 +4267,6 @@ s32 ls_uiGlyphStringFit(UIContext *c, UIFont *font, utf32 text, s32 maxLen)
 //      This is done to allow automatic layout of multiple strings inside a given rect (UILayoutRect).
 UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, UILayoutRect layout, utf32 text)
 {
-    TODO;
-    
     //TODO: Only one quirk remains, the y offset is determined based on the font height of the current element, 
     //      which obviously generates too large gaps when the font becomes smaller from one call to the 
     //      other and too small gaps when the font becomes bigger. The solution to this is to consider 
@@ -4271,24 +4282,25 @@ UIRect ls_uiGlyphStringLayout(UIContext *c, UIFont *font, UILayoutRect layout, u
     s32 currX          = layout.startX;
     s32 currY          = layout.startY;
     s32 currLineHeight = font->pixelHeight;
+    const f64 scaling  = (f64)c->currPixelHeight / (f64)font->pixelHeight;
     for(u32 i = 0; i < text.len; i++)
     {
-        u32 indexInGlyphArray = text.data[i];
-        AssertMsgF(indexInGlyphArray <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", indexInGlyphArray);
+        u32 cp = text.data[i];
+        u32 cpNext = 0xFFFFFFFF;
+        if(i < text.len-1) {
+            cpNext = text.data[i+1];
+        }
+        AssertMsgF(cp <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", cp);
+        AssertMsgF(cpNext == 0xFFFFFFFF || cpNext <= c->fontGroup.maxCodepoint, "CPN GlyphIndex %d OutOfBounds\n", cpNext);
         
-        if(indexInGlyphArray == (u32)'\n')
+        if(cp == (u32)'\n')
         { currX = layout.minX; currY -= font->pixelHeight; currLineHeight += font->pixelHeight; continue; }
         
-        UIGlyph *currGlyph = &font->glyph[indexInGlyphArray];
-        
-        s32 kernAdvance = 0;
-        if(i < text.len-1) { kernAdvance = ls_uiGetKernAdvance(font, text.data[i], text.data[i+1]); }
-        
-        s32 newAdvance = currGlyph->xAdv + kernAdvance;
-        if(currX + newAdvance > layout.maxX)
+        s32 advance = ls_uiGlyphAdv(c, font, cp, cpNext, scaling);
+        if(currX + advance > layout.maxX)
         { currX = layout.minX; currY -= font->pixelHeight; currLineHeight += font->pixelHeight; continue; }
         
-        currX += newAdvance;
+        currX += advance;
     }
     
     //UIRect finalLayout = { currX, currY, layout.maxX, currLineHeight };
@@ -4519,7 +4531,7 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, T text, UICallback onCli
 
 b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgColor, s32 zLayer = 0)
 {
-    Input *UserInput = &c->UserInput;
+    Input *UserInput = &c->currWindow->UserInput;
     
     b32 inputUse = FALSE;
     
@@ -4622,7 +4634,7 @@ UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32
 
 b32 ls_uiCheck(UIContext *c, UICheck *check, s32 x, s32 y, s32 zLayer = 0)
 {
-    Input *UserInput = &c->UserInput;
+    Input *UserInput = &c->currWindow->UserInput;
     b32 inputUse = FALSE;
     
     if(MouseInRect(x, y, check->w, check->h) && ls_uiHasCapture(c, 0))
@@ -4686,8 +4698,9 @@ void ls_uiLabelInRect(UIContext *c, T label, s32 x, s32 y, Color bkg, Color bord
 
 void ls_uiLabel(UIContext *c, utf32 label, f32 relX, f32 relY, Color textColor, s32 zLayer = 0)
 {
-    s32 xPos = c->width * relX;
-    s32 yPos = c->height * relY;
+    UIWindow *win = c->currWindow;
+    s32 xPos = win->width * relX;
+    s32 yPos = win->height * relY;
     
     ls_uiLabel(c, label, xPos, yPos, textColor, zLayer);
 }
@@ -4888,7 +4901,7 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
 {
     Arena prev = ls_arenaUse(c->widgetArena);
     
-    Input *UserInput = &c->UserInput;
+    Input *UserInput = &c->currWindow->UserInput;
     b32 inputUse = FALSE;
     
     if(LeftClickIn(xPos, yPos, w, h-1) && ls_uiHasCapture(c, 0)) {
@@ -5521,6 +5534,8 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
 void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
                     UIRect threadRect, UIRect scissor, Color bkgColor, UIArrowSide s)
 {
+    UIWindow *win = c->currWindow;
+
 #ifdef LS_UI_OPENGL_BACKEND
     
     ls_uiBorderedRect(c, x-1, yPos, w, h, threadRect, scissor, bkgColor);
@@ -5567,8 +5582,8 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
     
     f64 xf = (f64)startX;
     f64 yf = (f64)startY;
-    f64 wf = (f64)c->width;
-    f64 hf = (f64)c->height;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
     
     // Positions need to be adjusted by the width and height... for some reason?
     f64 xp = ((xf + (f64)arrowWidth / 2.0) / (wf / 2.0)) - 1.0;
@@ -5594,7 +5609,7 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
     s32 maxX = threadRect.maxX;
     s32 maxY = threadRect.maxY;
     
-    u32 *At = (u32 *)c->drawBuffer;
+    u32 *At = (u32 *)win->drawBuffer;
     
     s32 xPos = x-1;
     
@@ -5635,13 +5650,13 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
         {
             for(s32 x = xBase; x < xEnd; x++)
             {
-                AssertMsg(x >= 0 && x < c->width,  "X out of range. Should have been guarded by thread UI Rects?\n");
-                AssertMsg(y >= 0 && y < c->height, "Y out of range. Should have been guarded by thread UI Rects?\n");
+                AssertMsg(x >= 0 && x < win->width,  "X out of range. Should have been guarded by thread UI Rects?\n");
+                AssertMsg(y >= 0 && y < win->height, "Y out of range. Should have been guarded by thread UI Rects?\n");
                 
                 //TODO: Setting fractional alpha on the rows where progressiveX advances a fractional amount
                 //      would allow better `sub-pixel like` blending. Just a tiny thing to make it look better
                 //      at small resolutions.
-                At[y*c->width + x] = c->borderColor.value;
+                At[y*win->width + x] = c->borderColor.value;
             }
             
             progressiveX += scaling;
@@ -5678,10 +5693,10 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
             {
                 if(x >= maxX) { break; }
                 
-                if(x < 0 || x >= c->width)  continue;
-                if(y < 0 || y >= c->height) continue;
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
                 
-                At[y*c->width + x] = RGBg(0x00).value;
+                At[y*win->width + x] = RGBg(0x00).value;
             }
             
             xEnd  += 1;
@@ -5696,10 +5711,10 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
             {
                 if(x >= maxX) { break; }
                 
-                if(x < 0 || x >= c->width)  continue;
-                if(y < 0 || y >= c->height) continue;
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
                 
-                At[y*c->width + x] = RGBg(0x00).value;
+                At[y*win->width + x] = RGBg(0x00).value;
             }
             
             xEnd  -= 1;
@@ -5731,10 +5746,10 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
             {
                 if(x >= maxX) { break; }
                 
-                if(x < 0 || x >= c->width)  continue;
-                if(y < 0 || y >= c->height) continue;
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
                 
-                At[y*c->width + x] = RGBg(0x00).value;
+                At[y*win->width + x] = RGBg(0x00).value;
             }
             
             xBase -= 1;
@@ -5749,10 +5764,10 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
             {
                 if(x >= maxX) { break; }
                 
-                if(x < 0 || x >= c->width)  continue;
-                if(y < 0 || y >= c->height) continue;
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
                 
-                At[y*c->width + x] = RGBg(0x00).value;
+                At[y*win->width + x] = RGBg(0x00).value;
             }
             
             xBase += 1;
@@ -5851,7 +5866,7 @@ inline void ls_uiListBoxRemoveEntry(UIContext *c, UIListBox *lb, u32 index)
 //TODO: Currently the renderer doesn't care if the item's name is too long, and just renders it in full
 b32 ls_uiListBox(UIContext *c, UIListBox *lb, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer = 0)
 {
-    Input *UserInput = &c->UserInput;
+    Input *UserInput = &c->currWindow->UserInput;
     b32 inputUse = FALSE;
     
     //TODO: Why is this constant?
@@ -5893,7 +5908,7 @@ b32 ls_uiListBox(UIContext *c, UIListBox *lb, s32 xPos, s32 yPos, s32 w, s32 h, 
                 { 
                     currItem->bkgColor = c->highliteColor;
                     if(LeftClick) { 
-                        c->mouseCapture = (u64 *)lb;
+                        c->currWindow->mouseCapture = (u64 *)lb;
                         
                         lb->selectedIndex = i; lb->isOpen = FALSE;
                         inputUse = TRUE;
@@ -5975,7 +5990,8 @@ s32 ls_uiSliderCalculateValueFromPosition(UIContext *c, UISlider *f)
 //      going in and out of if blocks to check hot/held and style.
 b32 ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h)
 {
-    Input *UserInput = &c->UserInput;
+    UIWindow *win = c->currWindow;
+    Input *UserInput = &win->UserInput;
     
     if(LeftUp) { slider->isHeld = FALSE; }
     
@@ -5985,10 +6001,10 @@ b32 ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h
         slider->isHot = FALSE;
         s32 slidePos = w*slider->currPos;
         
-        if(MouseInRect(xPos + slidePos-5, yPos, 10, h) && !(c->mouseCapture != 0 && c->mouseCapture != (u64 *)slider))
+        if(MouseInRect(xPos + slidePos-5, yPos, 10, h) && !(win->mouseCapture != 0 && win->mouseCapture != (u64 *)slider))
         {
             slider->isHot = TRUE;
-            if(LeftHold) { slider->isHeld = TRUE; c->mouseCapture = (u64 *)slider; }
+            if(LeftHold) { slider->isHeld = TRUE; win->mouseCapture = (u64 *)slider; }
         }
     }
     else if(slider->style == SL_LINE)
@@ -5997,7 +6013,7 @@ b32 ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h
     b32 hasAnsweredToInput = FALSE;
     
     if(slider->isHeld) { 
-        s32 deltaX = (c->UserInput.Mouse.prevPosX - c->UserInput.Mouse.currPosX);//*c->dt;
+        s32 deltaX = (UserInput->Mouse.prevPosX - UserInput->Mouse.currPosX);
         
         f64 fractionMove = (f64)deltaX / (f64)w;
         
@@ -6107,10 +6123,11 @@ UIMenuItem *ls_uiSubMenuAddItem(UIContext *c, UIMenu *menu, u32 subIdx,
 
 b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 2)
 {
-    Input *UserInput = &c->UserInput;
+    UIWindow *win = c->currWindow;
+    Input *UserInput = &win->UserInput;
     b32 inputUse = FALSE;
     
-    if(c->currentFocus != (u64 *)menu) { menu->isOpen = FALSE; }
+    if(win->currentFocus != (u64 *)menu) { menu->isOpen = FALSE; }
     
     s32 subY = y;
     s32 subW = menu->itemWidth;
@@ -6126,14 +6143,14 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     
     if(LeftClickIn(dragX, y, minimizeX-dragX, h))
     {
-        c->isDragging = TRUE;
+        win->isDragging = TRUE;
         ls_uiFocusChange(c, 0);
         
         //NOTETODO: Maybe find a way to move platform specific code away?
         POINT currMouse = {};
         GetCursorPos(&currMouse);
-        c->prevMousePosX = currMouse.x;
-        c->prevMousePosY = currMouse.y;
+        win->prevMousePosX = currMouse.x;
+        win->prevMousePosY = currMouse.y;
         
         goto uiMenuRenderLabel;
     }
@@ -6163,7 +6180,7 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
                     
                     if(LeftClick) {
                         //NOTETODO: mouseCapture vs focus????
-                        c->mouseCapture = (u64 *)menu;
+                        win->mouseCapture = (u64 *)menu;
                         
                         //NOTE: currItem->onClick
                         if(currItem->callback1) { currItem->callback1(c, currItem->callback1Data); }
@@ -6253,6 +6270,8 @@ UIColorPicker ls_uiColorPickerInit(UIContext *c, void *userData)
 
 void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor)
 {
+    UIWindow *win = c->currWindow;
+
 #ifdef LS_UI_OPENGL_BACKEND
     
     glUseProgram(c->gradientRectShader);
@@ -6263,8 +6282,8 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
     
     f64 xf = (f64)xPos;
     f64 yf = (f64)yPos;
-    f64 wf = (f64)c->width;
-    f64 hf = (f64)c->height;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
     
     // Positions need to be adjusted by the width and height... for some reason?
     f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
@@ -6324,11 +6343,11 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
         {
             AssertMsg(x <= maxX, "Should never happen. Width was precomputed\n");
             
-            if(x < 0 || x >= c->width)  continue;
-            if(y < 0 || y >= c->height) continue;
+            if(x < 0 || x >= win->width)  continue;
+            if(y < 0 || y >= win->height) continue;
             
-            u32 idx = ((y*c->width) + x)*sizeof(s32);
-            __m128i *At = (__m128i *)(c->drawBuffer + idx);
+            u32 idx = ((y*win->width) + x)*sizeof(s32);
+            __m128i *At = (__m128i *)(win->drawBuffer + idx);
             
             __m128i val = _mm_loadu_si128(At);
             
@@ -6354,7 +6373,7 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
     //      We decide to have the right rectangle be full height
     //      And the top one be less-than-full width, to avoid over-drawing the small subrect
     //        in the top right corner.
-    u32 *At = (u32 *)c->drawBuffer;
+    u32 *At = (u32 *)win->drawBuffer;
     
     if(diffWidth)
     {
@@ -6373,12 +6392,12 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
                     break; 
                 }
                 
-                if(x < 0 || x >= c->width)  continue;
-                if(y < 0 || y >= c->height) continue;
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
                 
-                Color base = {.value = At[y*c->width + x] };
+                Color base = {.value = At[y*win->width + x] };
                 Color blendedColor = ls_uiAlphaBlend(col, base);
-                At[y*c->width + x] = blendedColor.value;
+                At[y*win->width + x] = blendedColor.value;
             }
             
             diffGray += step;
@@ -6397,12 +6416,12 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
             {
                 if(x > maxX) { break; }
                 
-                if(x < 0 || x >= c->width)  continue;
-                if(y < 0 || y >= c->height) continue;
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
                 
-                Color base = { .value = At[y*c->width + x] };
+                Color base = { .value = At[y*win->width + x] };
                 Color blendedColor = ls_uiAlphaBlend(col, base);
-                At[y*c->width + x] = blendedColor.value;
+                At[y*win->width + x] = blendedColor.value;
             }
             
             currGray += step;
@@ -6421,6 +6440,8 @@ f32 ls_uiLerp(f32 base, f32 towards, f32 step)
 void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32 value,
                          UIRect threadRect, UIRect scissor)
 {
+    UIWindow *win = c->currWindow;
+
 #ifdef LS_UI_OPENGL_BACKEND
     
     glUseProgram(c->colorWheelShader);
@@ -6430,8 +6451,8 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
     
     f64 xf = (f64)leftCornerX;
     f64 yf = (f64)leftCornerY;
-    f64 wf = (f64)c->width;
-    f64 hf = (f64)c->height;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
     
     s32 w = radius*2;
     s32 h = radius*2;
@@ -6477,7 +6498,7 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
     if(endX > maxX) { endX = maxX+1; }
     if(endY > maxY) { endY = maxY+1; }
     
-    u32 *At = (u32 *)c->drawBuffer;
+    u32 *At = (u32 *)win->drawBuffer;
     for(s32 y = startY; y < endY; y++)
     {
         for(s32 x = startX; x < endX; x++)
@@ -6497,9 +6518,9 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
                 
                 Color converted = ls_uiHSVtoRGB(hue, saturation, value);
                 
-                Color base         = { .value = At[y*c->width + x] };
+                Color base         = { .value = At[y*win->width + x] };
                 Color blendedColor = ls_uiAlphaBlend(converted, base);
-                At[y*c->width + x] = blendedColor.value;
+                At[y*win->width + x] = blendedColor.value;
             }
         }
     }
@@ -6509,11 +6530,12 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
 
 b32 ls_uiColorPicker(UIContext *c, UIColorPicker *picker, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
 {
-    Input *UserInput = &c->UserInput;
+    UIWindow *win = c->currWindow;
+    Input *UserInput = &win->UserInput;
     
     if(LeftClickIn(x, y, w, h) && ls_uiHasCapture(c, 0)) {
         ls_uiFocusChangeSameFrame(c, (u64 *)picker);
-        c->mouseCapture = (u64 *)picker;
+        win->mouseCapture = (u64 *)picker;
     }
     
     s32 xMargin = w*0.1f;
@@ -6645,12 +6667,13 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     };
     
     //NOTE: All Thread Rects are inclusive on the left/bot, exclusive on the right/top
+    UIRect *renderUIRects = c->currWindow->renderUIRects;
     switch(__LS_UI_THREAD_COUNT)
     {
         case 0:
         case 1:
         {
-            command.threadRect = c->renderUIRects[0];
+            command.threadRect = renderUIRects[0];
             
             stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
             AssertMsg(renderStack->used < renderStack->capacity, "Out of space in RenderGroup 0\n");
@@ -6665,9 +6688,9 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
         {
             for(s32 i = 0; i < __LS_UI_THREAD_COUNT; i++)
             {
-                if(ls_uiRectIntersects(commandRect, c->renderUIRects[i]))
+                if(ls_uiRectIntersects(commandRect, renderUIRects[i]))
                 {
-                    command.threadRect = c->renderUIRects[i];
+                    command.threadRect = renderUIRects[i];
                     stack *renderStack = &c->renderGroups[i].RenderCommands[zLayer];
                     AssertMsgF(renderStack->used < renderStack->capacity, "Out of space in RenderGroup %d\n", i);
                     ls_stackPush(renderStack, (void *)&command);
@@ -6716,7 +6739,8 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
 void ls_uiRender(UIContext *c)
 {
 #ifndef LS_UI_OPENGL_BACKEND
-    AssertMsg(c->drawBuffer != NULL, "Trying to Call ls_uiRender on a Fake UIContext "
+    AssertMsg(c->currWindow != NULL, "Cannot call render when no window is selected!");
+    AssertMsg(c->currWindow->drawBuffer != NULL, "Trying to Call ls_uiRender on a Fake UIContext "
               "which doesn't have a draw buffer allocated!\n");
 #endif
 
@@ -7256,20 +7280,22 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
 
 void ls_uiRender__(UIContext *c, u32 threadID)
 {
+    UIWindow *win = c->currWindow;
+
     //NOTE: First clear the background
     switch(__LS_UI_THREAD_COUNT)
     {
         case 0:
         case 1:
-        { ls_uiClearRect(c, 0, 0, c->width, c->height, c->backgroundColor); } break;
+        { ls_uiClearRect(c, 0, 0, win->width, win->height, c->backgroundColor); } break;
         
         case 2:
         {
-            s32 halfWidth = c->width/2;
+            s32 halfWidth = win->width/2;
             
             s32 tY = 0;
             s32 tX = halfWidth*threadID;
-            s32 tH = c->height;
+            s32 tH = win->height;
             s32 tW = halfWidth;
             
             ls_uiClearRect(c, tX, tY, tW, tH, c->backgroundColor);
@@ -7277,8 +7303,8 @@ void ls_uiRender__(UIContext *c, u32 threadID)
         
         case 4:
         {
-            s32 halfWidth  = c->width/2;
-            s32 halfHeight = c->height/2;
+            s32 halfWidth  = win->width/2;
+            s32 halfHeight = win->height/2;
             
             s32 tY = halfHeight*(threadID/2);
             s32 tX = halfWidth*(threadID%2);
@@ -7290,8 +7316,8 @@ void ls_uiRender__(UIContext *c, u32 threadID)
         
         case 8:
         {
-            s32 qrtWidth   = c->width/4;
-            s32 halfHeight = c->height/2;
+            s32 qrtWidth   = win->width/4;
+            s32 halfHeight = win->height/2;
             
             s32 tY = halfHeight*(threadID/4);
             s32 tX = qrtWidth*(threadID%4);
