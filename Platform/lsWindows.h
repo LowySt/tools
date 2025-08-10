@@ -231,15 +231,6 @@ u64 windows_ReadConsole(char *Dest, u32 bytesToRead)
 		OutputDebugStringA("When creating a console handle got error\n");
     }
     
-#if 0
-	HANDLE FileHandle = 0;
-	if ((FileHandle = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, NULL, NULL)) == INVALID_HANDLE_VALUE)
-	{
-		Error = GetLastError();
-		ls_printf("When creating a file handle got error: %ld\n", Error);
-	}
-#endif
-    
 	DWORD BytesRead = 0;
 	if (ReadFile(FileHandle, Dest, bytesToRead, &BytesRead, NULL) == FALSE)
 	{
@@ -252,10 +243,6 @@ u64 windows_ReadConsole(char *Dest, u32 bytesToRead)
 		{ ls_printf("Bytes read when reading entire file don't equal the file size!!\n"); }
 	}
     //NOTE: Haven't created the handle myself, so can't destroy it!
-#if 0
-	if (CloseHandle(FileHandle) == FALSE)
-	{ OutputDebugStringA("Couldn't close file handle at the end of Win32_ReadEntireFile function.\n"); }
-#endif
 	return BytesRead;
 }
 
@@ -269,16 +256,6 @@ u64 windows_WriteConsole(char *buff, u32 bytesToWrite)
 		OutputDebugStringA("When creating a console handle got error\n");
     }
     
-#if 0
-	//SECURITY_ATTRIBUTES attribs = {sizeof(SECURITY_ATTRIBUTES), NULL, FALSE};
-    
-	if ((FileHandle = CreateFileA("CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, NULL, NULL)) == INVALID_HANDLE_VALUE)
-	{
-		Error = GetLastError();
-		OutputDebugStringA("When creating a file handle got error\n");
-	}
-#endif
-    
 	DWORD BytesWritten = 0;
 	if (!WriteFile(FileHandle, buff, bytesToWrite, &BytesWritten, NULL))
 	{
@@ -287,13 +264,6 @@ u64 windows_WriteConsole(char *buff, u32 bytesToWrite)
 	}
     
     //NOTE: Haven't created the handle myself, so can't destroy it!
-#if 0
-	if (!CloseHandle(FileHandle))
-	{
-		Error = GetLastError();
-		OutputDebugStringA("When closing Console Output Handle got error\n");
-	}
-#endif
 	return BytesWritten;
 }
 
