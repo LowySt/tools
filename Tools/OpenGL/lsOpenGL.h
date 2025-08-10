@@ -332,6 +332,7 @@ WINGDIAPI void APIENTRY glVertexPointer (GLint size, GLenum type, GLsizei stride
 typedef void (WINAPI *PFNGLBEGINPROC)(GLenum);
 typedef void (WINAPI *PFNGLENDPROC)();
 typedef void (WINAPI *PFNGLCOLOR3UBPROC)(GLubyte, GLubyte green, GLubyte blue);
+typedef void (WINAPI *PFNGLCOLOR3FPROC)(GLfloat, GLfloat, GLfloat);
 typedef void (WINAPI *PFNGLCOLOR4UBPROC)(GLubyte, GLubyte green, GLubyte blue, GLubyte alpha);
 typedef void (WINAPI *PFNGLCOLOR4FPROC)(GLfloat, GLfloat green, GLfloat blue, GLfloat alpha);
 typedef void (WINAPI *PFNGLVERTEX3FPROC)(GLfloat, GLfloat, GLfloat );
@@ -471,6 +472,7 @@ extern "C"
     GL_FN(PFNGLENDPROC, glEnd);
     
     GL_FN(PFNGLCOLOR3UBPROC, glColor3ub);
+    GL_FN(PFNGLCOLOR3FPROC, glColor3f);
     GL_FN(PFNGLCOLOR4UBPROC, glColor4ub);
     GL_FN(PFNGLCOLOR4FPROC, glColor4f);
     
@@ -636,6 +638,7 @@ void ls_glLoadFunc(HDC DeviceContext)
     GET_FN(glBegin, PFNGLBEGINPROC);
     GET_FN(glEnd, PFNGLENDPROC);
     GET_FN(glColor3ub, PFNGLCOLOR3UBPROC);
+    GET_FN(glColor3f, PFNGLCOLOR3FPROC);
     GET_FN(glColor4ub, PFNGLCOLOR4UBPROC);
     GET_FN(glColor4f, PFNGLCOLOR4FPROC);
     GET_FN(glVertex3f, PFNGLVERTEX3FPROC);
