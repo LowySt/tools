@@ -936,9 +936,8 @@ void ls_uiDebugDrawInfo(UIContext *c)
 #endif //_DEBUG
 
 #ifndef LS_UI_OPENGL_BACKEND
-void __ls_ui_fillRenderThreadUIRects(UIContext *c)
+void __ls_ui_fillRenderThreadUIRects(UIContext *c, UIWindow *win)
 {
-    UIWindow *win = c->currWindow;
     UIRect *renderUIRects = win->renderUIRects;
 
     //NOTE: All Thread Rects are inclusive on the left/bot, exclusive on the right/top
@@ -986,16 +985,25 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 {
     LRESULT Result = 0;
     
-    UIContext *c      = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);;
-    UIWindow *win     = NULL;
-    MouseInput *Mouse = NULL;
-    Input *UserInput  = NULL;
-    if (c) {
-        win = c->currWindow;
-        Mouse = &win->UserInput.Mouse;
-        UserInput  = &win->UserInput;
+    UIContext *c      = (UIContext *)GetWindowLongPtrA(h, GWLP_USERDATA);
+    if (!c || !c->currWindow) {
+        if (msg == WM_CREATE) {
+            CREATESTRUCTA *CreateStruct = (CREATESTRUCTA *)l;
+            c = (UIContext *)CreateStruct->lpCreateParams;
+            SetWindowLongPtrA(h, GWLP_USERDATA, (LONG_PTR)c);
+            //TODO: See If I need to access the UIWIndow (which has already been created) and assign this there
+            // Otherwise, this can never be called
+            //if (win) { win->hasReceivedInput = TRUE; }
+            return 0;
+        }
+        else {
+            return DefWindowProcA(h, msg, w, l);
+        }
     }
-    
+    UIWindow *win     = c->currWindow;
+    MouseInput *Mouse = &win->UserInput.Mouse;
+    Input *UserInput  = &win->UserInput;
+
     //static b32 mouseTracking = FALSE;
     
     switch (msg)
@@ -1052,7 +1060,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             CREATESTRUCTA *CreateStruct = (CREATESTRUCTA *)l;
             c = (UIContext *)CreateStruct->lpCreateParams;
             SetWindowLongPtrA(h, GWLP_USERDATA, (LONG_PTR)c);
-            if (win) { win->hasReceivedInput = TRUE; }
+            if (win) { win->hasReceivedInput = TRUE; } //I Think this can never be true?
             
         } break;
         
@@ -1138,7 +1146,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             else { LogMsg(FALSE, "GetCursorPos failed after resize."); }
             
             //NOTE: Reset the Render UIRect for every Thread.
-            __ls_ui_fillRenderThreadUIRects(c);
+            __ls_ui_fillRenderThreadUIRects(c, win);
 #else
             if(!c || !glViewport) { return DefWindowProcA(h, msg, w, l); }
             
@@ -2104,7 +2112,7 @@ void __ui_RegisterWindow(HINSTANCE MainInstance, const char *name)
     }
 }
 
-UIWindow __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer, s32 width, s32 height, const char *windowName)
+UIWindow __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer, s32 width, s32 height, const char *windowName, const char* wndclass)
 {
     UIWindow win        = {};
     win.drawBuffer      = backBuffer;
@@ -2119,10 +2127,8 @@ UIWindow __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer,
     int screenHeight = GetSystemMetrics(SM_CYSCREEN);
     int screenWidth  = GetSystemMetrics(SM_CXSCREEN);
     
-    const int taskbarHeight = 20;
-    
     int spaceX = (screenWidth - win.backbufferW) / 2;
-    int spaceY = ((screenHeight - win.backbufferH) / 2);// - taskbarHeight;
+    int spaceY = ((screenHeight - win.backbufferH) / 2);
     if(spaceX < 0) { spaceX = 0; }
     if(spaceY < 0) { spaceY = 0; }
     
@@ -2130,7 +2136,7 @@ UIWindow __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer,
     //      when creating multiple windows under the same process.
     //TODO: Will MsgPump work with multiple windows but only 1 context?
     HWND WindowHandle;
-    if ((WindowHandle = CreateWindowExA(0 /*WS_EX_LAYERED*/, windowName, windowName, style,
+    if ((WindowHandle = CreateWindowExA(0 /*WS_EX_LAYERED*/, wndclass, windowName, style,
                                         spaceX, spaceY, win.backbufferW, win.backbufferH,
                                         0, 0, MainInstance, c)) == nullptr)
     {
@@ -2228,29 +2234,33 @@ UIWindow __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer,
     return win;
 }
 
-UIWindow ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name)
+UIWindow ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name, bool shouldShow)
 {
     __ui_RegisterWindow(MainInstance, name);
     
-    UIWindow win = __ui_CreateWindow(MainInstance, c, backBuffer, w, h, name);
+    UIWindow win = __ui_CreateWindow(MainInstance, c, backBuffer, w, h, name, name);
     win.UserInput.Keyboard.getClipboard = windows_GetClipboard;
     win.UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
-    __ls_ui_fillRenderThreadUIRects(c);
+    __ls_ui_fillRenderThreadUIRects(c, &win);
+
+    if(shouldShow) { ShowWindow(win.Window, SW_SHOW); win.hasReceivedInput = TRUE; }
     
     return win;
 }
 
-UIWindow ls_uiCreateWindow(UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name)
+UIWindow ls_uiCreateWindow(UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name, bool shouldShow)
 {
     HINSTANCE MainInstance = NULL;
     __ui_RegisterWindow(MainInstance, name);
     
-    UIWindow win = __ui_CreateWindow(MainInstance, c, backBuffer, w, h, name);
+    UIWindow win = __ui_CreateWindow(MainInstance, c, backBuffer, w, h, name, name);
     win.UserInput.Keyboard.getClipboard = windows_GetClipboard;
     win.UserInput.Keyboard.setClipboard = windows_SetClipboard;
     
-    __ls_ui_fillRenderThreadUIRects(c);
+    __ls_ui_fillRenderThreadUIRects(c, &win);
+
+    if(shouldShow) { ShowWindow(win.Window, SW_SHOW); win.hasReceivedInput = TRUE; }
     
     return win;
 }
@@ -2394,31 +2404,45 @@ UIContext *ls_uiInitDefaultContext(s32 contextArenaSize, s32 frameArenaSize, s32
     return ls_uiInitDefaultContext(contextArena, frameArena, widgetArena, cb);
 }
 
-void ls_uiSelectWindowForRendering(UIContext *c, UIWindow *win)
+void ls_uiStartFrameTimer(UIContext *c)
 {
-    c->currWindow = win;
-
-#ifdef LS_UI_OPENGL_BACKEND
-    if(!wglMakeCurrent(win->WindowDC, c->OGLContext)) {
-        GLenum err = glGetError();
-        AssertMsgF(FALSE, "Failed to make current the OpenGL Context during render callback: %d", (s32)err);
-    }
-
-    //glViewport(0, 0, win->width, win->height);
-#elif defined(LS_UI_SOFTWARE_BACKEND)
-    return;
-#endif
+    RegionTimerBegin(c->frameTime);
 }
 
-void ls_uiFrameBegin(UIContext *c)
+void ls_uiEndFrameTimer(UIContext *c, u64 frameTimeTargetMs)
 {
-    static b32 isStartup = TRUE;
+    static u32 lastFrameTime = 0;
     
+#ifdef _DEBUG
+    __debug_frameNumber += 1;
+#endif
+    
+    RegionTimerEnd(c->frameTime);
+    u32 frameTimeMs = RegionTimerGet(c->frameTime);
+    if(frameTimeMs < frameTimeTargetMs)
+    {
+        u32 deltaTimeInMs = frameTimeTargetMs - frameTimeMs;
+        Sleep(deltaTimeInMs);
+    }
+    
+    RegionTimerEnd(c->frameTime);
+    c->dt = RegionTimerGet(c->frameTime);
+    lastFrameTime = c->dt;
+}
+
+void ls_uiFrameBegin(UIContext *c, UIWindow *win)
+{
     ls_arenaUse(c->frameArena);
     
-    RegionTimerBegin(c->frameTime);
-    
-    UIWindow *win = c->currWindow;
+    // Set current window on the UIContext
+    c->currWindow = win;
+#ifdef LS_UI_OPENGL_BACKEND
+    wglMakeCurrent(win->WindowDC, c->OGLContext);
+    RECT r1;
+    GetClientRect(win->Window, &r1);
+    glViewport(0, 0, r1.right-r1.left, r1.bottom - r1.top);
+#endif
+
     win->UserInput.Keyboard.prevState       = win->UserInput.Keyboard.currentState;
     win->UserInput.Keyboard.repeatState     = {};
     win->UserInput.Keyboard.hasPrintableKey = FALSE;
@@ -2458,8 +2482,7 @@ void ls_uiFrameBegin(UIContext *c)
     
     // Process Input
     MSG Msg;
-    while (PeekMessageA(&Msg, NULL, 0, 0, PM_REMOVE))
-        //while (PeekMessageA(&Msg, c->Window, 0, 0, PM_REMOVE))
+    while (PeekMessageA(&Msg, win->Window, 0, 0, PM_REMOVE))
     {
         TranslateMessage(&Msg);
         DispatchMessageA(&Msg);
@@ -2470,10 +2493,6 @@ void ls_uiFrameBegin(UIContext *c)
        win->UserInput.Mouse.wasRightPressed || 
        win->UserInput.Mouse.wasMiddlePressed)
     { win->hasReceivedInput = TRUE; }
-    
-    //NOTE: Window starts hidden, and then is shown after the first frame, 
-    //      to avoid flashing because initially the frame buffer is all white.
-    if(isStartup) { ShowWindow(win->Window, SW_SHOW); isStartup = FALSE; win->hasReceivedInput = TRUE; }
     
     Input *UserInput = &win->UserInput;
     //NOTE: Right-Alt Drag, only when nothing is in focus
@@ -2526,152 +2545,15 @@ void ls_uiFrameBegin(UIContext *c)
 #endif
 }
 
-void ls_uiFrameBeginChild(UIContext *c)
-{
-    static b32 isStartup = TRUE;
-    
-    ls_arenaUse(c->frameArena);
-    
-    //RegionTimerBegin(c->frameTime);
-    
-    UIWindow *win = c->currWindow;
-    win->UserInput.Keyboard.prevState       = win->UserInput.Keyboard.currentState;
-    win->UserInput.Keyboard.repeatState     = {};
-    win->UserInput.Keyboard.hasPrintableKey = FALSE;
-    win->UserInput.Keyboard.keyCodepoint    = 0;
-    
-    win->UserInput.Mouse.prevPosX           = win->UserInput.Mouse.currPosX;
-    win->UserInput.Mouse.prevPosY           = win->UserInput.Mouse.currPosY;
-    win->UserInput.Mouse.wasLeftPressed     = win->UserInput.Mouse.isLeftPressed;
-    win->UserInput.Mouse.wasRightPressed    = win->UserInput.Mouse.isRightPressed;
-    win->UserInput.Mouse.wasMiddlePressed   = win->UserInput.Mouse.isMiddlePressed;
-    win->UserInput.Mouse.isWheelRotated     = FALSE;
-    
-    //NOTETODO: Is it possible to at the same time setting the focus this frame, and 
-    //          Having a pending request for a focus change, thus executing both this and the 
-    //          next if block?
-    if(!win->focusWasSetThisFrame) { win->lastFocus = win->currentFocus; }
-    
-    win->focusWasSetThisFrame = FALSE;
-    if(win->nextFrameFocusChange == TRUE)
-    {
-        win->lastFocus            = win->currentFocus;
-        win->currentFocus         = win->nextFrameFocus;
-        win->nextFrameFocusChange = FALSE;
-    }
-    
-    if(win->lastFocus && win->currentFocus != win->lastFocus)
-    {
-        DummyUIWidgetBase *base = (DummyUIWidgetBase *)win->lastFocus;
-        if(base->OnFocusLost) {
-            base->OnFocusLost(c, base->onFocusLostData);
-        }
-    }
-    
-    win->hasReceivedInput = FALSE;
-    
-    //NOTE: The child frame doesn't need a message pump, because windows
-    //      Pumps messages to all windows that were created by this thread.
-    //      BUT This means that we must begin the child frame before the main frame
-    //      to properly clear input.
-    //      TODO: Maybe we want to move the message pump to a separate function
-    //      to make the order of function calls more obvious and less error prone!
-    
-    if(isStartup) { isStartup = FALSE; win->hasReceivedInput = TRUE; }
-    
-    Input *UserInput = &win->UserInput;
-    //NOTE: Right-Alt Drag, only when nothing is in focus
-    if(KeyHeld(keyMap::RAlt) && LeftClick && win->currentFocus == 0)
-    { 
-        win->isDragging = TRUE;
-        POINT currMouse = {};
-        GetCursorPos(&currMouse);
-        win->prevMousePosX = currMouse.x;
-        win->prevMousePosY = currMouse.y;
-    }
-    
-    //NOTE: Handle Dragging
-    if(win->isDragging && LeftHold)
-    { 
-        MouseInput *Mouse = &win->UserInput.Mouse;
-        
-        POINT currMouse = {};
-        GetCursorPos(&currMouse);
-        
-        POINT prevMouse = { win->prevMousePosX, win->prevMousePosY };
-        
-        SHORT newX = prevMouse.x - currMouse.x;
-        SHORT newY = prevMouse.y - currMouse.y;
-        
-        SHORT newWinX = win->windowPosX - newX;
-        SHORT newWinY = win->windowPosY - newY;
-        
-        win->windowPosX = newWinX;
-        win->windowPosY = newWinY;
-        
-        win->prevMousePosX  = currMouse.x;
-        win->prevMousePosY  = currMouse.y;
-        
-        SetWindowPos(win->Window, 0, newWinX, newWinY, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
-    }
-    
-    if(win->isDragging && LeftUp) { win->isDragging = FALSE; }
-    
-    if(LeftUp || RightUp || MiddleUp) { win->mouseCapture = 0; }
-}
-
-void ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs)
+void ls_uiFrameEnd(UIContext *c)
 {
     ls_arenaClear(c->frameArena);
-    
-    static u32 lastFrameTime = 0;
-    
-#ifdef _DEBUG
-    __debug_frameNumber += 1;
-#endif
     
     UIWindow *win = c->currWindow;
     Input *UserInput = &win->UserInput;
     //NOTE: If user clicked somewhere, but nothing set the focus, then we should reset the focus
     if(LeftClick && !win->focusWasSetThisFrame)
     { ls_uiFocusChange(c, 0); }
-    
-    RegionTimerEnd(c->frameTime);
-    u32 frameTimeMs = RegionTimerGet(c->frameTime);
-    if(frameTimeMs < frameTimeTargetMs)
-    {
-        u32 deltaTimeInMs = frameTimeTargetMs - frameTimeMs;
-        Sleep(deltaTimeInMs);
-    }
-    
-    RegionTimerEnd(c->frameTime);
-    c->dt = RegionTimerGet(c->frameTime);
-    lastFrameTime = c->dt;
-}
-
-void ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs)
-{
-    ls_arenaClear(c->frameArena);
-    
-    static u32 lastFrameTime = 0;
-    
-    UIWindow *win = c->currWindow;
-    Input *UserInput = &win->UserInput;
-    //NOTE: If user clicked somewhere, but nothing set the focus, then we should reset the focus
-    if(LeftClick && !win->focusWasSetThisFrame)
-    { ls_uiFocusChange(c, 0); }
-    
-    //RegionTimerEnd(c->frameTime);
-    //u32 frameTimeMs = RegionTimerGet(c->frameTime);
-    //if(frameTimeMs < frameTimeTargetMs)
-    //{
-    //    u32 deltaTimeInMs = frameTimeTargetMs - frameTimeMs;
-    //    Sleep(deltaTimeInMs);
-    //}
-    //
-    //RegionTimerEnd(c->frameTime);
-    //c->dt = RegionTimerGet(c->frameTime);
-    //lastFrameTime = c->dt;
 }
 
 void ls_uiLoadPackedFontAtlas(UIContext *c, char *path)
