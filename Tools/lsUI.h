@@ -761,18 +761,18 @@ struct ___threadCtx
 
 //NOTE: Functions
 
-UIWindow     ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name);
-UIWindow     ls_uiCreateWindow(UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name); 
+UIWindow     ls_uiCreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name, bool shouldShow);
+UIWindow     ls_uiCreateWindow(UIContext *c, u8 *backBuffer, s32 w, s32 h, const char *name, bool shouldShow);
 UIContext *  ls_uiInitDefaultContext(s32 contextArenaSize, s32 frameArenaSize,
                                      s32 widgetArenaSize, RenderCallback cb);
 UIContext *  ls_uiInitDefaultContext(Arena contextArena, Arena frameArena,
                                      Arena widgetArena, RenderCallback cb);
 
-void         ls_uiSelectWindowForRendering(UIContext *c, UIWindow *win);
-void         ls_uiFrameBegin(UIContext *c);
-void         ls_uiFrameBeginChild(UIContext *c);
+void         ls_uiStartFrameTimer(UIContext *c);
+void         ls_uiEndFrameTimer(UIContext *c, u64 frameTimeTargetMs);
+
+void         ls_uiFrameBegin(UIContext *c, UIWindow *win);
 void         ls_uiFrameEnd(UIContext *c, u64 frameTimeTargetMs);
-void         ls_uiFrameEndChild(UIContext *c, u64 frameTimeTargetMs);
 
 void         ls_uiLoadPackedFontAtlas(UIContext *c, char *path);
 UIBitmap     ls_uiBitmapFromRGBAPixelData(UIContext *c, s32 w, s32 h, void *data);
@@ -1085,10 +1085,12 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         //TODO: Handling WM_SIZING would probably produce better results.
         //TODO: This will only be used for fixed size steps
+        //TODO BUG!!! In Software Render, for specific resize dimensions, it seems like one of the render threads is getting
+        //  stuck and not reporting the "isDone" condition variable. (maybe because of bad render rects?)
         case WM_SIZE:
         {
 #ifndef LS_UI_OPENGL_BACKEND
-            if(!c || !c->currWindow) { return DefWindowProcA(h, msg, w, l); }
+            //if(!c || !c->currWindow) { return DefWindowProcA(h, msg, w, l); }
             UIWindow *win = c->currWindow;
             
             u32 width       = LOWORD(l);
@@ -1121,7 +1123,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             }
             
             //NOTE: Draw Buffer Dimensions
-            if(win)
+            //if(win)
             {
                 win->width        = width;
                 win->height       = height;
@@ -1153,7 +1155,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             u32 width       = LOWORD(l);
             u32 height      = HIWORD(l);
             
-            if(win)
+            //if(win)
             {
                 //NOTE: Draw Buffer Dimensions
                 //
@@ -1191,7 +1193,6 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
             }
             
             glViewport(0, 0, width, height);
-            //glScissor(0, 0, width, height); TODO: Support scissoring in OpenGL?
 #endif
             return 0;
         } break;
@@ -2132,9 +2133,6 @@ UIWindow __ui_CreateWindow(HINSTANCE MainInstance, UIContext *c, u8 *backBuffer,
     if(spaceX < 0) { spaceX = 0; }
     if(spaceY < 0) { spaceY = 0; }
     
-    //NOTE: We repliacate windowName in both the windowClass name and the actual window name, to avoid conflict
-    //      when creating multiple windows under the same process.
-    //TODO: Will MsgPump work with multiple windows but only 1 context?
     HWND WindowHandle;
     if ((WindowHandle = CreateWindowExA(0 /*WS_EX_LAYERED*/, wndclass, windowName, style,
                                         spaceX, spaceY, win.backbufferW, win.backbufferH,
@@ -2849,11 +2847,6 @@ void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
     }
     
     scroll->deltaY += deltaY;
-    
-    //TODO: What the fuck is this???? What was supposed to be here!?
-    //scroll->maxX    = scroll->maxX;
-    //scroll->minY    = scroll->minY;
-    
     if(scroll->deltaY < -totalHeight) { scroll->deltaY = -totalHeight; }
     else if(scroll->deltaY > 0)       { scroll->deltaY = 0; }
     
@@ -6589,16 +6582,9 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     AssertMsg(FALSE, "Should never reach this case!\n");
 }
 #else
-//NOTE: With the OpenGL backend there's no point in deferring the command execution
-void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr);
 void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
 {
     AssertMsg(command.type != UI_RC_INVALID,  "Uninitialized Render Command?\n");
-    
-    s32 xPos                = command.rect.x;
-    s32 yPos                = command.rect.y;
-    s32 w                   = command.rect.w;
-    s32 h                   = command.rect.h;
     
     //UIRect threadRect       = command.threadRect;
     //UIRect scissor          = command.scissor;
@@ -6608,12 +6594,21 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     
     command.selectedFont    = c->currFont;
     command.pixelHeight     = c->currPixelHeight;
+    
+    //NOTE: Normalize the scrolled coordinates, and replace them in the render command.
+    if(c->scroll && command.type != UI_RC_SCROLLBAR)
+    {
+        command.rect.x -= c->scroll->deltaX;
+        command.rect.y -= c->scroll->deltaY;
+        
+        command.layout.startY -= c->scroll->deltaY;
+        command.layout.startX -= c->scroll->deltaX;
+    }
 
     stack *renderStack = &c->renderGroups[0].RenderCommands[zLayer];
     AssertMsgF(renderStack->used < renderStack->capacity, "Out of space in RenderGroup %d\n", 0);
     ls_stackPush(renderStack, (void *)&command);
     
-    //ls_uiRenderSingleCommand(c, &command);
     return;
 }
 #endif
