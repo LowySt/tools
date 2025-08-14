@@ -357,14 +357,10 @@ struct UICheck
     UICheckStyle style;
     
     b32 isActive;
-    
-    //TODO: UIBitmap
-    u8 *bmpActive;
-    u8 *bmpInactive;
-    s32 w, h;
-    
-    u8 *bmpAdditive;
-    s32 addW, addH;
+    UIBitmap bmpActive;
+    UIBitmap bmpInactive;
+    UIBitmap bmpAdditive;
+    s32 w,h; //TODO: This are duplicated with the bmpActive and bmpInactive bitmaps... which is bad
 };
 
 enum UITextBoxAlignment : u8
@@ -500,6 +496,7 @@ struct UIMenu
 {
     UIButton          closeWindow;
     UIButton          minimize;
+    UIButton          maximize;
     
     Array<UISubMenu>  subMenus;
     b32               isOpen;
@@ -857,6 +854,7 @@ u32          ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, utf32 s);
 //NOTE: This does NOT free the memory of the string
 void         ls_uiListBoxRemoveEntry(UIContext *c, UIListBox *list, u32 index);
 b32          ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer);
+b32          ls_uiListBox(UIContext *c, UIListBox *lb, f32 x, f32 y, f32 relW, f32 relH, u32 zLayer);
 
 UISlider     ls_uiSliderInit(UIContext *c, char32_t *name, s32 maxVal, s32 minVal, 
                              f64 currPos, SliderStyle s, Color l, Color r);
@@ -864,7 +862,8 @@ void         ls_uiSliderChangeValueBy(UIContext *c, UISlider *f, s32 valueDiff);
 s32          ls_uiSliderCalculateValueFromPosition(UIContext *c, UISlider *f);
 b32          ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h);
 
-UIButton     ls_uiMenuButton(UICallback onClick, u8 *bitmapData, s32 width, s32 height);
+UIButton     ls_uiMenuButton(UIContext *c, UICallback onClick, u8 *bitmapData, s32 width, s32 height);
+UIButton     ls_uiMenuButton(UIContext *c, UICallback onClick, UIBitmap bmp);
 UISubMenu  * ls_uiMenuAddSub(UIContext *c, UIMenu *menu, UISubMenu sub);
 UISubMenu  * ls_uiMenuAddSub(UIContext *c, UIMenu *menu, const char32_t *name);
 UIMenuItem * ls_uiMenuAddItem(UIContext *c, UIMenu *menu, const char32_t *name, UICallback onClick, void *userData);
@@ -919,6 +918,9 @@ void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32
                       UIRect threadRect, UIRect scissor, T text, Color textColor);
 void ls_uiDebugDrawInfo(UIContext *c)
 {
+    Arena prev = ls_arenaUse(c->frameArena);
+    s32 prevPx = ls_uiSelectFontByPixelHeight(c, 18);
+
 #ifndef LS_UI_OPENGL_BACKEND
     for(s32 i = 0; i < __LS_UI_THREAD_COUNT; i++)
     {
@@ -927,11 +929,17 @@ void ls_uiDebugDrawInfo(UIContext *c)
     }
 #endif
     
-    u32 buff[64]    = {};
-    utf32 frameTime = { buff, 0, 64 };
-    ls_utf32FromInt_t(&frameTime, c->dt);
+    utf32 frameTime = ls_utf32FromInt(c->dt);
     ls_uiLabel(c, frameTime, 0.95f, 0.95f, c->textColor, 3);
+
+    ls_uiSelectFontByPixelHeight(c, prevPx);
+    ls_arenaUse(prev);
 }
+
+#else //_DEBUG
+
+#define ls_uiDebugLog(...)
+#define ls_uiDebugDrawInfo(...)
 
 #endif //_DEBUG
 
@@ -1297,12 +1305,29 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                 case VK_SHIFT:   KeySetAndRepeat(keyMap::Shift, rep);     break; //TODO: Differentiate L/R Shift
                 
                 case 'A':        KeySetAndRepeat(keyMap::A, rep);         break;
+                case 'B':        KeySetAndRepeat(keyMap::B, rep);         break;
                 case 'C':        KeySetAndRepeat(keyMap::C, rep);         break;
                 case 'D':        KeySetAndRepeat(keyMap::D, rep);         break;
+                case 'E':        KeySetAndRepeat(keyMap::E, rep);         break;
+                case 'F':        KeySetAndRepeat(keyMap::F, rep);         break;
                 case 'G':        KeySetAndRepeat(keyMap::G, rep);         break;
+                case 'H':        KeySetAndRepeat(keyMap::H, rep);         break;
+                case 'I':        KeySetAndRepeat(keyMap::I, rep);         break;
+                case 'J':        KeySetAndRepeat(keyMap::J, rep);         break;
+                case 'K':        KeySetAndRepeat(keyMap::K, rep);         break;
+                case 'L':        KeySetAndRepeat(keyMap::L, rep);         break;
+                case 'M':        KeySetAndRepeat(keyMap::M, rep);         break;
+                case 'N':        KeySetAndRepeat(keyMap::N, rep);         break;
+                case 'O':        KeySetAndRepeat(keyMap::O, rep);         break;
+                case 'P':        KeySetAndRepeat(keyMap::P, rep);         break;
+                case 'Q':        KeySetAndRepeat(keyMap::Q, rep);         break;
+                case 'R':        KeySetAndRepeat(keyMap::R, rep);         break;
                 case 'S':        KeySetAndRepeat(keyMap::S, rep);         break;
+                case 'T':        KeySetAndRepeat(keyMap::T, rep);         break;
+                case 'U':        KeySetAndRepeat(keyMap::U, rep);         break;
                 case 'V':        KeySetAndRepeat(keyMap::V, rep);         break;
                 case 'W':        KeySetAndRepeat(keyMap::W, rep);         break;
+                case 'X':        KeySetAndRepeat(keyMap::X, rep);         break;
                 case 'Y':        KeySetAndRepeat(keyMap::Y, rep);         break;
                 case 'Z':        KeySetAndRepeat(keyMap::Z, rep);         break;
             }
@@ -1342,12 +1367,29 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
                 case VK_SHIFT:   KeyUnset(keyMap::Shift);     break; //TODO: Differentiate L/R Shift
                 
                 case 'A':        KeyUnset(keyMap::A);         break;
+                case 'B':        KeyUnset(keyMap::B);         break;
                 case 'C':        KeyUnset(keyMap::C);         break;
                 case 'D':        KeyUnset(keyMap::D);         break;
+                case 'E':        KeyUnset(keyMap::E);         break;
+                case 'F':        KeyUnset(keyMap::F);         break;
                 case 'G':        KeyUnset(keyMap::G);         break;
+                case 'H':        KeyUnset(keyMap::H);         break;
+                case 'I':        KeyUnset(keyMap::I);         break;
+                case 'J':        KeyUnset(keyMap::J);         break;
+                case 'K':        KeyUnset(keyMap::K);         break;
+                case 'L':        KeyUnset(keyMap::L);         break;
+                case 'M':        KeyUnset(keyMap::M);         break;
+                case 'N':        KeyUnset(keyMap::N);         break;
+                case 'O':        KeyUnset(keyMap::O);         break;
+                case 'P':        KeyUnset(keyMap::P);         break;
+                case 'Q':        KeyUnset(keyMap::Q);         break;
+                case 'R':        KeyUnset(keyMap::R);         break;
                 case 'S':        KeyUnset(keyMap::S);         break;
+                case 'T':        KeyUnset(keyMap::T);         break;
+                case 'U':        KeyUnset(keyMap::U);         break;
                 case 'V':        KeyUnset(keyMap::V);         break;
                 case 'W':        KeyUnset(keyMap::W);         break;
+                case 'X':        KeyUnset(keyMap::X);         break;
                 case 'Y':        KeyUnset(keyMap::Y);         break;
                 case 'Z':        KeyUnset(keyMap::Z);         break;
             }
@@ -2440,6 +2482,10 @@ void ls_uiFrameBegin(UIContext *c, UIWindow *win)
     GetClientRect(win->Window, &r1);
     glViewport(0, 0, r1.right-r1.left, r1.bottom - r1.top);
 #endif
+    // Reset the scissor at the beginning of every frame
+    // TODO: Make scissor a stack where you can push stuff onto and pop them
+    // to make it easier, and stop passing the scissor around since it's part of the context?
+    c->scissor = {0, 0, win->width, win->height};
 
     win->UserInput.Keyboard.prevState       = win->UserInput.Keyboard.currentState;
     win->UserInput.Keyboard.repeatState     = {};
@@ -4472,15 +4518,13 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
 UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s,
                        u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, UICallback onChange, void *data)
 {
-    UICheck result = {};
-    
-    result.style       = s;
-    result.isActive    = FALSE;
-    result.bmpActive   = bmpActive;
-    result.bmpInactive = bmpInactive;
-    result.w           = w;
-    result.h           = h;
-    
+    UICheck result       = {};
+    result.style         = s;
+    result.isActive      = FALSE;
+    result.bmpActive     = ls_uiBitmapFromRGBAPixelData(c, w, h, bmpActive);
+    result.bmpInactive   = ls_uiBitmapFromRGBAPixelData(c, w, h, bmpInactive);
+    result.w             = w;
+    result.h             = h;
     result.callback1     = onChange;
     result.callback1Data = data;
     
@@ -4490,17 +4534,13 @@ UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s,
 UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32 h,
                        u8 *bmpAdditive, s32 addW, s32 addH, UICallback onChange, void *data)
 {
-    UICheck result = {};
-    
-    result.style       = s;
-    result.isActive    = FALSE;
-    result.bmpInactive = bmpInactive;
-    result.w           = w;
-    result.h           = h;
-    result.bmpAdditive = bmpAdditive;
-    result.addW        = addW;
-    result.addH        = addH;
-    
+    UICheck result       = {};
+    result.style         = s;
+    result.isActive      = FALSE;
+    result.bmpInactive   = ls_uiBitmapFromRGBAPixelData(c, w, h, bmpInactive);
+    result.bmpAdditive   = ls_uiBitmapFromRGBAPixelData(c, addW, addH, bmpAdditive);
+    result.w             = w;
+    result.h             = h;
     result.callback1     = onChange;
     result.callback1Data = data;
     
@@ -4568,8 +4608,6 @@ void ls_uiLabelInRect(UIContext *c, T label, s32 x, s32 y, Color bkg, Color bord
     const s32 max_positive = 0x7FFFFFFF;
     return ls_uiLabelInRect(c, label, x, y, max_positive, max_positive, bkg, border, text, zLayer);
 }
-
-
 
 void ls_uiLabel(UIContext *c, utf32 label, f32 relX, f32 relY, Color textColor, s32 zLayer = 0)
 {
@@ -5821,6 +5859,15 @@ b32 ls_uiListBox(UIContext *c, UIListBox *lb, s32 xPos, s32 yPos, s32 w, s32 h, 
     return inputUse;
 }
 
+b32 ls_uiListBox(UIContext *c, UIListBox *lb, f32 x, f32 y, f32 relW, f32 relH, u32 zLayer = 0) {
+    UIWindow *win = c->currWindow;
+    s32 xPos      = x*win->width;
+    s32 yPos      = y*win->height;
+    s32 w         = relW*win->width;
+    s32 h         = relH*win->height;
+    return ls_uiListBox(c, lb, xPos, yPos, w, h, zLayer);
+}
+
 UISlider ls_uiSliderInit(UIContext *c, char32_t *name, s32 maxVal, s32 minVal, f64 currPos, 
                          SliderStyle s, Color l, Color r)
 {
@@ -5911,18 +5958,18 @@ b32 ls_uiSlider(UIContext *c, UISlider *slider, s32 xPos, s32 yPos, s32 w, s32 h
     return hasAnsweredToInput;
 }
 
-UIButton ls_uiMenuButton(UICallback onClick, u8 *bitmapData, s32 width, s32 height)
+UIButton ls_uiMenuButton(UIContext *c, UICallback onClick, u8 *bitmapData, s32 width, s32 height)
 {
+    UIBitmap bmp     = ls_uiBitmapFromRGBAPixelData(c, width, height, bitmapData);
+
     UIButton result  = {};
     result.style     = UIBUTTON_BMP;
-    result.bmp.data  = bitmapData;
-    result.bmp.w     = width;
-    result.bmp.h     = height;
+    result.bmp       = bmp;
     result.callback1 = onClick;
     return result;
 }
 
-UIButton ls_uiMenuButton(UICallback onClick, UIBitmap bmp)
+UIButton ls_uiMenuButton(UIContext *c, UICallback onClick, UIBitmap bmp)
 {
     UIButton result  = {};
     result.style     = UIBUTTON_BMP;
@@ -6012,11 +6059,13 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     s32 itemCount = menu->items.count;
     
     s32 closeX    = x + w - menu->closeWindow.bmp.w - 6;
-    s32 minimizeX = closeX - menu->closeWindow.bmp.w - 6;
+    s32 maximizeX = closeX - menu->closeWindow.bmp.w - 6;
+    s32 minimizeX = maximizeX - menu->maximize.bmp.w - 6;
     
     s32 dragX = x + ((subCount+itemCount)*subW);
+    s32 dragH = h - 4; //NOTE: We are padding from the top to avoid drag+resize combo which can result in annoying behaviour
     
-    if(LeftClickIn(dragX, y, minimizeX-dragX, h))
+    if(LeftClickIn(dragX, y, minimizeX-dragX, dragH))
     {
         win->isDragging = TRUE;
         ls_uiFocusChange(c, 0);
@@ -6114,9 +6163,11 @@ b32 ls_uiMenu(UIContext *c, UIMenu *menu, s32 x, s32 y, s32 w, s32 h, s32 zLayer
     if(menu->closeWindow.bmp.data)
         inputUse |= ls_uiButton(c, &menu->closeWindow, closeX, y + 2, 3);
     
+    if(menu->maximize.bmp.data)
+        inputUse |= ls_uiButton(c, &menu->maximize, maximizeX, y + 2, 3);
+
     if(menu->minimize.bmp.data)
         inputUse |= ls_uiButton(c, &menu->minimize, minimizeX, y + 2, 3);
-    
     
     RenderCommand command = { UI_RC_MENU, x, y, w, h };
     command.menu          = menu;
@@ -6829,31 +6880,28 @@ void ls_uiRenderSingleCommand(UIContext *c, RenderCommand *curr)
             
             if(check->style == UICHECK_BMP)
             {
-                if(check->bmpActive && check->bmpInactive)
+                if(check->bmpActive.data && check->bmpInactive.data)
                 {
-                    UIBitmap inactive = { check->bmpInactive, check->w, check->h };
-                    UIBitmap active   = { check->bmpActive, check->w, check->h };
-                    
-                    UIBitmap chosen = check->isActive ? active : inactive;
+                    UIBitmap chosen = check->isActive ? check->bmpActive : check->bmpInactive;
                     ls_uiStretchBitmap(c, &chosen, {xPos, yPos, chosen.w, chosen.h}, threadRect, scissor);
                 }
-                else if(check->bmpInactive && check->bmpAdditive)
+                else if(check->bmpInactive.data && check->bmpAdditive.data)
                 {
-                    UIBitmap inactive = { check->bmpInactive, check->w, check->h };
-                    ls_uiStretchBitmap(c, &inactive, {xPos, yPos, inactive.w, inactive.h}, threadRect, scissor);
+                    s32 addX = xPos;
+                    s32 addY = yPos;
+                    s32 addW = check->bmpAdditive.w;
+                    s32 addH = check->bmpAdditive.h;
+                    s32 inW  = check->bmpInactive.w;
+                    s32 inH  = check->bmpInactive.h;
+
+                    ls_uiStretchBitmap(c, &check->bmpInactive, {xPos, yPos, inW, inH}, threadRect, scissor);
                     if(check->isActive)
                     {
-                        s32 addX = xPos;
-                        s32 addY = yPos;
                         
-                        if(check->addW > check->w) { addX -= (check->addW - check->w) / 2; }
-                        if(check->addH > check->h) { addY -= (check->addH - check->h) / 2; }
+                        if(addW > inW) { addX -= (addW - inW) / 2; }
+                        if(addH > inH) { addY -= (addH - inH) / 2; }
                         
-                        UIBitmap additive = { check->bmpAdditive, check->w, check->h };
-                        //NOTE: If the additive goes on top of the base bitmap, it would be rendered
-                        // below in OpenGL (because render ordering is opposed to the Software Backend
-                        // To avoid it, we artificially increase the zLayer
-                        ls_uiStretchBitmap(c, &additive, {addX, addY, additive.w, additive.h}, threadRect, scissor);
+                        ls_uiStretchBitmap(c, &check->bmpAdditive, {addX, addY, addW, addH}, threadRect, scissor);
                     }
                 }
                 else { AssertMsg(FALSE, "Unhandled check bmp collection\n"); }
