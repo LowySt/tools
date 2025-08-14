@@ -76,6 +76,48 @@ s32 ls_vlogFormatB32(char *dst, va_list *argList)
     return 0;
 }
 
+s32 ls_vlogFormatS8(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *argList)
+{
+    s32 intValue = va_arg(*argList, s32);
+    
+    const s32 buffSize = 128;
+    char intBuff[buffSize] = {};
+    s32 sLen = 0;
+    
+    if(numMods == 0)
+    {
+        sLen = ls_itoa_t(intValue, intBuff, buffSize);
+    }
+    else
+    {
+        switch(mods[0])
+        {
+            case 'x': { sLen = ls_utoax_t((u32)intValue, intBuff, buffSize, 1, TRUE); } break;
+            case 'B': { sLen = ls_utoab_t((u32)intValue, intBuff, buffSize, 1, TRUE); } break;
+            
+            default: { AssertMsgF(FALSE, "Mod %c not implemented\n", mods[0]); }
+            
+        }
+    }
+    
+    if(lenMod > 0)
+    {
+        s32 lenDiff = lenMod - sLen;
+        while(lenDiff > 0)
+        {
+            if(sLen+1 >= buffSize) { return sLen; }
+            
+            intBuff[sLen] = ' ';
+            sLen += 1;
+            lenDiff -= 1;
+        }
+    }
+    
+    ls_memcpy(intBuff, dst, sLen);
+    
+    return sLen;
+}
+
 s32 ls_vlogFormatS32(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *argList)
 {
     s32 intValue = va_arg(*argList, s32);
@@ -93,8 +135,7 @@ s32 ls_vlogFormatS32(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *ar
         switch(mods[0])
         {
             case 'x': { sLen = ls_utoax_t((u32)intValue, intBuff, buffSize, 4, TRUE); } break;
-            
-            case 'b': { sLen = ls_utoab_t((u32)intValue, intBuff, buffSize, 4, TRUE); } break;
+            case 'B': { sLen = ls_utoab_t((u32)intValue, intBuff, buffSize, 4, TRUE); } break;
             
             default: { AssertMsgF(FALSE, "Mod %c not implemented\n", mods[0]); }
             
@@ -136,8 +177,48 @@ s32 ls_vlogFormatS64(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *ar
         switch(mods[0])
         {
             case 'x': { sLen = ls_utoax_t((u64)intValue, intBuff, buffSize, 8, TRUE); } break;
+            case 'B': { sLen = ls_utoab_t((u64)intValue, intBuff, buffSize, 8, TRUE); } break;
             
-            case 'b': { sLen = ls_utoab_t((u64)intValue, intBuff, buffSize, 8, TRUE); } break;
+            default: { AssertMsgF(FALSE, "Mod %c not implemented\n", mods[0]); }
+            
+        }
+    }
+    
+    if(lenMod > 0)
+    {
+        s32 lenDiff = lenMod - sLen;
+        while(lenDiff > 0)
+        {
+            if(sLen+1 >= buffSize) { return sLen; }
+            
+            intBuff[sLen] = ' ';
+            sLen += 1;
+            lenDiff -= 1;
+        }
+    }
+    
+    ls_memcpy(intBuff, dst, sLen);
+    return sLen;
+}
+
+s32 ls_vlogFormatU8(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *argList)
+{
+    u32 intValue = va_arg(*argList, u32);
+    
+    const s32 buffSize = 128;
+    char intBuff[buffSize] = {};
+    s32 sLen = 0; 
+    
+    if(numMods == 0)
+    {
+        sLen = ls_utoa_t(intValue, intBuff, buffSize);
+    }
+    else
+    {
+        switch(mods[0])
+        {
+            case 'x': { sLen = ls_utoax_t(intValue, intBuff, buffSize, 1, TRUE); } break;
+            case 'B': { sLen = ls_utoab_t(intValue, intBuff, buffSize, 1, TRUE); } break;
             
             default: { AssertMsgF(FALSE, "Mod %c not implemented\n", mods[0]); }
             
@@ -178,8 +259,7 @@ s32 ls_vlogFormatU32(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *ar
         switch(mods[0])
         {
             case 'x': { sLen = ls_utoax_t(intValue, intBuff, buffSize, 4, TRUE); } break;
-            
-            case 'b': { sLen = ls_utoab_t(intValue, intBuff, buffSize, 4, TRUE); } break;
+            case 'B': { sLen = ls_utoab_t(intValue, intBuff, buffSize, 4, TRUE); } break;
             
             default: { AssertMsgF(FALSE, "Mod %c not implemented\n", mods[0]); }
             
@@ -220,8 +300,7 @@ s32 ls_vlogFormatU64(char *dst, char *mods, s32 numMods, s32 lenMod, va_list *ar
         switch(mods[0])
         {
             case 'x': { sLen = ls_utoax_t(intValue, intBuff, buffSize, 8, TRUE); } break;
-            
-            case 'b': { sLen = ls_utoab_t(intValue, intBuff, buffSize, 8, TRUE); } break;
+            case 'B': { sLen = ls_utoab_t(intValue, intBuff, buffSize, 8, TRUE); } break;
             
             default: { AssertMsgF(FALSE, "Mod %c not implemented\n", mods[0]); }
             
@@ -451,11 +530,11 @@ void ls_logDefaultTypesRegister()
     {
         ls_vlogRegister("ptr",    ls_vlogFormatPTR);
         ls_vlogRegister("b32",    ls_vlogFormatB32);
-        ls_vlogRegister("s8",     ls_vlogFormatS32);
+        ls_vlogRegister("s8",     ls_vlogFormatS8);
         ls_vlogRegister("s16",    ls_vlogFormatS32);
         ls_vlogRegister("s32",    ls_vlogFormatS32);
         ls_vlogRegister("s64",    ls_vlogFormatS64);
-        ls_vlogRegister("u8",     ls_vlogFormatU32);
+        ls_vlogRegister("u8",     ls_vlogFormatU8);
         ls_vlogRegister("u16",    ls_vlogFormatU32);
         ls_vlogRegister("u32",    ls_vlogFormatU32);
         ls_vlogRegister("u64",    ls_vlogFormatU64);
@@ -499,6 +578,8 @@ s32 ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList, b32 
         lenMod = 0;
         lenModCount = 0;
         
+        //TODO: Separate modifiers from the actual type using something like a ':' delimiter
+        // To avoid having certain type names conflict with a modifier
         if(*p == '{')
         {
             if(*(p+1) == '{')
@@ -521,9 +602,9 @@ s32 ls_vlog(const char *format, char *dest, s32 buffSize, va_list *argList, b32 
                 numMods += 1;
             }
             
-            if(*(p+1) == 'b')
+            if(*(p+1) == 'B')
             {
-                mods[numMods] = 'b';
+                mods[numMods] = 'B';
                 p += 1;
                 numMods += 1;
             }
