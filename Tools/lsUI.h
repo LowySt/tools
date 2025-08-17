@@ -3757,16 +3757,19 @@ void __ls_uiSoftwareGlyph(UIContext *c, UIGlyph *g, s32 xP, s32 yP, s32 stride, 
     
     s32 yOff = 0;
     s32 xOff = 0;
-    
-    //NOTE: Output bounding box in the backbuffer based on the scaled dimensions
-    s32 maxY = scaledHeight;
-    if(startY + maxY > tRect.maxY) { maxY -= (startY+maxY) - tRect.maxY; }
+
+    s32 scissorMaxY = scissor.y+scissor.h;
+    s32 maxY        = scaledHeight;
+    if(startY + maxY > tRect.maxY)  { maxY -= (startY+maxY) - tRect.maxY; }
+    if(startY + maxY > scissorMaxY) { maxY -= (startY+maxY) - scissorMaxY; }
+    s32 scissorMaxX = scissor.x+scissor.w;
     s32 maxX = scaledWidth;
-    if(startX + maxX > tRect.maxX) { maxX -= (startX+maxX) - tRect.maxX; }
+    if(startX + maxX > tRect.maxX)  { maxX -= (startX+maxX) - tRect.maxX; }
+    if(startX + maxX > scissorMaxX) { maxX -= (startX+maxX) - scissorMaxX; }
     
-    s32 minY = tRect.minY;
+    s32 minY = tRect.minY > scissor.y ? tRect.minY : scissor.y;
     if(startY < minY) { yOff = minY - startY; maxY -= yOff; startY = minY; }
-    s32 minX = tRect.minX;
+    s32 minX = tRect.minX > scissor.x ? tRect.minX : scissor.x;
     if(startX < minX) { xOff = minX - startX; maxX -= xOff; startX = minX; }
     
     for(s32 y = 0; y < maxY; ++y)
