@@ -2482,10 +2482,6 @@ void ls_uiFrameBegin(UIContext *c, UIWindow *win)
     GetClientRect(win->Window, &r1);
     glViewport(0, 0, r1.right-r1.left, r1.bottom - r1.top);
 #endif
-    // Reset the scissor at the beginning of every frame
-    // TODO: Make scissor a stack where you can push stuff onto and pop them
-    // to make it easier, and stop passing the scissor around since it's part of the context?
-    c->scissor = {0, 0, win->width, win->height};
 
     win->UserInput.Keyboard.prevState       = win->UserInput.Keyboard.currentState;
     win->UserInput.Keyboard.repeatState     = {};
@@ -2531,6 +2527,12 @@ void ls_uiFrameBegin(UIContext *c, UIWindow *win)
         TranslateMessage(&Msg);
         DispatchMessageA(&Msg);
     }
+
+    // Reset the scissor at the beginning of every frame
+    // This is placed after the MessageLoop, to ensure we are not a frame late with resizing
+    // TODO: Make scissor a stack where you can push stuff onto and pop them
+    // to make it easier, and stop passing the scissor around since it's part of the context?
+    c->scissor = {0, 0, win->width, win->height};
     
     //NOTE: Make sure previous frame click is not put on hold this frame.
     if(win->UserInput.Mouse.wasLeftPressed  ||
