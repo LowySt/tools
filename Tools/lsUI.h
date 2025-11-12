@@ -171,6 +171,17 @@ struct UILayoutRect
     s32 startX, startY;
 };
 
+//TODO Implement this for every widget?
+struct UIPos
+{
+    enum UIPosKind : u8 { Absolute = 0, Relative = 1 };
+    UIPosKind kind;
+    union {
+        struct { int x, y, w, h; } i;
+        struct { float x, y, w, h; } f;
+    } value;
+};
+
 struct UIGlyph
 {
     u8 *data;
@@ -818,8 +829,11 @@ void         ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, s32 w, 
 
 b32          ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgColor, s32 zLayer);
 b32          ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer);
+b32          ls_uiButton(UIContext *c, UIButton *button, f32 x, f32 y, Color bkgColor, s32 zLayer);
+b32          ls_uiButton(UIContext *c, UIButton *button, f32 x, f32 y, s32 zLayer);
 
 
+UICheck      ls_uiCheckInit(UIContext *c, UICheckStyle s, UIBitmap inactive, UIBitmap additive, UICallback onChange, void *data);
 UICheck      ls_uiCheckInit(UIContext *c, UICheckStyle s,
                             u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, UICallback onChange, void *data);
 UICheck      ls_uiCheckInit(UIContext *c, UICheckStyle s, u8 *bmpInactive, s32 w, s32 h,
@@ -847,6 +861,7 @@ void         ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s);
 void         ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 initialCap, s32 maxLen, b32 singleLine, 
                               b32 readOnly, UICallback preInput, UICallback postInput);
 b32          ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
+b32          ls_uiTextBox(UIContext *c, UITextBox *box, f32 x, f32 y, f32 relW, f32 relH, s32 zLayer);
 
 UIListBox    ls_uiListBoxInit(UIContext *c, s32 maxItemCount);
 //NOTE: This does NOT allocate memory for the string
@@ -927,6 +942,9 @@ void ls_uiDebugDrawInfo(UIContext *c)
         UIRect r = c->currWindow->renderUIRects[i];
         ls_uiRect(c, r.minX, r.minY, r.maxX - r.minX, r.maxY - r.minY, RGBA(0,0,0,0), RGB(253, 0, 255), 3);
     }
+    ls_uiLabel(c, U"Backend: SOFTWARE"_W, 0.02f, 0.95f, c->textColor, 3);
+#else
+    ls_uiLabel(c, U"Backend: OPENGL"_W, 0.02f, 0.95f, c->textColor, 3);
 #endif
     
     utf32 frameTime = ls_utf32FromInt(c->dt);
@@ -4520,6 +4538,35 @@ b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, s32 zLayer =
     return ls_uiButton(c, button, xPos, yPos, c->widgetColor, zLayer);
 }
 
+b32 ls_uiButton(UIContext *c, UIButton *button, f32 x, f32 y, Color bkgColor, s32 zLayer = 0)
+{
+    UIWindow *win = c->currWindow;
+    s32 xPos      = x*win->width;
+    s32 yPos      = y*win->height;
+    return ls_uiButton(c, button, xPos, yPos, bkgColor, zLayer);
+}
+
+b32 ls_uiButton(UIContext *c, UIButton *button, f32 x, f32 y, s32 zLayer = 0)
+{
+    return ls_uiButton(c, button, x, y, c->widgetColor, zLayer);
+}
+
+UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s, UIBitmap inactive, UIBitmap additive, UICallback onChange, void *data)
+{
+    UICheck result       = {};
+    result.style         = s;
+    result.isActive      = FALSE;
+    result.bmpInactive   = inactive;
+    result.bmpAdditive   = additive;
+    result.w             = inactive.w;
+    result.h             = inactive.h;
+    result.callback1     = onChange;
+    result.callback1Data = data;
+    
+    return result;
+}
+
+//NOTE TODO: The following 2 functions ALLOCATE VRAM for the bitmaps EACH time they are called!
 UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s,
                        u8 *bmpActive, u8 *bmpInactive, s32 w, s32 h, UICallback onChange, void *data)
 {
@@ -5447,6 +5494,16 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
     
     ls_arenaUse(prev);
     return inputUse;
+}
+
+b32 ls_uiTextBox(UIContext *c, UITextBox *box, f32 x, f32 y, f32 relW, f32 relH, s32 zLayer = 0)
+{
+    UIWindow *win = c->currWindow;
+    s32 xPos      = x*win->width;
+    s32 yPos      = y*win->height;
+    s32 w         = relW*win->width;
+    s32 h         = relH*win->height;
+    return ls_uiTextBox(c, box, xPos, yPos, w, h, zLayer);
 }
 
 void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
