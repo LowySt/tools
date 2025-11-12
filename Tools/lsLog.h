@@ -48,7 +48,9 @@ s32  ls_log(const char *format, ...);
 s32  ls_slog(char *dst, s32 dstMaxLen, const char *format, ...);
 
 #endif //LS_LOG_H
+
 #ifdef LS_LOG_IMPLEMENTATION
+#undef LS_LOG_IMPLEMENTATION
 
 static const s32 LS_LOG_MAX_REGISTERED_TYPES = 64;
 static LogRegisteredType __internal_logRegisteredTypes[LS_LOG_MAX_REGISTERED_TYPES] = {};
