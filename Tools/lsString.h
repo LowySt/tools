@@ -377,6 +377,7 @@ b32   ls_uviewIsLineEmpty(uview v);
 
 
 #ifdef LS_STRING_IMPLEMENTATION
+#undef LS_STRING_IMPLEMENTATION
 
 /*vv INTERNAL vv*/
 static void ls_strGrow(string *s, u32 amount)
