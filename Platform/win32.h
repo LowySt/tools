@@ -1679,6 +1679,34 @@ SYNCHRONIZE)
             SIZE_T PagefileUsage;
             SIZE_T PeakPagefileUsage;
         } PROCESS_MEMORY_COUNTERS;
+
+         typedef struct _STARTUPINFOA {
+          DWORD  cb;
+          LPSTR  lpReserved;
+          LPSTR  lpDesktop;
+          LPSTR  lpTitle;
+          DWORD  dwX;
+          DWORD  dwY;
+          DWORD  dwXSize;
+          DWORD  dwYSize;
+          DWORD  dwXCountChars;
+          DWORD  dwYCountChars;
+          DWORD  dwFillAttribute;
+          DWORD  dwFlags;
+          WORD   wShowWindow;
+          WORD   cbReserved2;
+          LPBYTE lpReserved2;
+          HANDLE hStdInput;
+          HANDLE hStdOutput;
+          HANDLE hStdError;
+        } STARTUPINFOA, *LPSTARTUPINFOA;
+
+        typedef struct _PROCESS_INFORMATION {
+          HANDLE hProcess;
+          HANDLE hThread;
+          DWORD  dwProcessId;
+          DWORD  dwThreadId;
+        } PROCESS_INFORMATION, *PPROCESS_INFORMATION, *LPPROCESS_INFORMATION;
         
         //
         //	Network Structures
@@ -3128,6 +3156,8 @@ WINSTA_EXITWINDOWS   | WINSTA_ENUMERATE       | WINSTA_READSCREEN)
         
         LPVOID   MapViewOfFile(HANDLE hFileMappingObject, DWORD dwDesiredAccess, DWORD dwFileOffsetHigh, DWORD dwFileOffsetLow, SIZE_T dwNumberOfBytesToMap);
         
+        BOOL CreateProcessA(LPCSTR lpApplicationName, LPSTR lpCommandLine, LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment, LPCSTR lpCurrentDirectory, LPSTARTUPINFOA lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation);
+
         /* ---------------------------- */
         /* High Level Window Management */
         /* ---------------------------- */

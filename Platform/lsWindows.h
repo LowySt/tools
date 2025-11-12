@@ -220,6 +220,7 @@ extern "C"
 #endif // LS_WINDOWS_H
 
 #ifdef LS_WINDOWS_IMPLEMENTATION
+#undef LS_WINDOWS_IMPLEMENTATION
 
 u64 windows_ReadConsole(char *Dest, u32 bytesToRead)
 {
