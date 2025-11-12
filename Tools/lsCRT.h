@@ -272,6 +272,7 @@ u64 RotRight(u64 a, s32 shift);
 #endif //End of header
 
 #ifdef LS_CRT_IMPLEMENTATION
+#undef LS_CRT_IMPLEMENTATION
 
 // NOTE:To get console in 4coder (which doesn't open one for me)
 #ifdef LS_EXTERNAL_CONSOLE
@@ -2111,6 +2112,5 @@ u64 RotRight(u64 a, s32 shift)
 #ifdef LS_PLAT_LINUX
 #endif
 }
-
 
 #endif
