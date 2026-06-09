@@ -172,15 +172,30 @@ struct UILayoutRect
 };
 
 //TODO Implement this for every widget?
+#define UIAbsPos(a,b,c,d) {.kind=UIPosKind::Abs, .ix=a, .iy=b, .iw=c, .ih=d}
+#define UIRelPos(a,b,c,d) {.kind=UIPosKind::Rel, .fx=a, .fy=b, .fw=c, .fh=d}
+#define UISclPos(a,b,c,d) {.kind=UIPosKind::Scl, .sx=a, .sy=b, .sw=c, .sh=d}
+enum UIPosKind : u8 { Abs = 0, Rel = 1, Scl = 2 };
 struct UIPos
 {
-    enum UIPosKind : u8 { Absolute = 0, Relative = 1 };
     UIPosKind kind;
     union {
-        struct { int x, y, w, h; } i;
-        struct { float x, y, w, h; } f;
-    } value;
+        struct { s32 ix, iy, iw, ih; };
+        struct { f32 fx, fy, fw, fh; };
+        struct { f32 sx, sy; s32 sw, sh; };
+    };
 };
+
+UIPos TEMPORARY_REMOVE_TO_ABS(s32 width, s32 height, UIPos p)
+{
+    if (p.kind == UIPosKind::Abs) { return p; }
+    s32 x = (s32)(p.fx * width);
+    s32 y = (s32)(p.fy * height);
+    s32 w = (s32)(p.fw * width);
+    s32 h = (s32)(p.fh * height);
+    UIPos res = {UIPosKind::Abs, x, y, w, h};
+    return res;
+}
 
 struct UIGlyph
 {
@@ -628,6 +643,8 @@ struct RenderCommand
     
     //NOTETODO: Scissor for the current command.
     UIRect scissor;
+
+    UIPos pos;
     
 #if _DEBUG
     b32 isTagged;
@@ -817,6 +834,7 @@ Color        ls_uiARGBtoRGBA(Color c);
 template<typename T> UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, T text, s32 pixelHeight);
 
 void         ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
+void         ls_uiRect(UIContext *c, UIPos pos, Color bkgColor, Color borderColor, s32 zLayer);
 
 void         ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
 void         ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer);
@@ -861,7 +879,7 @@ void         ls_uiTextBoxSet(UIContext *c, UITextBox *box, utf32 s);
 void         ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 initialCap, s32 maxLen, b32 singleLine, 
                               b32 readOnly, UICallback preInput, UICallback postInput);
 b32          ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
-b32          ls_uiTextBox(UIContext *c, UITextBox *box, f32 x, f32 y, f32 relW, f32 relH, s32 zLayer);
+//b32          ls_uiTextBox(UIContext *c, UITextBox *box, f32 x, f32 y, f32 relW, f32 relH, s32 zLayer);
 
 UIListBox    ls_uiListBoxInit(UIContext *c, s32 maxItemCount);
 //NOTE: This does NOT allocate memory for the string
@@ -869,7 +887,6 @@ u32          ls_uiListBoxAddEntry(UIContext *c, UIListBox *list, utf32 s);
 //NOTE: This does NOT free the memory of the string
 void         ls_uiListBoxRemoveEntry(UIContext *c, UIListBox *list, u32 index);
 b32          ls_uiListBox(UIContext *c, UIListBox *list, s32 xPos, s32 yPos, s32 w, s32 h, u32 zLayer);
-b32          ls_uiListBox(UIContext *c, UIListBox *lb, f32 x, f32 y, f32 relW, f32 relH, u32 zLayer);
 
 UISlider     ls_uiSliderInit(UIContext *c, char32_t *name, s32 maxVal, s32 minVal, 
                              f64 currPos, SliderStyle s, Color l, Color r);
@@ -2875,6 +2892,7 @@ b32 ls_uiHasCapture(UIContext *c, void *p)
     return FALSE;
 }
 
+//TODO @UIPos
 void ls_uiStartScrollableRegion(UIContext *c, UIScrollableRegion *scroll)
 { 
     AssertMsg(c->scroll == NULL, "Starting a scrollable region inside a scrollable region is invalid\n");
@@ -3495,6 +3513,8 @@ void ls_uiRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
     ls_uiFillRect(c, xPos, yPos, w, h, threadRect, scissor, widgetColor);
 }
 
+
+//TODO @UIPos
 void ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer = 0)
 {
     RenderCommand command = { UI_RC_RECT, x, y, w, h };
@@ -3504,6 +3524,7 @@ void ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color b
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
+//TODO @UIPos
 void ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
 {
     RenderCommand command = { UI_RC_RECT, x, y, w, h };
@@ -3513,6 +3534,18 @@ void ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, s32 zLayer = 0)
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
+//TODO @UIPos
+void ls_uiRect(UIContext *c, UIPos pos, Color bkgColor, Color borderColor, s32 zLayer = 0)
+{
+    RenderCommand command = { UI_RC_RECT };
+    command.pos           = pos;
+    command.bkgColor      = bkgColor;
+    command.borderColor   = borderColor;
+
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
+//TODO @UIPos
 void ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer = 0)
 {
     RenderCommand command = { UI_RC_SEPARATOR, x, y, width, lineWidth };
@@ -3525,6 +3558,23 @@ void ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
+//TODO @UIPos
+void ls_uiHSeparator(UIContext *c, UIPos pos, Color lineColor, s32 zLayer = 0)
+{
+    RenderCommand command = { UI_RC_SEPARATOR }; 
+    command.borderColor   = lineColor;
+    command.pos           = pos;
+    ls_uiPushRenderCommand(c, command, zLayer);
+    
+    //TODO: Do I like this???
+    if (pos.kind == UIPosKind::Abs) { command.pos.iy += 1; }
+    else { command.pos.fy += 1.0f / (f32)c->currWindow->height; }
+
+    command.borderColor   = ls_uiDarkenRGB(command.borderColor, 0.10f);
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
+//TODO @UIPos
 void ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Color lineColor, s32 zLayer = 0)
 {
     RenderCommand command = { UI_RC_SEPARATOR, x, y, lineWidth, height };
@@ -3537,10 +3587,36 @@ void ls_uiVSeparator(UIContext *c, s32 x, s32 y, s32 height, s32 lineWidth, Colo
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
+//TODO @UIPos
+void ls_uiVSeparator(UIContext *c, UIPos pos, Color lineColor, s32 zLayer = 0)
+{
+    RenderCommand command = { UI_RC_SEPARATOR };
+    command.borderColor = lineColor;
+    command.pos         = pos;
+    ls_uiPushRenderCommand(c, command, zLayer);
+    
+    //TODO: Do I like this???
+    if (pos.kind == UIPosKind::Abs) { command.pos.ix += 1; }
+    else { command.pos.fx += 1.0f / (f32)c->currWindow->width; }
+
+    command.borderColor = ls_uiDarkenRGB(command.borderColor, 0.10f);
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
+//TODO @UIPos
 void ls_uiCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness, Color col, s32 zLayer = 0)
 {
     RenderCommand command = { UI_RC_CIRCLE, centerX, centerY, radius, thickness };
     command.bkgColor = col;
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
+//TODO @UIPos
+void ls_uiCircle(UIContext *c, UIPos pos, Color col, s32 zLayer = 0)
+{
+    RenderCommand command = { UI_RC_CIRCLE };
+    command.bkgColor = col;
+    command.pos      = pos;
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
@@ -3632,10 +3708,20 @@ void ls_uiStretchBitmap(UIContext *c, UIBitmap *bmp, UIRect dst, UIRect threadRe
 #endif
 }
 
+//TODO @UIPos
 void ls_uiBitmap(UIContext *c, UIBitmap bmp, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer = 0)
 {
     RenderCommand command = { UI_RC_BITMAP, xPos, yPos, w, h };
     command.bitmap        = bmp;
+    ls_uiPushRenderCommand(c, command, zLayer);
+}
+
+//TODO @UIPos
+void ls_uiBitmap(UIContext *c, UIBitmap bmp, UIPos pos, s32 zLayer = 0)
+{
+    RenderCommand command = { UI_RC_BITMAP };
+    command.bitmap        = bmp;
+    command.pos           = pos;
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
@@ -4473,6 +4559,7 @@ UIButton ls_uiButtonInit(UIContext *c, UIButtonStyle s, T text, UICallback onCli
 //     and it also shouldn't use 'normal' buttons for its drop down sub-menus, so... basically @MenuIsShit
 //     and I wanna redo it completely.
 
+//TODO @UIPos
 b32 ls_uiButton(UIContext *c, UIButton *button, s32 xPos, s32 yPos, Color bkgColor, s32 zLayer = 0)
 {
     Input *UserInput = &c->currWindow->UserInput;
@@ -4549,6 +4636,25 @@ b32 ls_uiButton(UIContext *c, UIButton *button, f32 x, f32 y, Color bkgColor, s3
 b32 ls_uiButton(UIContext *c, UIButton *button, f32 x, f32 y, s32 zLayer = 0)
 {
     return ls_uiButton(c, button, x, y, c->widgetColor, zLayer);
+}
+
+b32 ls_uiButton(UIContext *c, UIButton *button, UIPos pos, s32 zLayer = 0)
+{
+    UIWindow *win = c->currWindow;
+    if (pos.kind == UIPosKind::Abs)
+    {
+        return ls_uiButton(c, button, pos.ix, pos.iy, c->widgetColor, zLayer);
+    }
+    else if (pos.kind == UIPosKind::Scl)
+    {
+        s32 xPos = pos.sx*win->width;
+        s32 yPos = pos.sy*win->height;
+        return ls_uiButton(c, button, xPos, yPos, c->widgetColor, zLayer);
+    }
+
+    s32 xPos = pos.fx*win->width;
+    s32 yPos = pos.fy*win->height;
+    return ls_uiButton(c, button, xPos, yPos, c->widgetColor, zLayer);
 }
 
 UICheck ls_uiCheckInit(UIContext *c, UICheckStyle s, UIBitmap inactive, UIBitmap additive, UICallback onChange, void *data)
@@ -5496,13 +5602,25 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h,
     return inputUse;
 }
 
-b32 ls_uiTextBox(UIContext *c, UITextBox *box, f32 x, f32 y, f32 relW, f32 relH, s32 zLayer = 0)
+b32 ls_uiTextBox(UIContext *c, UITextBox *box, UIPos pos, s32 zLayer = 0)
 {
     UIWindow *win = c->currWindow;
-    s32 xPos      = x*win->width;
-    s32 yPos      = y*win->height;
-    s32 w         = relW*win->width;
-    s32 h         = relH*win->height;
+
+    if (pos.kind == UIPosKind::Abs)
+    {
+        return ls_uiTextBox(c, box, pos.ix, pos.iy, pos.iw, pos.ih, zLayer);
+    }
+    else if (pos.kind == UIPosKind::Scl)
+    {
+        s32 xPos  = pos.sx*win->width;
+        s32 yPos  = pos.sy*win->height;
+        return ls_uiTextBox(c, box, xPos, yPos, pos.sw, pos.sh, zLayer);
+    }
+
+    s32 xPos = pos.fx*win->width;
+    s32 yPos = pos.fy*win->height;
+    s32 w    = pos.fw*win->width;
+    s32 h    = pos.fh*win->height;
     return ls_uiTextBox(c, box, xPos, yPos, w, h, zLayer);
 }
 
@@ -5843,7 +5961,7 @@ b32 ls_uiListBox(UIContext *c, UIListBox *lb, s32 xPos, s32 yPos, s32 w, s32 h, 
 {
     Input *UserInput = &c->currWindow->UserInput;
     b32 inputUse = FALSE;
-    
+
     //TODO: Why is this constant?
     const s32 arrowBoxWidth = 24;
     if(LeftClickIn(xPos+w, yPos, arrowBoxWidth, h) && ls_uiHasCapture(c, 0))
@@ -5921,12 +6039,24 @@ b32 ls_uiListBox(UIContext *c, UIListBox *lb, s32 xPos, s32 yPos, s32 w, s32 h, 
     return inputUse;
 }
 
-b32 ls_uiListBox(UIContext *c, UIListBox *lb, f32 x, f32 y, f32 relW, f32 relH, u32 zLayer = 0) {
+b32 ls_uiListBox(UIContext *c, UIListBox *lb, UIPos pos, u32 zLayer = 0)
+{
     UIWindow *win = c->currWindow;
-    s32 xPos      = x*win->width;
-    s32 yPos      = y*win->height;
-    s32 w         = relW*win->width;
-    s32 h         = relH*win->height;
+    if (pos.kind == UIPosKind::Abs)
+    {
+        return ls_uiListBox(c, lb, pos.ix, pos.iy, pos.iw, pos.ih, zLayer);
+    }
+    else if (pos.kind == UIPosKind::Scl)
+    {
+        s32 xPos = pos.sx*win->width;
+        s32 yPos = pos.sy*win->height;
+        return ls_uiListBox(c, lb, xPos, yPos, pos.sw, pos.sh, zLayer);
+    }
+
+    s32 xPos = pos.fx*win->width;
+    s32 yPos = pos.fy*win->height;
+    s32 w    = pos.fw*win->width;
+    s32 h    = pos.fh*win->height;
     return ls_uiListBox(c, lb, xPos, yPos, w, h, zLayer);
 }
 
@@ -6604,6 +6734,12 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     command.selectedFont = c->currFont;
     command.pixelHeight  = c->currPixelHeight;
     command.scissor      = c->scissor;
+
+    //TODO @UIPos
+    if ((command.pos.iw != 0) && (command.pos.ih != 0)) {
+        UIPos p = TEMPORARY_REMOVE_TO_ABS(c->currWindow->width, c->currWindow->height, command.pos);
+        command.rect = {p.ix, p.iy, p.iw, p.ih};
+    }
     
     //NOTE: Normalize the scrolled coordinates, and replace them in the render command.
     if(c->scroll && command.type != UI_RC_SCROLLBAR)
@@ -6707,6 +6843,12 @@ void ls_uiPushRenderCommand(UIContext *c, RenderCommand command, s32 zLayer)
     
     command.selectedFont    = c->currFont;
     command.pixelHeight     = c->currPixelHeight;
+
+    //TODO @UIPos
+    if ((command.pos.iw != 0) && (command.pos.ih != 0)) {
+        UIPos p = TEMPORARY_REMOVE_TO_ABS(c->currWindow->width, c->currWindow->height, command.pos);
+        command.rect = {p.ix, p.iy, p.iw, p.ih};
+    }
     
     //NOTE: Normalize the scrolled coordinates, and replace them in the render command.
     if(c->scroll && command.type != UI_RC_SCROLLBAR)
