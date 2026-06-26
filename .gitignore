@@ -2,6 +2,7 @@
 *.bat
 *.exe
 *.pdb
+*.swp
 *.4coder
 *.swp
 Tools/test/
