@@ -11,18 +11,21 @@
  *     memory needs.
  *
  *  For every file you want watched, call ls_fwStartWatchingFile(FW_FileWatcher *fw, char *absolutePath, char **dest)
- *     This will both start watching the file and give you the file contents on first read.
+ *     This will both start watching the file and give you the file contents on first read
+ *          Again dest is a buffer spacious enough you provided.
+ *
  *       If the function succeeds with no problem, it will return bytesRead from file
- *       If the maximum amount of files watched is reached, this function will return 0, and set *dest to 0
+ *       If the maximum amount of watchable files is reached, this function will return 0, and set *dest to 0
  *       If the backing buffer is full, this function will return 0, and set *dest to -1
  *       If the file could not be read for any reason, it will return 0 and set *dest to -2
  *       If the file could be read but attributes could not, it will return 0 and set *dest to -3
  *       If the function ignored the watchable file because of a blacklist, it will return 0, and set *dest to -4
+ *          NOTE: Blacklists are explained below
  *
  *  If you want to watch all files inside a directory, 
  *    call ls_fwStartWatchingAllFilesInDir(FW_FileWatcher *fw, char *dirParentPath, char *dirName, bool recursive = true)
- *      It's essentially syntax sugar to automatically call 'ls_fwStartWatchingFile(...) for every file in a directory
- *      But using it currently looses some error results, since it only returns the amount of files it started watching.
+ *      It's essentially a wrapper to automatically call 'ls_fwStartWatchingFile(...) for every file in a directory
+ *      But using it currently voids some error results, since it only returns the amount of files it started watching.
  *      - So, 0 for any failure state (or for an empty directory)
  *      - And N for any success state that started watching N files
  *
@@ -30,12 +33,12 @@
  *  files multiple times. Uniqueness is not guaranteed.
  *
  *  Whenever you want to check if there were modifications, use the iterator:
- *     FW_ChangedFile *ls_fwIterNext()
+ *     FW_ChangedFile *ls_fwIterNext(FW_FileWatcher *fw)
  *       It returns 0 if no more files have been changed, otherwise it returns a valid pointer to a FW_ChangedFile
  *
  *  When asking for an entire directory, you probably want to filter some files/patterns from being watched,
- *  for that reason, a stack-based blacklist solution is provided.
- *  You can blacklist 'endings'. We are not blacklisting *extensions* or *filename* but *endings*.
+ *  for that reason, a stack-like blacklist solution is provided.
+ *  You can blacklist 'endings'. We are not blacklisting *extensions* or *filenames* but *endings*.
  *  Essentially, we are going to compare the path's end with the blacklist *ending*, by the length
  *  of the ending. So, if your *ending* is only an extension or an exact filename, or even
  *  a portion of filename+ending, that will be caught too.
