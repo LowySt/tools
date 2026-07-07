@@ -47,3 +47,5 @@ void ls_uiTextBoxInit(UIContext *c, UITextBox *box, s32 initialCap, s32 maxLen, 
 b32  ls_uiTextBox(UIContext *c, UITextBox *box, s32 xPos, s32 yPos, s32 w, s32 h, s32 zLayer);
 b32  ls_uiTextBox(UIContext *c, UITextBox *box, UIPos pos, s32 zLayer);
 //b32  ls_uiTextBox(UIContext *c, UITextBox *box, f32 x, f32 y, f32 relW, f32 relH, s32 zLayer);
+
+void ls_uiRenderStringOnRect(UIContext *c, UIFont *f, UITextBox *box, s32 pixelHeight, s32 x, s32 y, s32 w, s32 h, UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor);

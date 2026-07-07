@@ -429,3 +429,114 @@ u32 ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight)
     return 0;
 }
 
+
+//TODO: Should actually have totalWidth and totalHeight be floating point instead of ints
+//      Because of scaling, the intermediate values will probably be fractional, and flooring
+//        at the end should yield more accurate results, especially in long strings!
+template<typename T>
+UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, T text, s32 pixelHeight)
+{
+    AssertMsg(c, "Context is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return {}; }
+    
+    s32 maxWidth = 0;
+    s32 totalWidth  = 0;
+    s32 totalHeight = pixelHeight;
+    
+    f64 scaling = (f64)pixelHeight / (f64)font->pixelHeight;
+    s32 lineSpace = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
+    
+    for(u32 i = 0; i < text.len; i++)
+    {
+        u32 cp = 0xFFFFFFFF, cpNext = 0xFFFFFFFF;
+        if constexpr(typeid(T) == typeid(utf32))
+        { cp = text.data[i]; cpNext = i < text.len-1 ? text.data[i+1] : 0xFFFFFFFF; }
+        else if constexpr(typeid(T) == typeid(utf8))
+        { cp = ls_utf32CharFromUtf8(text, i); cpNext = i < text.len-1 ? ls_utf32CharFromUtf8(text, i+1) : 0xFFFFFFFF; }
+        else
+        { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
+        
+        AssertMsgF(cp <= c->fontGroup.maxCodepoint, "CP GlyphIndex %d OutOfBounds\n", cp);
+        AssertMsgF(cpNext == 0xFFFFFFFF || cpNext <= c->fontGroup.maxCodepoint, "CPN GlyphIndex %d OutOfBounds\n", cpNext);
+        
+        totalWidth += ls_uiGlyphAdv(c, font, cp, cpNext, scaling);
+        if(cp == (u32)'\n')       { totalWidth = 0; totalHeight += lineSpace; }
+        if(totalWidth > maxWidth) { maxWidth = totalWidth; }
+    }
+    
+    UIRect result = {0, 0, maxWidth, totalHeight};
+    return result;
+}
+
+template<typename T>
+void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32 yPos,
+                      UIRect threadRect, UIRect scissor, T text, Color textColor)
+{
+    AssertMsg(c, "Context is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return; }
+    
+    //TODO: Does it ever make sense to use LeftSideBearing on the left edge of the viewport?
+    // Seems easier to just keep an healthy pad. It's not `font-indipendent` but who cares?
+    s32 currXPos  = xPos;
+    s32 currYPos  = yPos;
+    f64 scaling   = (f64)pixelHeight / (f64)font->pixelHeight;
+    s32 lineSpace = font->ascent*scaling - font->descent*scaling + font->lineGap*scaling;
+    
+    for(u32 i = 0; i < text.len; i++)
+    {
+        u32 cp = 0xFFFFFFFF;
+        u32 cpNext = 0xFFFFFFFF;
+        if constexpr(typeid(T) == typeid(utf32))
+        { cp = text.data[i]; cpNext = i < text.len-1 ? text.data[i+1] : 0xFFFFFFFF; }
+        else if constexpr(typeid(T) == typeid(utf8))
+        { cp = ls_utf32CharFromUtf8(text, i); cpNext = i < text.len-1 ? ls_utf32CharFromUtf8(text, i+1) : 0xFFFFFFFF; }
+        else
+        { AssertMsg(FALSE, "Invalid use of string type. Only utf32 and utf8 are supported"); }
+        AssertMsgF(cp <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", cp);
+        AssertMsgF(cpNext == 0xFFFFFFFF || cpNext <= c->fontGroup.maxCodepoint, "CPN GlyphIndex %d OutOfBounds\n", cpNext);
+        
+        s32 xAdvance = ls_uiGlyph(c, font, cp, cpNext, currXPos, currYPos, scaling, threadRect, scissor, textColor);
+        currXPos += xAdvance;
+        if(cp == (u32)'\n') { currXPos = xPos; currYPos -= lineSpace; }
+    }
+}
+
+
+//TODO: Should I always pass a layout, and maybe only keep an helper when I want no layout, so the layout region
+//      would just be the entire window???
+void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UILayoutRect layout,
+                              UIRect threadRect, UIRect scissor, utf32 text, Color textColor)
+{
+    AssertMsg(c, "Context is null\n");
+    LogMsg(font, "Passed font is null\n");
+    if(!font) { return; }
+    
+    s32 currXPos = layout.startX;
+    s32 currYPos = layout.startY + layout.maxY;
+    for(u32 i = 0; i < text.len; i++)
+    {
+        u32 cp = text.data[i];
+        u32 cpNext = i < text.len - 1 ? text.data[i+1] : 0xFFFFFFFF;
+        AssertMsgF(cp <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", cp);
+        AssertMsgF(cpNext == 0xFFFFFFFF || cpNext <= c->fontGroup.maxCodepoint, "CPN GlyphIndex %d OutOfBounds\n", cpNext);
+        
+        if(cp == (u32)'\n') {
+            currYPos -= font->pixelHeight;
+            currXPos = layout.minX;
+            continue;
+        }
+        
+        s32 newAdvance = ls_uiGlyph(c, font, cp, cpNext, currXPos, currYPos, 1.0, threadRect, scissor, textColor);
+        if((currXPos + newAdvance) > (layout.maxX))
+        { 
+            currYPos -= font->pixelHeight; 
+            currXPos = layout.minX;
+            continue;
+        }
+        
+        currXPos += newAdvance;
+    }
+}
+

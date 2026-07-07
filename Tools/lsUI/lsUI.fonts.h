@@ -118,3 +118,10 @@ b32              ls_uiAtlasIterSizeChanged(UIAtlasIterator iter);
 b32              ls_uiAtlasIterDone(UIAtlasIterator iter);
 
 u32              ls_uiSelectFontByPixelHeight(UIContext *c, u32 pixelHeight);
+
+template<typename T> UIRect ls_uiGlyphStringRect(UIContext *c, UIFont *font, T text, s32 pixelHeight);
+
+template<typename T>
+void ls_uiGlyphString(UIContext *c, UIFont *font, s32 pixelHeight, s32 xPos, s32 yPos, UIRect threadRect, UIRect scissor, T text, Color textColor);
+
+void ls_uiGlyphStringInLayout(UIContext *c, UIFont *font, UILayoutRect layout, UIRect threadRect, UIRect scissor, utf32 text, Color textColor);

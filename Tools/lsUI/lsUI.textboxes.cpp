@@ -753,3 +753,141 @@ b32 ls_uiTextBox(UIContext *c, UITextBox *box, UIPos pos, s32 zLayer = 0)
     s32 h    = pos.fh*win->height;
     return ls_uiTextBox(c, box, xPos, yPos, w, h, zLayer);
 }
+
+
+
+void ls_uiRenderStringOnRect(UIContext *c, UIFont *f, UITextBox *box, s32 pixelHeight, s32 x, s32 y, s32 w, s32 h, UIRect threadRect, UIRect scissor, Color textColor, Color invTextColor)
+{
+    AssertMsg(c, "Context is null\n");
+    AssertMsg(box, "TextBox is null\n");
+    AssertMsg(f, "Passed Font is null\n");
+    
+    UIWindow *win = c->currWindow;
+    s32 cIdx = box->caretIndex - box->currLineBeginIdx;
+    
+    const f64 scaling    = (f64)pixelHeight / (f64)f->pixelHeight;
+    const s32 lineHeight = f->ascent*scaling -  f->descent*scaling +  f->lineGap*scaling;
+    const u32 horzOff    = (u32)(win->width*0.01f);
+    const u32 strMaxX    = x + (w - 2*horzOff);
+    
+    //TODO: do I even need padding?
+    const s32 maxLines   = h / lineHeight;
+    
+    s32 xOffset = box->viewBeginIdx;
+    s32 yOffset = 0;
+    
+    //TODO: SIMD this?
+    //TODO: If we stored the text differently (maybe store an index array of the start of every line...)
+    //      this entire thing does not need to loop. (and the memory cost would not be too large)
+    //NOTE: If the caret line index is currently larger than the maximum renderable lines
+    // we need to skip the first N lines.
+    s32 viewStartIdx = 0;
+    if(box->caretLineIdx > maxLines) { 
+        yOffset = box->caretLineIdx - maxLines + 1;
+        s32 tmpYOff = yOffset;
+        
+        //NOTE: Advance the string vertically to the nth line
+        while(tmpYOff)
+        {
+            u32 code = box->text.data[viewStartIdx];
+            AssertMsgF(code <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
+            
+            if(code == (char32_t)'\n') { tmpYOff -= 1; }
+            viewStartIdx += 1;
+        }
+    }
+    
+    s32 currX = x;
+    s32 currY = y;
+    s32 relativeCaretLineIdx = box->caretLineIdx - yOffset;
+    u32 code     = 0;
+    u32 codeNext = 0xFFFFFFFF;
+    
+    utf32 realString = { box->text.data + viewStartIdx, box->text.len - viewStartIdx, box->text.size - viewStartIdx };
+    uview lineView = ls_uviewCreate(realString);
+    utf32 firstLine = ls_uviewNextLine(lineView).s;
+    
+    s32 initialXPos = x;
+    switch(box->align)
+    {
+        case UI_TB_ALIGN_LEFT: {
+            initialXPos = x;
+        } break;
+        
+        case UI_TB_ALIGN_RIGHT: {
+            initialXPos = x+w-horzOff - ls_uiGlyphStringRect(c, f, firstLine, pixelHeight).w;
+        } break;
+        
+        case UI_TB_ALIGN_CENTER: {
+            initialXPos = x+w-horzOff - (ls_uiGlyphStringRect(c, f, firstLine, pixelHeight).w / 2);
+        } break;
+        
+        default: { AssertMsg(FALSE, "Unhandled TextBox Alignement\n"); } break;
+    }
+    
+    currX = initialXPos;
+    
+    //NOTE: This is the index into the entire original string data for the textbox.
+    //      This is necessary because some textbox metadata (like selection begin/end indices) are absolute
+    //      (so relative to the beginning of the entire textbox string, rather than its line). And if we need to
+    //      compare against them, we need an absolute index into the string, rather then an index relative to the
+    //      currently rendered line.
+    s32 absoluteTextIdx = viewStartIdx;
+    for(u32 lineIdx = 0; lineIdx < maxLines; lineIdx++)
+    {
+        s32 relativeLineIdx = lineIdx + yOffset;
+        
+        lineView = ls_uviewNextLine(lineView);
+        utf32 line = lineView.s;
+        
+        //NOTE: xOffset will only be > 0 when scrolled right.
+        // We must not advance more than a given line's length, otherwise the successive lines
+        // will have their absoluteTextIdx wrongly offsetted.
+        if(line.len < xOffset) { absoluteTextIdx += line.len; }
+        else                   { absoluteTextIdx += xOffset; }
+        
+        s32 caretX = currX - 3; //TODO: hardcoded pixel diff...
+        for(u32 lIdx = xOffset; lIdx < line.len; lIdx++, absoluteTextIdx++)
+        {
+            if((lineIdx == relativeCaretLineIdx) && (cIdx == lIdx)) { caretX = currX-3; }
+            
+            //NOTE: If we're trying to render data past the current view (scrolled away to the right)
+            //      We just stop. We re-adjust the caret position if necessary, and advance the
+            //      absoluteTextIdx to take into consideration the missed iterations.
+            if(currX > strMaxX)
+            {
+                if((lineIdx == relativeCaretLineIdx) && (cIdx == lIdx+1)) { caretX = currX-3; }
+                absoluteTextIdx += (line.len - lIdx); break;
+            }
+            
+            code = line.data[lIdx];
+            if(lIdx < line.len-1) { codeNext = line.data[lIdx+1]; }
+            AssertMsgF(code <= c->fontGroup.maxCodepoint, "GlyphIndex %d OutOfBounds\n", code);
+            
+            Color actualColor = textColor;
+            
+            //TODO: Pretty inefficient to keep redrawing the background all the time.
+            if(box->isSelecting && (box->selectBeginLine <= relativeLineIdx) && (box->selectEndLine >= relativeLineIdx)
+               && (box->selectBeginIdx <= absoluteTextIdx) && (box->selectEndIdx > absoluteTextIdx))
+            {
+                actualColor = invTextColor;
+                s32 xAdv    = ls_uiGlyphAdv(c, f, code, codeNext, scaling);
+                ls_uiFillRect(c, currX, currY, xAdv, lineHeight, threadRect, scissor, c->invWidgetColor);
+            }
+            
+            s32 xAdvance = ls_uiGlyph(c, f, code, codeNext, currX, currY, scaling, threadRect, scissor, actualColor);
+            currX += xAdvance;
+        }
+        
+        if((lineIdx == relativeCaretLineIdx) && (cIdx == line.len)) { caretX = currX-3; }
+        
+        if(box->isCaretOn && (win->currentFocus == (u64 *)box) && (lineIdx == relativeCaretLineIdx))
+        {
+            ls_uiGlyph(c, f, (u32)'|', 0xFFFFFFFF, caretX, currY, scaling, threadRect, scissor, textColor);
+        }
+        
+        currY -= lineHeight;
+        currX  = initialXPos;
+    }
+}
+

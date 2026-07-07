@@ -19,8 +19,8 @@ struct UILayoutRect
 };
 
 
-void   ls_uiBorder(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor, Color col);
 void   ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer);
+void   ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, s32 zLayer);
 void   ls_uiRect(UIContext *c, UIPos pos, Color bkgColor, Color borderColor, s32 zLayer);
 void   ls_uiHSeparator(UIContext *c, s32 x, s32 y, s32 width, s32 lineWidth, Color lineColor, s32 zLayer);
 void   ls_uiHSeparator(UIContext *c, UIPos pos, Color lineColor, s32 zLayer);

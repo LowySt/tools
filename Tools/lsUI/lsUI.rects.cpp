@@ -1,68 +1,5 @@
 #include "lsUI.rects.h"
 
-inline
-void ls_uiBorder(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
-                 UIRect threadRect, UIRect scissor)
-{
-    Color C = c->borderColor;
-    
-    ls_uiFillRect(c, xPos,     yPos,     w, 1, threadRect, scissor, C);
-    ls_uiFillRect(c, xPos,     yPos+h-1, w, 1, threadRect, scissor, C);
-    ls_uiFillRect(c, xPos,     yPos,     1, h, threadRect, scissor, C);
-    ls_uiFillRect(c, xPos+w-1, yPos,     1, h, threadRect, scissor, C);
-}
-
-inline
-void ls_uiBorder(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
-                 UIRect threadRect, UIRect scissor, Color borderColor)
-{
-    Color C = borderColor;
-    
-    ls_uiFillRect(c, xPos,     yPos,     w, 1, threadRect, scissor, C);
-    ls_uiFillRect(c, xPos,     yPos+h-1, w, 1, threadRect, scissor, C);
-    ls_uiFillRect(c, xPos,     yPos,     1, h, threadRect, scissor, C);
-    ls_uiFillRect(c, xPos+w-1, yPos,     1, h, threadRect, scissor, C);
-}
-
-inline
-void ls_uiBorderedRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
-                       UIRect threadRect, UIRect scissor)
-{
-    ls_uiBorder(c, xPos, yPos, w, h, threadRect, scissor);
-    ls_uiFillRect(c, xPos+1, yPos+1, w-2, h-2, threadRect, scissor, c->widgetColor);
-}
-
-inline
-void ls_uiBorderedRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
-                       UIRect threadRect, UIRect scissor, Color widgetColor)
-{
-    ls_uiBorder(c, xPos, yPos, w, h, threadRect, scissor);
-    ls_uiFillRect(c, xPos+1, yPos+1, w-2, h-2, threadRect, scissor, widgetColor);
-}
-
-inline
-void ls_uiBorderedRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
-                       UIRect threadRect, UIRect scissor, Color widgetColor, Color borderColor)
-{
-    ls_uiBorder(c, xPos, yPos, w, h, threadRect, scissor, borderColor);
-    ls_uiFillRect(c, xPos+1, yPos+1, w-2, h-2, threadRect, scissor, widgetColor);
-}
-
-inline
-void ls_uiRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
-               UIRect threadRect, UIRect scissor)
-{
-    ls_uiFillRect(c, xPos, yPos, w, h, threadRect, scissor, c->widgetColor);
-}
-
-inline
-void ls_uiRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
-               UIRect threadRect, UIRect scissor, Color widgetColor)
-{
-    ls_uiFillRect(c, xPos, yPos, w, h, threadRect, scissor, widgetColor);
-}
-
-
 //TODO @UIPos
 void ls_uiRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, Color bkgColor, Color borderColor, s32 zLayer = 0)
 {
@@ -153,15 +90,12 @@ void ls_uiVSeparator(UIContext *c, UIPos pos, Color lineColor, s32 zLayer = 0)
     ls_uiPushRenderCommand(c, command, zLayer);
 }
 
-
-
 void ls_uiTexturedRect(UIContext *c, s32 x, s32 y, s32 w, s32 h, void *data, s32 dataW, s32 dataH, s32 zLayer = 0)
 {
     RenderCommand command = { UI_RC_TEXTURED_RECT, x, y, w, h };
     command.bitmap = { data, dataW, dataH };
     ls_uiPushRenderCommand(c, command, zLayer);
 }
-
 
 UIRect ls_uiScreenCoordsToUnitSquare(UIContext *c, s32 x, s32 y, s32 w, s32 h)
 {

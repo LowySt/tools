@@ -1,5 +1,87 @@
 #include "lsUI.primitives.h"
 
+void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color col)
+{
+    UIWindow *win = c->currWindow;
+#ifdef LS_UI_OPENGL_BACKEND
+    
+    glUseProgram(c->rectShader);
+    glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
+    
+    f32 normZ = 1.0f; //1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->rectShader, "zLayer"), normZ);
+    
+    f64 xf = (f64)startY;
+    f64 yf = (f64)startY;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
+    
+    // Positions need to be adjusted by the width and height... for some reason?
+    f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
+    f64 yp = ((yf + (f64)h / 2.0) / (hf / 2.0)) - 1.0;
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale     = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+    
+    glUniformMatrix4fv(glGetUniformLocation(c->rectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    
+    glBindVertexArray(c->rectVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    
+    glBindVertexArray(0);
+    glUseProgram(0);
+    
+#else
+    s32 diffWidth = (w % 4);
+    s32 simdWidth = w - diffWidth;
+    
+    s32 diffHeight = (h % 4);
+    s32 simdHeight = h - diffHeight;
+    
+    //NOTE: Do the first Sub-Rectangle divisible by 4.
+    __m128i color = _mm_set1_epi32((int)col.value);
+    
+    for(s32 y = startY; y < startY+simdHeight; y++)
+    {
+        for(s32 x = startX; x < startX+simdWidth; x += 4)
+        {
+            u32 idx = ((y*win->width) + x)*sizeof(s32);
+            __m128i *At = (__m128i *)(win->drawBuffer + idx);
+            
+            _mm_storeu_si128(At, color);
+        }
+    }
+    
+    //NOTE: Complete the 2 remaining Sub-Rectangles at the right and top. (if there are).
+    //      We decide to have the right rectangle be full height
+    //      And the top one be less-than-full width, to avoid over-drawing the small subrect
+    //        in the top right corner.
+    u32 *At = (u32 *)win->drawBuffer;
+    
+    if(diffWidth) 
+    {
+        for(s32 y = startY; y < startY+h; y++)
+        {
+            for(s32 x = startX+simdWidth; x < startX+w; x++)
+            {
+                At[y*win->width + x] = col.value;
+            }
+        }
+    }
+    
+    if(diffHeight)
+    {
+        for(s32 y = startY+simdHeight; y < startY+h; y++)
+        {
+            for(s32 x = startX; x < startX+simdWidth; x++)
+            {
+                At[y*win->width + x] = col.value;
+            }
+        }
+    }
+#endif
+}
+
 void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor, Color col)
 {
     UIWindow *win = c->currWindow;
@@ -147,6 +229,315 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect thread
     }
 #endif //LS_UI_OPENGL_BACKEND
 }
+
+inline
+void ls_uiBorder(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
+                 UIRect threadRect, UIRect scissor)
+{
+    Color C = c->borderColor;
+    
+    ls_uiFillRect(c, xPos,     yPos,     w, 1, threadRect, scissor, C);
+    ls_uiFillRect(c, xPos,     yPos+h-1, w, 1, threadRect, scissor, C);
+    ls_uiFillRect(c, xPos,     yPos,     1, h, threadRect, scissor, C);
+    ls_uiFillRect(c, xPos+w-1, yPos,     1, h, threadRect, scissor, C);
+}
+
+inline
+void ls_uiBorder(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
+                 UIRect threadRect, UIRect scissor, Color borderColor)
+{
+    Color C = borderColor;
+    
+    ls_uiFillRect(c, xPos,     yPos,     w, 1, threadRect, scissor, C);
+    ls_uiFillRect(c, xPos,     yPos+h-1, w, 1, threadRect, scissor, C);
+    ls_uiFillRect(c, xPos,     yPos,     1, h, threadRect, scissor, C);
+    ls_uiFillRect(c, xPos+w-1, yPos,     1, h, threadRect, scissor, C);
+}
+
+inline
+void ls_uiBorderedRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
+                       UIRect threadRect, UIRect scissor)
+{
+    ls_uiBorder(c, xPos, yPos, w, h, threadRect, scissor);
+    ls_uiFillRect(c, xPos+1, yPos+1, w-2, h-2, threadRect, scissor, c->widgetColor);
+}
+
+inline
+void ls_uiBorderedRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
+                       UIRect threadRect, UIRect scissor, Color widgetColor)
+{
+    ls_uiBorder(c, xPos, yPos, w, h, threadRect, scissor);
+    ls_uiFillRect(c, xPos+1, yPos+1, w-2, h-2, threadRect, scissor, widgetColor);
+}
+
+inline
+void ls_uiBorderedRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
+                       UIRect threadRect, UIRect scissor, Color widgetColor, Color borderColor)
+{
+    ls_uiBorder(c, xPos, yPos, w, h, threadRect, scissor, borderColor);
+    ls_uiFillRect(c, xPos+1, yPos+1, w-2, h-2, threadRect, scissor, widgetColor);
+}
+
+inline
+void ls_uiRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h,
+               UIRect threadRect, UIRect scissor)
+{
+    ls_uiFillRect(c, xPos, yPos, w, h, threadRect, scissor, c->widgetColor);
+}
+
+inline
+void ls_uiRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, 
+               UIRect threadRect, UIRect scissor, Color widgetColor)
+{
+    ls_uiFillRect(c, xPos, yPos, w, h, threadRect, scissor, widgetColor);
+}
+
+void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
+                    UIRect threadRect, UIRect scissor, Color bkgColor, UIArrowSide s)
+{
+    UIWindow *win = c->currWindow;
+
+#ifdef LS_UI_OPENGL_BACKEND
+    
+    ls_uiBorderedRect(c, x-1, yPos, w, h, threadRect, scissor, bkgColor);
+    
+    //TODO: Customize color?
+    Color col = c->borderColor;
+    
+    f64 arrowWidth  = 0.0;
+    f64 arrowHeight = 0.0;
+    s32 vaoOffset   = 0;
+    
+    switch(s)
+    {
+        case UIA_DOWN:
+        {
+            arrowWidth  = 0.58f*(f64)w;
+            arrowHeight = 0.52f*(f64)h;
+            vaoOffset   = 12;
+        } break;
+        
+        case UIA_RIGHT:
+        {
+            arrowWidth  = 0.52f*w;
+            arrowHeight = 0.58f*h;
+            vaoOffset   = 9;
+        } break;
+        
+        case UIA_LEFT:
+        {
+            arrowWidth  = 0.52f*w;
+            arrowHeight = 0.58f*h;
+            vaoOffset   = 15;
+        } break;
+    }
+    
+    s32 startX = x + (w - (s32)arrowWidth)/2 - 1;
+    s32 startY = (yPos + (h-(s32)arrowHeight)/2) - 1;
+    
+    glUseProgram(c->rectShader);
+    glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
+    
+    f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->rectShader, "zLayer"), normZ);
+    
+    f64 xf = (f64)startX;
+    f64 yf = (f64)startY;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
+    
+    // Positions need to be adjusted by the width and height... for some reason?
+    f64 xp = ((xf + (f64)arrowWidth / 2.0) / (wf / 2.0)) - 1.0;
+    f64 yp = ((yf + (f64)arrowHeight / 2.0) / (hf / 2.0)) - 1.0;
+    
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale = Scale4(vec4((f64)arrowWidth / wf, (f64)arrowHeight / hf, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+    
+    glUniformMatrix4fv(glGetUniformLocation(c->rectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    
+    glBindVertexArray(c->rectVAO);
+    glDrawArrays(GL_TRIANGLES, vaoOffset, 3);
+    
+    glBindVertexArray(0);
+    glUseProgram(0);
+    
+#else
+    
+    //TODO: Scissor???
+    s32 minX = threadRect.minX;
+    s32 minY = threadRect.minY;
+    s32 maxX = threadRect.maxX;
+    s32 maxY = threadRect.maxY;
+    
+    u32 *At = (u32 *)win->drawBuffer;
+    
+    s32 xPos = x-1;
+    
+    ls_uiBorderedRect(c, xPos, yPos, w, h, threadRect, scissor, bkgColor);
+    
+    //TODO: Fix threadRect pre-calculated bounds checks on every arrow direction!
+    if(s == UIA_DOWN)
+    {
+        Color arrowColor = c->borderColor;
+        
+        s32 arrowWidth = 0.50f*w;
+        s32 arrowHeight = 0.40f*h;
+        
+        f32 scaling = (f32)arrowHeight / (f32)arrowWidth;
+        f32 progressiveX = 0.0f;
+        
+        s32 xBase = xPos  + (w - arrowWidth)/2;
+        s32 xEnd  = xBase + arrowWidth;
+        s32 xMid  = xBase + arrowWidth/2;
+        
+        s32 yStart = (yPos + h - (h - arrowHeight)/2) - 1;
+        s32 yEnd = yStart - arrowHeight;
+        
+        //TODO: This is still wrong with multithreaded
+        //TODO: Could this every invert base and end?
+        if(xBase < minX)   { xBase  = minX; }
+        if(xEnd >= maxX)   { xEnd   = maxX-1; }
+        if(yStart >= maxY) {
+            s32 yAdv = (yStart - maxY + 1);
+            f32 fractAdv = yAdv*scaling;
+            xBase += (s32)fractAdv; xEnd -= (s32)fractAdv;
+            progressiveX = fractAdv - (s32)fractAdv;
+            yStart = maxY-1;
+        }
+        if(yEnd < minY) { yEnd = minY; }
+        
+        for(s32 y = yStart; y >= yEnd; y--)
+        {
+            for(s32 x = xBase; x < xEnd; x++)
+            {
+                AssertMsg(x >= 0 && x < win->width,  "X out of range. Should have been guarded by thread UI Rects?\n");
+                AssertMsg(y >= 0 && y < win->height, "Y out of range. Should have been guarded by thread UI Rects?\n");
+                
+                //TODO: Setting fractional alpha on the rows where progressiveX advances a fractional amount
+                //      would allow better `sub-pixel like` blending. Just a tiny thing to make it look better
+                //      at small resolutions.
+                At[y*win->width + x] = c->borderColor.value;
+            }
+            
+            progressiveX += scaling;
+            s32 intProgress = (s32)progressiveX;
+            xBase += intProgress;
+            xEnd  -= intProgress;
+            progressiveX -= intProgress;
+        }
+        
+    }
+    else if(s == UIA_RIGHT)
+    {
+        s32 arrowWidth  = 0.40f*w;
+        s32 hBearing    = (w - arrowWidth)/2;
+        s32 xBase       = xPos + hBearing;
+        s32 xEnd        = xBase+1;
+        
+        s32 arrowHeight = 0.50f*h;
+        s32 vBearing    = (h - arrowHeight)/2;
+        s32 yStart1     = (yPos + h - vBearing) - 1;
+        s32 yEnd1       = yStart1 - (arrowHeight/2);
+        s32 yStart2     = yEnd1;
+        s32 yEnd2       = yStart2 - arrowHeight;
+        
+        if(yStart1 >= maxY) { yStart1 = maxY; }
+        if(yStart2 >= maxY) { yStart2 = maxY; }
+        if(xBase  < minX)   { xEnd -= (minX - xBase); xBase = minX; }
+        
+        for(s32 y = yStart1; y >= yEnd1; y--)
+        {
+            if(y < minY) { break; }
+            
+            for(s32 x = xBase; x < xEnd; x++)
+            {
+                if(x >= maxX) { break; }
+                
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
+                
+                At[y*win->width + x] = RGBg(0x00).value;
+            }
+            
+            xEnd  += 1;
+        }
+        
+        xEnd -= 1;
+        for(s32 y = yStart2; y >= yEnd2; y--)
+        {
+            if(y < minY) { break; }
+            
+            for(s32 x = xBase; x < xEnd; x++)
+            {
+                if(x >= maxX) { break; }
+                
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
+                
+                At[y*win->width + x] = RGBg(0x00).value;
+            }
+            
+            xEnd  -= 1;
+        }
+    }
+    else if(s == UIA_LEFT)
+    {
+        s32 arrowWidth  = 0.40f*w;
+        s32 hBearing    = (w - arrowWidth)/2;
+        s32 xBase       = xPos + w - hBearing - 1;
+        s32 xEnd        = xBase+1;
+        
+        s32 arrowHeight = 0.50f*h;
+        s32 vBearing    = (h - arrowHeight)/2;
+        s32 yStart1     = (yPos + h - vBearing) - 1;
+        s32 yEnd1       = yStart1 - (arrowHeight/2);
+        s32 yStart2     = yEnd1;
+        s32 yEnd2       = yStart2 - arrowHeight;
+        
+        if(yStart1 >= maxY) { yStart1 = maxY; }
+        if(yStart2 >= maxY) { yStart2 = maxY; }
+        if(xBase  < minX)   { xEnd -= (minX - xBase); xBase = minX; }
+        
+        for(s32 y = yStart1; y >= yEnd1; y--)
+        {
+            if(y < minY) { break; }
+            
+            for(s32 x = xBase; x < xEnd; x++)
+            {
+                if(x >= maxX) { break; }
+                
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
+                
+                At[y*win->width + x] = RGBg(0x00).value;
+            }
+            
+            xBase -= 1;
+        }
+        
+        xBase += 1;
+        for(s32 y = yStart2; y >= yEnd2; y--)
+        {
+            if(y < minY) { break; }
+            
+            for(s32 x = xBase; x < xEnd; x++)
+            {
+                if(x >= maxX) { break; }
+                
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
+                
+                At[y*win->width + x] = RGBg(0x00).value;
+            }
+            
+            xBase += 1;
+        }
+    }
+    
+#endif
+}
+
 
 void ls_uiDrawCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thickness,
                  UIRect threadRect, UIRect scissor, Color col)
@@ -541,6 +932,261 @@ s32 ls_uiGlyph(UIContext *c, UIFont *f, u32 cp, u32 cpNext, s32 x, s32 y, f64 sc
 #else
     
 #error Unhandled backend in ls_uiGlyph()
+    
+#endif
+}
+
+
+void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect threadRect, UIRect scissor)
+{
+    UIWindow *win = c->currWindow;
+
+#ifdef LS_UI_OPENGL_BACKEND
+    
+    glUseProgram(c->gradientRectShader);
+    glUniform4ui(glGetUniformLocation(c->gradientRectShader, "color"), 0, 0, 0, 0);
+    
+    f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->gradientRectShader, "zLayer"), normZ);
+    
+    f64 xf = (f64)xPos;
+    f64 yf = (f64)yPos;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
+    
+    // Positions need to be adjusted by the width and height... for some reason?
+    f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
+    f64 yp = ((yf + (f64)h / 2.0) / (hf / 2.0)) - 1.0;
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+    
+    glUniformMatrix4fv(glGetUniformLocation(c->gradientRectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    
+    glBindVertexArray(c->rectGradientVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    
+    glBindVertexArray(0);
+    glUseProgram(0);
+
+#else
+    
+    s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
+    s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
+    s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
+    s32 maxY = threadRect.maxY < scissor.y+scissor.h ? threadRect.maxY : scissor.y+scissor.h;
+    
+    f32 currGray = 0.0f;
+    f32 step     = (f32)h / 255.0f;
+    if(yPos < minY) { currGray = ((f32)(minY - yPos) / (f32)h)*255.0f; }
+    f32 startGray = currGray;
+    
+    s32 startY = yPos;
+    if(startY < minY) { h -= (minY-startY); startY = minY; }
+    
+    s32 startX = xPos;
+    if(startX < minX) { w -= (minX-startX); startX = minX; }
+    
+    if(startX+w > maxX) { w = maxX-startX+1; }
+    if(startY+h > maxY) { h = maxY-startY+1; }
+    
+    s32 diffWidth = (w % 4);
+    s32 simdWidth = w - diffWidth;
+    
+    s32 diffHeight = (h % 4);
+    s32 simdHeight = h - diffHeight;
+    
+    //TODO: Make AlphaBlending happen with SSE!!!
+    
+    //NOTE: Do the first Sub-Rectangle divisible by 4.
+    //__m128i color = _mm_set1_epi32((int)c);
+    
+    for(s32 y = startY; y < startY+simdHeight; y++)
+    {
+        AssertMsg(y <= maxY, "Should never happen. Height was precomputed\n");
+        //if(y > maxY) { break; }
+        
+        Color col = RGBg((u32)currGray);
+        
+        for(s32 x = startX; x < startX+simdWidth; x+=4)
+        {
+            AssertMsg(x <= maxX, "Should never happen. Width was precomputed\n");
+            
+            if(x < 0 || x >= win->width)  continue;
+            if(y < 0 || y >= win->height) continue;
+            
+            u32 idx = ((y*win->width) + x)*sizeof(s32);
+            __m128i *At = (__m128i *)(win->drawBuffer + idx);
+            
+            __m128i val = _mm_loadu_si128(At);
+            
+            u32 a1 = _mm_cvtsi128_si32(_mm_shuffle_epi32(val, 0b00000000));
+            u32 a2 = _mm_cvtsi128_si32(_mm_shuffle_epi32(val, 0b01010101));
+            u32 a3 = _mm_cvtsi128_si32(_mm_shuffle_epi32(val, 0b10101010));
+            u32 a4 = _mm_cvtsi128_si32(_mm_shuffle_epi32(val, 0b11111111));
+            
+            Color c1 = ls_uiAlphaBlend(col, {.value = a1});
+            Color c2 = ls_uiAlphaBlend(col, {.value = a2});
+            Color c3 = ls_uiAlphaBlend(col, {.value = a3});
+            Color c4 = ls_uiAlphaBlend(col, {.value = a4});
+            
+            __m128i color = _mm_setr_epi32(c1.value, c2.value, c3.value, c4.value);
+            
+            _mm_storeu_si128(At, color);
+        }
+        
+        currGray += step;
+    }
+    
+    //NOTE: Complete the 2 remaining Sub-Rectangles at the right and top. (if there are).
+    //      We decide to have the right rectangle be full height
+    //      And the top one be less-than-full width, to avoid over-drawing the small subrect
+    //        in the top right corner.
+    u32 *At = (u32 *)win->drawBuffer;
+    
+    if(diffWidth)
+    {
+        f32 diffGray = startGray;
+        
+        for(s32 y = startY; y < startY+h; y++)
+        {
+            if(y > maxY) { break; }
+            
+            Color col = RGBg((u32)diffGray);
+            
+            for(s32 x = startX+simdWidth; x < startX+w; x++)
+            {
+                if(x > maxX) { 
+                    ls_printf("diffSIMDWidth: %d, diffWidth: %d\n", x-maxX, diffWidth);
+                    break; 
+                }
+                
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
+                
+                Color base = {.value = At[y*win->width + x] };
+                Color blendedColor = ls_uiAlphaBlend(col, base);
+                At[y*win->width + x] = blendedColor.value;
+            }
+            
+            diffGray += step;
+        }
+    }
+    
+    if(diffHeight)
+    {
+        for(s32 y = startY+simdHeight; y < startY+h; y++)
+        {
+            if(y > maxY) { break; }
+            
+            Color col = RGBg((u32)currGray);
+            
+            for(s32 x = startX; x < startX+simdWidth; x++)
+            {
+                if(x > maxX) { break; }
+                
+                if(x < 0 || x >= win->width)  continue;
+                if(y < 0 || y >= win->height) continue;
+                
+                Color base = { .value = At[y*win->width + x] };
+                Color blendedColor = ls_uiAlphaBlend(col, base);
+                At[y*win->width + x] = blendedColor.value;
+            }
+            
+            currGray += step;
+        }
+    }
+    
+#endif
+}
+
+void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32 value,
+                         UIRect threadRect, UIRect scissor)
+{
+    UIWindow *win = c->currWindow;
+
+#ifdef LS_UI_OPENGL_BACKEND
+    
+    glUseProgram(c->colorWheelShader);
+    
+    s32 leftCornerX = centerX - radius;
+    s32 leftCornerY = centerY - radius;
+    
+    f64 xf = (f64)leftCornerX;
+    f64 yf = (f64)leftCornerY;
+    f64 wf = (f64)win->width;
+    f64 hf = (f64)win->height;
+    
+    s32 w = radius*2;
+    s32 h = radius*2;
+    
+    f64 xp = ((xf + (f64)w / 2.0) / (wf / 2.0)) - 1.0;
+    f64 yp = ((yf + (f64)h / 2.0) / (hf / 2.0)) - 1.0;
+    
+    f64 aspectRatio = wf/hf;
+    Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
+    Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
+    Mat4 transform = ls_mat4x4Mul(scale, translate);
+
+    glUniformMatrix4fv(glGetUniformLocation(c->colorWheelShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniform2f(glGetUniformLocation(c->colorWheelShader, "centerInScreenSpace"), (f64)centerX, (f64)centerY);
+    glUniform1f(glGetUniformLocation(c->colorWheelShader, "radiusInScreenSpace"), (f64)radius);
+    glUniform1f(glGetUniformLocation(c->colorWheelShader, "brightness"), value);
+
+    f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
+    glUniform1f(glGetUniformLocation(c->colorWheelShader, "zLayer"), normZ);
+    
+    glBindVertexArray(c->rectVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    
+    glBindVertexArray(0);
+    glUseProgram(0);
+    
+#else
+    
+    s32 minX = threadRect.minX > scissor.x ? threadRect.minX : scissor.x;
+    s32 minY = threadRect.minY > scissor.y ? threadRect.minY : scissor.y;
+    s32 maxX = threadRect.maxX < scissor.x+scissor.w ? threadRect.maxX : scissor.x+scissor.w;
+    s32 maxY = threadRect.maxY < scissor.y+scissor.h ? threadRect.maxY : scissor.y+scissor.h;
+    
+    s32 startX = centerX - radius;
+    s32 startY = centerY - radius;
+    
+    if(startX < minX) { startX = minX; }
+    if(startY < minY) { startY = minY; }
+    
+    s32 endX   = centerX + radius;
+    s32 endY   = centerY + radius;
+    
+    if(endX > maxX) { endX = maxX+1; }
+    if(endY > maxY) { endY = maxY+1; }
+    
+    u32 *At = (u32 *)win->drawBuffer;
+    for(s32 y = startY; y < endY; y++)
+    {
+        for(s32 x = startX; x < endX; x++)
+        {
+            s32 cX = x - centerX;
+            s32 cY = y - centerY;
+            
+            b32 cond = (cY*cY + cX*cX) <= (radius*radius);
+            
+            if(cond)
+            {
+                f32 saturation = ls_sqrt(cX*cX + cY*cY) / (f32)radius;
+                saturation     = ls_clamp(saturation*1.00f, 1.0f, 0.0f);
+                
+                f32 angle = ls_atan2((f32)cY, (f32)cX) / PI;
+                s32 hue   = (angle*180) + 179;
+                
+                Color converted = ls_uiHSVtoRGB(hue, saturation, value);
+                
+                Color base         = { .value = At[y*win->width + x] };
+                Color blendedColor = ls_uiAlphaBlend(converted, base);
+                At[y*win->width + x] = blendedColor.value;
+            }
+        }
+    }
     
 #endif
 }
