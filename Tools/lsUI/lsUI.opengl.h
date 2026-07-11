@@ -6,8 +6,10 @@
 // need to be reloaded (and so it isn't tracked)
 struct UIShader
 {
-    const char *vertSrc;
-    const char *fragSrc;
+    //TODO: we need to know if it should be freed or not...
+    char *vertSrc;
+    char *fragSrc;
+    bool ownsSource;
     u32 idx;
     u32 VAO;
 

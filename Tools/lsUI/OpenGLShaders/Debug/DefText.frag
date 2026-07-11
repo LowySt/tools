@@ -22,4 +22,5 @@ void main() {
 
     gl_FragDepth = zLayer;
     FragColor = finalColor;
+    //FragColor = vec4(1.0, 0.0, 0.0, 1.0);
 }

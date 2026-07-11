@@ -819,6 +819,7 @@ u64 windows_ReadFile(char *Path, char **Dest, u32 bytesToRead)
             return 0;
         }
     }
+    (*Dest)[ToRead] = 0; //Ensure if we are given re-used memory, we do not read more...
     
     if (CloseHandle(FileHandle) == FALSE)
     { OutputDebugStringA("Couldn't close file handle at the end of Win32_ReadEntireFile function.\n"); }

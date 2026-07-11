@@ -181,8 +181,8 @@ void __ls_fwGetNameAndExtension(char *absolutePath, s32 *filenameIdx, s32 *filen
 
         if (!firstSepFound && (absolutePath[i] == FW_PATH_SEPARATOR))
         {
-            *filenameIdx = i;
-            *filenameLen = (len-1) - i;
+            *filenameIdx = i+1;
+            *filenameLen = (len-1) - (i+1);
             firstSepFound = true;
         }
     }
@@ -354,7 +354,8 @@ FW_WatchedFile *ls_fwIterNext(FW_FileWatcher *fw)
     // Even though some text editors do funky tricks on the file contents when trying to keep
     // backups running (vim for examples writes to a backup first, and that invalidates the 
     // written to file, without properly setting it's new size?)
-    if ((fSize == watchedFile->size) || (ts == watchedFile->lastTimestamp))
+    //if ((fSize == watchedFile->size) || (ts == watchedFile->lastTimestamp))
+    if(ts == watchedFile->lastTimestamp)
     {
         return 0;
     }

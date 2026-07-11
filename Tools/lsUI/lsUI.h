@@ -1042,7 +1042,7 @@ LRESULT ls_uiWindowProc(HWND h, UINT msg, WPARAM w, LPARAM l)
         
         case WM_MOUSEWHEEL:
         {
-            win->hasReceivedInput   = TRUE;
+            win->hasReceivedInput = TRUE;
             Mouse->wheelDelta     = GET_WHEEL_DELTA_WPARAM(w); //((s16)(w >> 16))*WHEEL_DELTA;
             Mouse->isWheelRotated = TRUE;
         } break;
@@ -1459,50 +1459,58 @@ void ls_uiFrameBegin(UIContext *c, UIWindow *win)
     
     glClearColor(rLinear, gLinear, bLinear, aLinear);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-#endif
+
+#ifdef _DEBUG
+    FW_WatchedFile *changedFile = 0;
+    while(changedFile = ls_fwIterNext(&c->fileWatcher)) {
+        //NOTE: Probably unnecessary since Shader Reload code would already be failing Compilation?
+        // But maybe it's a little bit more efficient to skip everything anyway...
+        //if (changedFile->size == 0) { continue; }
+
+        u32 reloadedIdx = 0;
+        //TODO: This is currently hardcoded and only used in OPENGL shaders...
+        if (ls_strcmp(changedFile->absolutePath, (char *)c->sdfTextProgram.vertFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->sdfTextProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->sdfTextProgram.fragFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->sdfTextProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->textProgram.vertFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->textProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->textProgram.fragFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->textProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->rectProgram.vertFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->rectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->rectProgram.fragFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->rectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->gradientRectProgram.vertFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->gradientRectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->gradientRectProgram.fragFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->gradientRectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->texturedRectProgram.vertFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->texturedRectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->texturedRectProgram.fragFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->texturedRectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->circleProgram.vertFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->circleProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->circleProgram.fragFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->circleProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->colorWheelProgram.vertFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->colorWheelProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->colorWheelProgram.fragFilePath) == 0) {
+            reloadedIdx = __ui_ReloadShader(c, &c->colorWheelProgram);
+        }
+
+        if (reloadedIdx != 0) {
+            ls_log("Reloaded Shader: {char*}", changedFile->fileName);
+            win->hasReceivedInput = TRUE;
+        }
+    }
+#endif //_DEBUG
+
+#endif //LS_UI_OPENGL_BACKEND
 }
 
 void ls_uiFrameEnd(UIContext *c)
 {
-#ifdef _DEBUG
-    FW_WatchedFile *changedFile = 0;
-    while(changedFile = ls_fwIterNext(&c->fileWatcher)) {
-        ls_log("File Changed: {char*}", changedFile->absolutePath);
-        ls_log("Text Frag: {char*}", (char *)c->textProgram.fragFilePath);
-
-        //TODO: This is currently hardcoded and only used in OPENGL shaders...
-        if (ls_strcmp(changedFile->absolutePath, (char *)c->sdfTextProgram.vertFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->sdfTextProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->sdfTextProgram.fragFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->sdfTextProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->textProgram.vertFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->textProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->textProgram.fragFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->textProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->rectProgram.vertFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->rectProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->rectProgram.fragFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->rectProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->gradientRectProgram.vertFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->gradientRectProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->gradientRectProgram.fragFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->gradientRectProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->texturedRectProgram.vertFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->texturedRectProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->texturedRectProgram.fragFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->texturedRectProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->circleProgram.vertFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->circleProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->circleProgram.fragFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->circleProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->colorWheelProgram.vertFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->colorWheelProgram);
-        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->colorWheelProgram.fragFilePath) == 0) {
-            u32 reloadedIdx = __ui_ReloadShader(c, &c->colorWheelProgram);
-        }
-    }
-#endif
-
     ls_arenaClear(c->frameArena);
     
     UIWindow *win = c->currWindow;

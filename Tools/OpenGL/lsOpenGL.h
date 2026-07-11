@@ -850,7 +850,8 @@ u32 ls_glCreateShader(const char *vs, const char *fs)
     if(!success)
     {
         glGetShaderInfoLog(vertShader, 512, NULL, infoLog);
-        ls_log("[ERROR] Default Vertex Shader Compilation Failed\n{char*}", infoLog);
+        ls_log("[ERROR] Default Vertex Shader Compilation Failed\n{char*}\n", infoLog);
+        ls_log("Source: {char*}", (char*)vs);
         return 0;
     }
     
@@ -862,7 +863,8 @@ u32 ls_glCreateShader(const char *vs, const char *fs)
     if(!success)
     {
         glGetShaderInfoLog(fragShader, 512, NULL, infoLog);
-        ls_log("[ERROR] Default Fragment Shader Compilation Failed\n{char*}", infoLog);
+        ls_log("[ERROR] Default Fragment Shader Compilation Failed\n{char*}\n", infoLog);
+        ls_log("Source: {char*}", (char*)fs);
         glDeleteShader(vertShader);
         return 0;
     }

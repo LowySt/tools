@@ -79,7 +79,7 @@ UIShader __ui_CreateGLShader(const char *vertSrcOrFile, const char *fragSrcOrFil
     if (isSource)
     {
         u32 programIdx = ls_glCreateShader(vertSrcOrFile, fragSrcOrFile);
-        UIShader program = {vertSrcOrFile, fragSrcOrFile, programIdx};
+        UIShader program = {(char *)vertSrcOrFile, (char *)fragSrcOrFile, false, programIdx};
         return program;
     }
 
@@ -88,7 +88,12 @@ UIShader __ui_CreateGLShader(const char *vertSrcOrFile, const char *fragSrcOrFil
     ls_readFile((char *)vertSrcOrFile, &vertSource, 0);
     ls_readFile((char *)fragSrcOrFile, &fragSource, 0);
     u32 programIdx = ls_glCreateShader(vertSource, fragSource);
-    UIShader program = { NULL, NULL, programIdx, 0, vertSrcOrFile, fragSrcOrFile };
+    if (programIdx == 0) {
+        ls_free(vertSource);
+        ls_free(fragSource);
+    }
+
+    UIShader program = { vertSource, fragSource, true, programIdx, 0, vertSrcOrFile, fragSrcOrFile };
     return program;
 }
 
@@ -304,6 +309,12 @@ u32 __ui_ReloadShader(UIContext *c, UIShader *s)
     {
         glDeleteProgram(s->idx);
         s->idx = newShader.idx;
+        if (s->ownsSource) {
+            if (s->vertSrc) { ls_free(s->vertSrc); }
+            if (s->fragSrc) { ls_free(s->fragSrc); }
+        }
+        s->vertSrc = newShader.vertSrc;
+        s->fragSrc = newShader.fragSrc;
     }
 
     return newShader.idx;
