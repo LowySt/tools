@@ -1,12 +1,3 @@
-#pragma once
-
-#if _DEBUG
-
-LS_COMPILE_TIME_FILE_REL_PATH(__ls_ui_DefTexturedRectFragSrc, __FILE__, "Debug\\DefTexturedRect.frag");
-
-#else
-
-const char *__ls_ui_DefTexturedRectFragSrc = R"LONGLONG(
 #version 330 core
 
 in vec2 TexCoord;
@@ -32,6 +23,3 @@ void main() {
     gl_FragDepth = zLayer;
     FragColor = finalColor;
 }
-)LONGLONG";
-
-#endif

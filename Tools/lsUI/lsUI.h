@@ -20,6 +20,11 @@
 
 #include "lsInput.h"
 
+#ifndef LS_FILEWATCH_IMPLEMENTATION
+#define LS_FILEWATCH_IMPLEMENTATION
+#include "lsFileWatch.h"
+#endif
+
 #include <typeinfo>
 
 #define KeySet(k)       (UserInput->Keyboard.currentState.k = 1)
@@ -358,23 +363,21 @@ struct UIContext
 #endif
     
 #ifdef LS_UI_OPENGL_BACKEND
-    HGLRC OGLContext;
-    u32 sdfTextShader;
-    u32 textShader;
-    u32 rectShader;
-    u32 rectVAO;
-    u32 gradientRectShader;
-    u32 rectGradientVAO;
-    u32 texturedRectShader;
-    u32 circleShader;
-    u32 colorWheelShader;
-    u32 circleVAO;
-    s32 circleVertCount;
+    HGLRC    OGLContext;
+    UIShader sdfTextProgram;
+    UIShader textProgram;
+    UIShader rectProgram;
+    UIShader gradientRectProgram;
+    UIShader texturedRectProgram;
+    UIShader circleProgram;
+    UIShader colorWheelProgram;
+    s32      circleVertCount;
 #endif
     
     
 #if _DEBUG //NOTE: Tag to debug specific render commands
     b32 isTagged;
+    FW_FileWatcher fileWatcher;
 #endif
     
     RenderCallback renderFunc;
@@ -1275,6 +1278,11 @@ UIContext *ls_uiInitDefaultContext(Arena contextArena, Arena frameArena, Arena w
     AssertMsg(FALSE, "Missing backend...");
 #endif
 
+#if _DEBUG
+    const u32 fwMemSize    = sizeof(char)*4096;
+    char *fwBackingMemory  = (char*)ls_alloc(fwMemSize);
+    uiContext->fileWatcher = ls_fwCreateFileWatcher(fwBackingMemory, fwMemSize);
+#endif
     
     //------------------------------------------------------
     //NOTE: This shit is necessary to request millisecond-precision sleeps.
@@ -1456,6 +1464,45 @@ void ls_uiFrameBegin(UIContext *c, UIWindow *win)
 
 void ls_uiFrameEnd(UIContext *c)
 {
+#ifdef _DEBUG
+    FW_WatchedFile *changedFile = 0;
+    while(changedFile = ls_fwIterNext(&c->fileWatcher)) {
+        ls_log("File Changed: {char*}", changedFile->absolutePath);
+        ls_log("Text Frag: {char*}", (char *)c->textProgram.fragFilePath);
+
+        //TODO: This is currently hardcoded and only used in OPENGL shaders...
+        if (ls_strcmp(changedFile->absolutePath, (char *)c->sdfTextProgram.vertFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->sdfTextProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->sdfTextProgram.fragFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->sdfTextProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->textProgram.vertFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->textProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->textProgram.fragFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->textProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->rectProgram.vertFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->rectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->rectProgram.fragFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->rectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->gradientRectProgram.vertFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->gradientRectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->gradientRectProgram.fragFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->gradientRectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->texturedRectProgram.vertFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->texturedRectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->texturedRectProgram.fragFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->texturedRectProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->circleProgram.vertFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->circleProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->circleProgram.fragFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->circleProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->colorWheelProgram.vertFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->colorWheelProgram);
+        } else if (ls_strcmp(changedFile->absolutePath, (char *)c->colorWheelProgram.fragFilePath) == 0) {
+            u32 reloadedIdx = __ui_ReloadShader(c, &c->colorWheelProgram);
+        }
+    }
+#endif
+
     ls_arenaClear(c->frameArena);
     
     UIWindow *win = c->currWindow;

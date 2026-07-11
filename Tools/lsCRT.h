@@ -269,6 +269,82 @@ u64 RotLeft(u64 a, s32 shift);
 u64 RotRight(u64 a, s32 shift);
 
 
+////////////////////////////////////////////////////
+//	COMPILE-TIME STRING MANIPULATION
+////////////////////////////////////////////////////
+
+template <int N>
+struct ls_parentDirFromFilePath_buf {
+    char out[N+1]{};
+
+    consteval ls_parentDirFromFilePath_buf(const char (&filePath)[N]) {
+        //Since we are going to strip the filename, from the filePath anyway
+        // we are guaranteed that N+L is going to be larger than the minimum size to store the final path
+        bool doingBasename = true;
+        int copiedLen = 0;
+        for (int i = N-1; i >= 0; i--) {
+            if (doingBasename && ((filePath[i] == '\\') or (filePath[i] == '/')))
+            {
+                doingBasename = false;
+            }
+
+            if (doingBasename) { continue; }
+            out[i] = filePath[i];
+            copiedLen += 1;
+        }
+
+        out[copiedLen] = '\0';
+    }
+};
+
+template <int N>
+consteval auto ls_parentDirFromFilePath(const char (&filePath)[N]) {
+    return ls_parentDirFromFilePath_buf<N>(filePath);
+}
+
+#define LS_COMPILE_TIME_PARENT_FROM_FILE_PATH(varName, fileLiteral)              \
+    static constexpr auto varName##_buf = ls_parentDirFromFilePath(fileLiteral); \
+    static constexpr const char* varName = varName##_buf.out
+
+template <int N, int L>
+struct ls_fileRelativePath_buf {
+    static constexpr int actual_len = N+L;
+    char out[actual_len]{};
+
+    consteval ls_fileRelativePath_buf(const char (&filePath)[N], const char (&newPath)[L]) {
+        //Since we are going to strip the filename, from the filePath anyway
+        // we are guaranteed that N+L is going to be larger than the minimum size to store the final path
+        bool doingBasename = true;
+        int copiedLen = 0;
+        for (int i = N-1; i >= 0; i--) {
+            if (doingBasename && ((filePath[i] == '\\') or (filePath[i] == '/')))
+            {
+                doingBasename = false;
+            }
+
+            if (doingBasename) { continue; }
+            out[i] = filePath[i];
+            copiedLen += 1;
+        }
+
+        for (int i = copiedLen; i < copiedLen+L; i++) out[i] = newPath[i-copiedLen];
+        out[copiedLen+L] = '\0';
+    }
+};
+
+template <int N, int L>
+consteval auto ls_fileRelativePath(const char (&filePath)[N], const char (&newPath)[L]) {
+    return ls_fileRelativePath_buf<N, L>(filePath, newPath);
+}
+
+#define LS_COMPILE_TIME_FILE_REL_PATH(varName, fileLiteral, newPathLiteral)                 \
+    static constexpr auto varName##_buf = ls_fileRelativePath(fileLiteral, newPathLiteral); \
+    static constexpr const char* varName = varName##_buf.out
+
+////////////////////////////////////////////////////
+//	END OF HEADER
+////////////////////////////////////////////////////
+
 #endif //End of header
 
 #ifdef LS_CRT_IMPLEMENTATION

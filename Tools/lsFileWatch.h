@@ -281,21 +281,23 @@ s32 ls_fwStartWatchingAllFilesInDir(FW_FileWatcher *fw, char *dirParentPath, cha
     s32 totalFilesWatched = 0;
     do
     {
-        if (dirFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY && recursive)
+        if (dirFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
         {
-            if (dirFindData.cFileName[0] != '.')
-            {
-                char nextDirPath[512] = {};
-                ls_memcpy(dirParentPath, nextDirPath, parentLen);
-                ls_memcpy(dirName, nextDirPath+parentLen, dpLen);
-                ls_memcpy((char *)"\\\0", nextDirPath+parentLen+dpLen, 1);
-
-                s32 dRes = ls_fwStartWatchingAllFilesInDir(fw, nextDirPath, dirFindData.cFileName);
-                if (dRes == 0)
+            if (recursive) {
+                if (dirFindData.cFileName[0] != '.')
                 {
-                    return 0;
+                    char nextDirPath[512] = {};
+                    ls_memcpy(dirParentPath, nextDirPath, parentLen);
+                    ls_memcpy(dirName, nextDirPath+parentLen, dpLen);
+                    ls_memcpy((char *)"\\\0", nextDirPath+parentLen+dpLen, 1);
+
+                    s32 dRes = ls_fwStartWatchingAllFilesInDir(fw, nextDirPath, dirFindData.cFileName);
+                    if (dRes == 0)
+                    {
+                        return 0;
+                    }
+                    totalFilesWatched += dRes;
                 }
-                totalFilesWatched += dRes;
             }
         }
         else
@@ -348,6 +350,10 @@ FW_WatchedFile *ls_fwIterNext(FW_FileWatcher *fw)
     u64 fSize = ((u64)attrData.nFileSizeHigh << 32) | attrData.nFileSizeLow;
     u64 ts    = ((u64)attrData.ftLastWriteTime.dwHighDateTime << 32) | attrData.ftLastWriteTime.dwLowDateTime;
     
+    //TODO: Probably want to always report changes if the timestamp changed...
+    // Even though some text editors do funky tricks on the file contents when trying to keep
+    // backups running (vim for examples writes to a backup first, and that invalidates the 
+    // written to file, without properly setting it's new size?)
     if ((fSize == watchedFile->size) || (ts == watchedFile->lastTimestamp))
     {
         return 0;

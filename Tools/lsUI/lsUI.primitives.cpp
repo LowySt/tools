@@ -5,11 +5,11 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
     UIWindow *win = c->currWindow;
 #ifdef LS_UI_OPENGL_BACKEND
     
-    glUseProgram(c->rectShader);
-    glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
+    glUseProgram(c->rectProgram.idx);
+    glUniform4ui(glGetUniformLocation(c->rectProgram.idx, "color"), col.r, col.g, col.b, col.a);
     
     f32 normZ = 1.0f; //1.0f - ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
-    glUniform1f(glGetUniformLocation(c->rectShader, "zLayer"), normZ);
+    glUniform1f(glGetUniformLocation(c->rectProgram.idx, "zLayer"), normZ);
     
     f64 xf = (f64)startY;
     f64 yf = (f64)startY;
@@ -23,9 +23,9 @@ void ls_uiClearRect(UIContext *c, s32 startX, s32 startY, s32 w, s32 h, Color co
     Mat4 scale     = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
     
-    glUniformMatrix4fv(glGetUniformLocation(c->rectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniformMatrix4fv(glGetUniformLocation(c->rectProgram.idx, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
     
-    glBindVertexArray(c->rectVAO);
+    glBindVertexArray(c->rectProgram.VAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     
     glBindVertexArray(0);
@@ -88,11 +88,11 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect thread
 
 #ifdef LS_UI_OPENGL_BACKEND
     
-    glUseProgram(c->rectShader);
-    glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
+    glUseProgram(c->rectProgram.idx);
+    glUniform4ui(glGetUniformLocation(c->rectProgram.idx, "color"), col.r, col.g, col.b, col.a);
     
     f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
-    glUniform1f(glGetUniformLocation(c->rectShader, "zLayer"), normZ);
+    glUniform1f(glGetUniformLocation(c->rectProgram.idx, "zLayer"), normZ);
     
     f64 xf = (f64)xPos;
     f64 yf = (f64)yPos;
@@ -106,9 +106,9 @@ void ls_uiFillRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect thread
     Mat4 scale     = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
     
-    glUniformMatrix4fv(glGetUniformLocation(c->rectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniformMatrix4fv(glGetUniformLocation(c->rectProgram.idx, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
     
-    glBindVertexArray(c->rectVAO);
+    glBindVertexArray(c->rectProgram.VAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     
     glBindVertexArray(0);
@@ -335,11 +335,11 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
     s32 startX = x + (w - (s32)arrowWidth)/2 - 1;
     s32 startY = (yPos + (h-(s32)arrowHeight)/2) - 1;
     
-    glUseProgram(c->rectShader);
-    glUniform4ui(glGetUniformLocation(c->rectShader, "color"), col.r, col.g, col.b, col.a);
+    glUseProgram(c->rectProgram.idx);
+    glUniform4ui(glGetUniformLocation(c->rectProgram.idx, "color"), col.r, col.g, col.b, col.a);
     
     f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
-    glUniform1f(glGetUniformLocation(c->rectShader, "zLayer"), normZ);
+    glUniform1f(glGetUniformLocation(c->rectProgram.idx, "zLayer"), normZ);
     
     f64 xf = (f64)startX;
     f64 yf = (f64)startY;
@@ -354,9 +354,9 @@ void ls_uiDrawArrow(UIContext *c, s32 x, s32 yPos, s32 w, s32 h,
     Mat4 scale = Scale4(vec4((f64)arrowWidth / wf, (f64)arrowHeight / hf, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
     
-    glUniformMatrix4fv(glGetUniformLocation(c->rectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniformMatrix4fv(glGetUniformLocation(c->rectProgram.idx, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
     
-    glBindVertexArray(c->rectVAO);
+    glBindVertexArray(c->rectProgram.VAO);
     glDrawArrays(GL_TRIANGLES, vaoOffset, 3);
     
     glBindVertexArray(0);
@@ -545,7 +545,7 @@ void ls_uiDrawCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thi
     UIWindow *win = c->currWindow;
 #ifdef LS_UI_OPENGL_BACKEND
     
-    glUseProgram(c->circleShader);
+    glUseProgram(c->circleProgram.idx);
     
     s32 leftCornerX = centerX - radius;
     s32 leftCornerY = centerY - radius;
@@ -567,16 +567,16 @@ void ls_uiDrawCircle(UIContext *c, s32 centerX, s32 centerY, s32 radius, s32 thi
     Mat4 transform = ls_mat4x4Mul(scale, translate);
     
     
-    glUniformMatrix4fv(glGetUniformLocation(c->circleShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
-    glUniform4ui(glGetUniformLocation(c->circleShader, "color"), col.r, col.g, col.b, col.a);
+    glUniformMatrix4fv(glGetUniformLocation(c->circleProgram.idx, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniform4ui(glGetUniformLocation(c->circleProgram.idx, "color"), col.r, col.g, col.b, col.a);
     
     f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
-    glUniform1f(glGetUniformLocation(c->circleShader, "zLayer"), normZ);
+    glUniform1f(glGetUniformLocation(c->circleProgram.idx, "zLayer"), normZ);
     
     f32 uvThickness = (f32)thickness / (f32)radius;
-    glUniform1f(glGetUniformLocation(c->circleShader, "thickness"), uvThickness); // Full circle in [0..1]
+    glUniform1f(glGetUniformLocation(c->circleProgram.idx, "thickness"), uvThickness); // Full circle in [0..1]
     
-    glBindVertexArray(c->circleVAO);
+    glBindVertexArray(c->circleProgram.VAO);
     glDrawArrays(GL_TRIANGLE_FAN, 0, c->circleVertCount);
     
     glBindVertexArray(0);
@@ -629,7 +629,7 @@ void ls_uiStretchBitmap(UIContext *c, UIBitmap *bmp, UIRect dst, UIRect threadRe
 
 #ifdef LS_UI_OPENGL_BACKEND
     
-    glUseProgram(c->texturedRectShader);
+    glUseProgram(c->texturedRectProgram.idx);
     
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, bmp->texID);
@@ -649,13 +649,13 @@ void ls_uiStretchBitmap(UIContext *c, UIBitmap *bmp, UIRect dst, UIRect threadRe
     Mat4 translate = Translate(vec4(xp, yp, 0.0, 1.0));
     Mat4 scale = Scale4(vec4(scaleW, scaleH, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
-    glUniformMatrix4fv(glGetUniformLocation(c->texturedRectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
-    glUniform4ui(glGetUniformLocation(c->texturedRectShader, "color"), 255, 255, 255, 255);
+    glUniformMatrix4fv(glGetUniformLocation(c->texturedRectProgram.idx, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniform4ui(glGetUniformLocation(c->texturedRectProgram.idx, "color"), 255, 255, 255, 255);
     
     f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
-    glUniform1f(glGetUniformLocation(c->texturedRectShader, "zLayer"), normZ);
+    glUniform1f(glGetUniformLocation(c->texturedRectProgram.idx, "zLayer"), normZ);
     
-    glBindVertexArray(c->rectVAO);
+    glBindVertexArray(c->rectProgram.VAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -719,7 +719,7 @@ void __ls_uiOGLGlyph(UIContext *c, UIFont *f, s32 cp, s32 x, s32 y, f64 scale, C
     const s32 verticesPerGlyph = 6;
     
     b32 isSDF = c->fontGroup.isSDF;
-    u32 shader = isSDF ? c->sdfTextShader : c->textShader;
+    u32 shader = isSDF ? c->sdfTextProgram.idx : c->textProgram.idx;
     
     glUseProgram(shader);
     
@@ -733,7 +733,7 @@ void __ls_uiOGLGlyph(UIContext *c, UIFont *f, s32 cp, s32 x, s32 y, f64 scale, C
     if (isSDF)
     {
         f64 smoothingValue = 0.05;
-        glUniform1f(glGetUniformLocation(c->sdfTextShader, "smoothing"), smoothingValue);
+        glUniform1f(glGetUniformLocation(c->sdfTextProgram.idx, "smoothing"), smoothingValue);
     }
     
     f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
@@ -943,11 +943,11 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
 
 #ifdef LS_UI_OPENGL_BACKEND
     
-    glUseProgram(c->gradientRectShader);
-    glUniform4ui(glGetUniformLocation(c->gradientRectShader, "color"), 0, 0, 0, 0);
+    glUseProgram(c->gradientRectProgram.idx);
+    glUniform4ui(glGetUniformLocation(c->gradientRectProgram.idx, "color"), 0, 0, 0, 0);
     
     f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
-    glUniform1f(glGetUniformLocation(c->gradientRectShader, "zLayer"), normZ);
+    glUniform1f(glGetUniformLocation(c->gradientRectProgram.idx, "zLayer"), normZ);
     
     f64 xf = (f64)xPos;
     f64 yf = (f64)yPos;
@@ -961,9 +961,9 @@ void ls_uiColorValueRect(UIContext *c, s32 xPos, s32 yPos, s32 w, s32 h, UIRect 
     Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
     
-    glUniformMatrix4fv(glGetUniformLocation(c->gradientRectShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniformMatrix4fv(glGetUniformLocation(c->gradientRectProgram.idx, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
     
-    glBindVertexArray(c->rectGradientVAO);
+    glBindVertexArray(c->gradientRectProgram.VAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     
     glBindVertexArray(0);
@@ -1107,7 +1107,7 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
 
 #ifdef LS_UI_OPENGL_BACKEND
     
-    glUseProgram(c->colorWheelShader);
+    glUseProgram(c->colorWheelProgram.idx);
     
     s32 leftCornerX = centerX - radius;
     s32 leftCornerY = centerY - radius;
@@ -1128,15 +1128,15 @@ void ls_uiFillColorWheel(UIContext *c, s32 centerX, s32 centerY, s32 radius, f32
     Mat4 scale = Scale4(vec4((f64)w / wf, (f64)h / hf, 0.0, 1.0));
     Mat4 transform = ls_mat4x4Mul(scale, translate);
 
-    glUniformMatrix4fv(glGetUniformLocation(c->colorWheelShader, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
-    glUniform2f(glGetUniformLocation(c->colorWheelShader, "centerInScreenSpace"), (f64)centerX, (f64)centerY);
-    glUniform1f(glGetUniformLocation(c->colorWheelShader, "radiusInScreenSpace"), (f64)radius);
-    glUniform1f(glGetUniformLocation(c->colorWheelShader, "brightness"), value);
+    glUniformMatrix4fv(glGetUniformLocation(c->colorWheelProgram.idx, "transform"), 1, GL_TRUE, (GLfloat *)transform.values);
+    glUniform2f(glGetUniformLocation(c->colorWheelProgram.idx, "centerInScreenSpace"), (f64)centerX, (f64)centerY);
+    glUniform1f(glGetUniformLocation(c->colorWheelProgram.idx, "radiusInScreenSpace"), (f64)radius);
+    glUniform1f(glGetUniformLocation(c->colorWheelProgram.idx, "brightness"), value);
 
     f32 normZ = 1.0f ;//- ((f32)c->zLayer / (f32)(UI_Z_LAYERS-1));
-    glUniform1f(glGetUniformLocation(c->colorWheelShader, "zLayer"), normZ);
+    glUniform1f(glGetUniformLocation(c->colorWheelProgram.idx, "zLayer"), normZ);
     
-    glBindVertexArray(c->rectVAO);
+    glBindVertexArray(c->rectProgram.VAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     
     glBindVertexArray(0);

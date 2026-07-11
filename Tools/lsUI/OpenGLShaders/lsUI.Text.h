@@ -1,5 +1,13 @@
 #pragma once
 
+#if _DEBUG
+
+LS_COMPILE_TIME_FILE_REL_PATH(__ls_ui_DefTextVertSrc, __FILE__, "Debug\\DefText.vert");
+LS_COMPILE_TIME_FILE_REL_PATH(__ls_ui_DefTextFragSrc, __FILE__, "Debug\\DefText.frag");
+LS_COMPILE_TIME_FILE_REL_PATH(__ls_ui_DefSDFTextFragSrc, __FILE__, "Debug\\DefSDFText.frag");
+
+#else
+
 const char *__ls_ui_DefTextVertSrc = R"LONGLONG(
 #version 330 core
 
@@ -194,3 +202,4 @@ const char *__ls_ui_DefSDFTextFragSrc = R"LONGLONG(
     }
 )LONGLONG";
 
+#endif

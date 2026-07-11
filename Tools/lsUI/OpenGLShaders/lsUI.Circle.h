@@ -1,5 +1,12 @@
 #pragma once
 
+#if _DEBUG
+
+LS_COMPILE_TIME_FILE_REL_PATH(__ls_ui_DefCircleFragSrc, __FILE__, "Debug\\DefCircle.frag");
+LS_COMPILE_TIME_FILE_REL_PATH(__ls_uiDefCircleColorWheelFragSrc, __FILE__, "Debug\\DefCircleColorWheel.frag");
+
+#else
+
 const char *__ls_ui_DefCircleFragSrc = R"LONGLONG(
 #version 330 core
 
@@ -32,7 +39,6 @@ void main() {
     FragColor = converted;
 }
 )LONGLONG";
-
 
 const char *__ls_uiDefCircleColorWheelFragSrc = R"LONGLONG(
     #version 330 core
@@ -75,3 +81,5 @@ const char *__ls_uiDefCircleColorWheelFragSrc = R"LONGLONG(
         FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
     }
 )LONGLONG";
+
+#endif

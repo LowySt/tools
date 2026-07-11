@@ -514,6 +514,7 @@ extern "C"
     GL_FN(PFNGLBINDFRAGDATALOCATIONPROC, glBindFragDataLocation);
 	GL_FN(PFNGLLINKPROGRAMPROC, glLinkProgram);
 	GL_FN(PFNGLUSEPROGRAMPROC, glUseProgram);
+    GL_FN(PFNGLDELETEPROGRAMPROC, glDeleteProgram);
     
 	GL_FN(PFNGLGETUNIFORMFVPROC, glGetUniformfv);
 	GL_FN(PFNGLGETUNIFORMIVPROC, glGetUniformiv);
@@ -783,6 +784,7 @@ void ls_glLoadFunc(HDC DeviceContext)
         GET_FN(glBindFragDataLocation, PFNGLBINDFRAGDATALOCATIONPROC);
         GET_FN(glLinkProgram, PFNGLLINKPROGRAMPROC);
         GET_FN(glUseProgram, PFNGLUSEPROGRAMPROC);
+        GET_FN(glDeleteProgram, PFNGLDELETEPROGRAMPROC);
         
         GET_FN(glGetUniformfv, PFNGLGETUNIFORMFVPROC);
         GET_FN(glGetUniformiv, PFNGLGETUNIFORMIVPROC);
@@ -849,6 +851,7 @@ u32 ls_glCreateShader(const char *vs, const char *fs)
     {
         glGetShaderInfoLog(vertShader, 512, NULL, infoLog);
         ls_log("[ERROR] Default Vertex Shader Compilation Failed\n{char*}", infoLog);
+        return 0;
     }
     
     u32 fragShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -860,6 +863,8 @@ u32 ls_glCreateShader(const char *vs, const char *fs)
     {
         glGetShaderInfoLog(fragShader, 512, NULL, infoLog);
         ls_log("[ERROR] Default Fragment Shader Compilation Failed\n{char*}", infoLog);
+        glDeleteShader(vertShader);
+        return 0;
     }
     
     u32 shaderProgram = glCreateProgram();
@@ -871,6 +876,9 @@ u32 ls_glCreateShader(const char *vs, const char *fs)
     if (!success) {
         glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
         ls_log("[ERROR] Default Shader Program Link Failed\n{char*}", infoLog);
+        glDeleteShader(vertShader);
+        glDeleteShader(fragShader);
+        return 0;
     }
     
     glDeleteShader(vertShader);

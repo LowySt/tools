@@ -74,9 +74,33 @@ void __ui_InitOpenGLExtensions()
     
 }
 
+UIShader __ui_CreateGLShader(const char *vertSrcOrFile, const char *fragSrcOrFile, bool isSource = true)
+{
+    if (isSource)
+    {
+        u32 programIdx = ls_glCreateShader(vertSrcOrFile, fragSrcOrFile);
+        UIShader program = {vertSrcOrFile, fragSrcOrFile, programIdx};
+        return program;
+    }
+
+    char *vertSource = NULL;
+    char *fragSource = NULL;
+    ls_readFile((char *)vertSrcOrFile, &vertSource, 0);
+    ls_readFile((char *)fragSrcOrFile, &fragSource, 0);
+    u32 programIdx = ls_glCreateShader(vertSource, fragSource);
+    UIShader program = { NULL, NULL, programIdx, 0, vertSrcOrFile, fragSrcOrFile };
+    return program;
+}
+
+//TODO: Handle __ui_CreateGLShader failure (returns 0 on failure)
 void __ui_CreateDefaultShaders(UIContext *c)
 {
-    c->rectShader = ls_glCreateShader(__ls_ui_default_vert_shader_src, __ls_ui_default_rect_frag_shader_src);
+#if _DEBUG
+    bool isSource = false;
+#else
+    bool isSource = true;
+#endif
+    c->rectProgram = __ui_CreateGLShader(__ls_ui_DefVertSrc, __ls_ui_DefRectFragSrc, isSource);
     
     f32 rectVertices[18][4] =
     {
@@ -111,9 +135,9 @@ void __ui_CreateDefaultShaders(UIContext *c)
     };
     
     GLuint VBO;
-    glGenVertexArrays(1, &c->rectVAO);
+    glGenVertexArrays(1, &c->rectProgram.VAO);
     glGenBuffers(1, &VBO);
-    glBindVertexArray(c->rectVAO);
+    glBindVertexArray(c->rectProgram.VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     
     //NOTE: Since you can free the underling buffer after the call to glBufferData, this means
@@ -138,7 +162,7 @@ void __ui_CreateDefaultShaders(UIContext *c)
     //NOTE: Gradient Rect VAO
     //
 
-    c->gradientRectShader = ls_glCreateShader(__ls_ui_DefGradientRectVertSrc, __ls_ui_DefGradientRectFragSrc);
+    c->gradientRectProgram = __ui_CreateGLShader(__ls_ui_DefGradientRectVertSrc, __ls_ui_DefGradientRectFragSrc, isSource);
     
     // NOTE: The extra float is either 0.0 or 1.0 and indicates if the vertex should be
     // black of white in color.
@@ -154,9 +178,9 @@ void __ui_CreateDefaultShaders(UIContext *c)
     };
     
     GLuint rectGradientVBO;
-    glGenVertexArrays(1, &c->rectGradientVAO);
+    glGenVertexArrays(1, &c->gradientRectProgram.VAO);
     glGenBuffers(1, &rectGradientVBO);
-    glBindVertexArray(c->rectGradientVAO);
+    glBindVertexArray(c->gradientRectProgram.VAO);
     glBindBuffer(GL_ARRAY_BUFFER, rectGradientVBO);
     
     glBufferData(GL_ARRAY_BUFFER, sizeof(rectGradientVertices), rectGradientVertices, GL_STATIC_DRAW);
@@ -180,7 +204,7 @@ void __ui_CreateDefaultShaders(UIContext *c)
     //NOTE: Textured Rect Shader Compilation
     //
     
-    c->texturedRectShader = ls_glCreateShader(__ls_ui_default_vert_shader_src, __ls_ui_DefTexturedRectFragSrc);
+    c->texturedRectProgram = __ui_CreateGLShader(__ls_ui_DefVertSrc, __ls_ui_DefTexturedRectFragSrc, isSource);
     
     //TODO: Pass center and radius to specialized vertex shader for
     // circles and do the position calcs there!
@@ -189,13 +213,13 @@ void __ui_CreateDefaultShaders(UIContext *c)
     //NOTE: Circle Shader Compilation
     //
     
-    c->circleShader = ls_glCreateShader(__ls_ui_default_vert_shader_src, __ls_ui_DefCircleFragSrc);
+    c->circleProgram = __ui_CreateGLShader(__ls_ui_DefVertSrc, __ls_ui_DefCircleFragSrc, isSource);
 
     // --------------------------------
     //NOTE: Circle Color Wheel Shader Compilation
     //
 
-    c->colorWheelShader = ls_glCreateShader(__ls_ui_default_vert_shader_src, __ls_uiDefCircleColorWheelFragSrc);
+    c->colorWheelProgram = __ui_CreateGLShader(__ls_ui_DefVertSrc, __ls_uiDefCircleColorWheelFragSrc, isSource);
     
     constexpr s32 circleVertCount = 80;
     f32 circleVertices[circleVertCount][4] = {};
@@ -220,9 +244,9 @@ void __ui_CreateDefaultShaders(UIContext *c)
     }
     
     GLuint circleVBO;
-    glGenVertexArrays(1, &c->circleVAO);
+    glGenVertexArrays(1, &c->circleProgram.VAO);
     glGenBuffers(1, &circleVBO);
-    glBindVertexArray(c->circleVAO);
+    glBindVertexArray(c->circleProgram.VAO);
     glBindBuffer(GL_ARRAY_BUFFER, circleVBO);
     
     //NOTE: Since you can free the underling buffer after the call to glBufferData, this means
@@ -244,17 +268,45 @@ void __ui_CreateDefaultShaders(UIContext *c)
     //NOTE: SDF Shader Compilation
     //
 
-    c->sdfTextShader = ls_glCreateShader(__ls_ui_DefTextVertSrc, __ls_ui_DefSDFTextFragSrc);
+    c->sdfTextProgram = __ui_CreateGLShader(__ls_ui_DefTextVertSrc, __ls_ui_DefSDFTextFragSrc, isSource);
 
     // --------------------------------
     //NOTE: Text Shader Compilation
     //
     
-    
-    c->textShader = ls_glCreateShader(__ls_ui_DefTextVertSrc, __ls_ui_DefTextFragSrc);
+    c->textProgram = __ui_CreateGLShader(__ls_ui_DefTextVertSrc, __ls_ui_DefTextFragSrc, isSource);
     
     //
     // --------------------------------
+
+    // --------------------------------
+    // NOTE: In DEBUG watch shaders
+
+#if _DEBUG
+    s32 watchedCount = ls_fwStartWatchingAllFilesInDir(&c->fileWatcher, (char*)"", (char*)__ui_DebugShadersParentDir, false);
+    ls_log("Watching {s32} files in {char*}", watchedCount, (char*)__ui_DebugShadersParentDir);
+#endif
+    //
+    // --------------------------------
+}
+
+
+u32 __ui_ReloadShader(UIContext *c, UIShader *s)
+{
+    AssertMsg(s->vertFilePath != NULL, "Reloading shader has null filepath");
+    AssertMsg(s->fragFilePath != NULL, "Reloading shader has null filepath");
+
+    ls_log("Trying to reload shader:\n\t{char*}\n\t{char*}", (char*)s->vertFilePath, (char*)s->fragFilePath);
+
+    //TODO: user bool isSource as well, instead of reloading from file each time?
+    UIShader newShader = __ui_CreateGLShader(s->vertFilePath, s->fragFilePath, false);
+    if (newShader.idx != 0)
+    {
+        glDeleteProgram(s->idx);
+        s->idx = newShader.idx;
+    }
+
+    return newShader.idx;
 }
 
 void __ui_CreateOpenGLWindow(UIContext *c, UIWindow *win, HWND WindowHandle)
@@ -319,3 +371,4 @@ void __ui_CreateOpenGLWindow(UIContext *c, UIWindow *win, HWND WindowHandle)
         __ui_CreateDefaultShaders(c);
     }
 }
+

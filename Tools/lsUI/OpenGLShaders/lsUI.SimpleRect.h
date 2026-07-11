@@ -1,6 +1,12 @@
 #pragma once
 
-const char *__ls_ui_default_vert_shader_src = R"LONGLONG(
+#if _DEBUG
+
+LS_COMPILE_TIME_FILE_REL_PATH(__ls_ui_DefVertSrc, __FILE__, "Debug\\DefVertShader.vert");
+LS_COMPILE_TIME_FILE_REL_PATH(__ls_ui_DefRectFragSrc, __FILE__, "Debug\\DefFragShader.frag");
+
+#else
+const char *__ls_ui_DefVertSrc = R"LONGLONG(
     #version 330 core
 
     layout(location = 0) in vec2 inPosition;      // Vertex position
@@ -17,7 +23,7 @@ const char *__ls_ui_default_vert_shader_src = R"LONGLONG(
     )LONGLONG";
 
 
-const char *__ls_ui_default_rect_frag_shader_src = R"LONGLONG(
+const char *__ls_ui_DefRectFragSrc = R"LONGLONG(
     #version 330 core
 
     in vec2 TexCoord;
@@ -40,4 +46,4 @@ const char *__ls_ui_default_rect_frag_shader_src = R"LONGLONG(
         FragColor = converted;
     }
     )LONGLONG";
-
+#endif
