@@ -47,11 +47,25 @@
  *  You can pop the last blacklist, and then all next *StartWatching* functions will include those files again.
  *  You cannot start watching a blacklisted file after having popped the blacklist without a new call to *StartWatching*.
  *
+ *  CALLBACKS:
+ *  The *StartWatching* functions take an optional *typedef bool(*FW_Callback)(FW_FileWatcher *fw, void *userData)* callback
+ *  function, and a void* userData:
+ *      ls_fwStartWatchingFile(FW_FileWatcher *fw, char *absolutePath, char **dest, FW_Callback callback = NULL, void *userData = NULL);
+ *  
+ *  If at least the FW_Callback is provided and it's non-null, then it will be called immediately once a change is noticed during
+ *  the iteration. The iterator will *still* return the changed file, but the boolean result of the callback will be provided.
+ *
+ *  The ls_fwStartWatchingAllFilesInDir(FW_FileWatcher *fw, char *dirParentPath, char *dirName, bool recursive, FW_Callback callback = NULL, void *userData = NULL);
+ *  Also accepts the optional callback, but it is applied to all files equally. So it might be less useful
+ *
  *  CUSTOMIZATION:
  *  After this block-comment explanation, you'll find constant defines that you can override in your own code
  *  to change the amount of stack-allocated memory by the context structure FW_FileWatcher, to allow fore more/less
  *  files/blacklists entries
  *
+ * TODO:
+ *     Add an Iterator-Like ls_fwStartWatchingAllFilesInDir(), that returns each file you *might* want to watch, and expects a boolean to be set if you want
+ *     it to start being watched. That also allows the user to set a different callback to each single watched file for the directory watching as well...
  * */
 
 #include "lsWindows.h"
@@ -74,6 +88,10 @@
 #define FW_PATH_SEPARATOR '\\'
 #endif 
 
+
+struct FW_FileWatcher;
+typedef bool(*FW_Callback)(FW_FileWatcher *fw, void *userData);
+
 struct FW_WatchedFile
 {
     char *absolutePath;
@@ -82,6 +100,9 @@ struct FW_WatchedFile
 
     u64 lastTimestamp;
     u64 size;
+    
+    FW_Callback onChangeCallback;
+    void *userData;
 };
 
 struct FW_FileWatcher
@@ -106,7 +127,8 @@ FW_FileWatcher  ls_fwCreateFileWatcher(void *backingMemory, u32 size);
 s32             ls_fwPushEndingToBlacklist(FW_FileWatcher *fw, char *ending);
 s32             ls_fwPopEndingFromBlacklist(FW_FileWatcher *fw);
 
-s32             ls_fwStartWatchingFile(FW_FileWatcher *fw, char *absolutePath, char **dest);
+//s32             ls_fwStartWatchingFile(FW_FileWatcher *fw, char *absolutePath, char **dest);
+s32             ls_fwStartWatchingFile(FW_FileWatcher *fw, char *absolutePath, char **dest, FW_Callback callback = NULL, void *userData = NULL);
 s32             ls_fwStartWatchingAllFilesInDir(FW_FileWatcher *fw, char *dirParentPath, char *dirName, bool recursive);
 FW_WatchedFile *ls_fwIterNext(FW_FileWatcher *fw);
 
@@ -190,7 +212,7 @@ void __ls_fwGetNameAndExtension(char *absolutePath, s32 *filenameIdx, s32 *filen
     return;
 }
 
-s32 ls_fwStartWatchingFile(FW_FileWatcher *fw, char *absolutePath, char **dest)
+s32 ls_fwStartWatchingFile(FW_FileWatcher *fw, char *absolutePath, char **dest, FW_Callback callback = NULL, void *userData = NULL)
 {
     if (fw->idx >= FW_MAX_FILES_WATCHED)
     {
