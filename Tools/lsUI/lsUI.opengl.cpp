@@ -97,6 +97,13 @@ UIShader __ui_CreateGLShader(const char *vertSrcOrFile, const char *fragSrcOrFil
     return program;
 }
 
+bool __ui_ShaderOnChangedReloadCallback(FW_FileWatcher *fw, FW_WatchedFile *changed, void *userData)
+{
+    UIShader *sh = (UIShader *)userData;
+    u32 reloadedIdx = __ui_ReloadShader(sh);
+    return (reloadedIdx != 0);
+}
+
 //TODO: Handle __ui_CreateGLShader failure (returns 0 on failure)
 void __ui_CreateDefaultShaders(UIContext *c)
 {
@@ -288,15 +295,42 @@ void __ui_CreateDefaultShaders(UIContext *c)
     // NOTE: In DEBUG watch shaders
 
 #if _DEBUG
-    s32 watchedCount = ls_fwStartWatchingAllFilesInDir(&c->fileWatcher, (char*)"", (char*)__ui_DebugShadersParentDir, false);
-    ls_log("Watching {s32} files in {char*}", watchedCount, (char*)__ui_DebugShadersParentDir);
+    s32 res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->sdfTextProgram.vertFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->sdfTextProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->sdfTextProgram.vertFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->sdfTextProgram.fragFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->sdfTextProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->sdfTextProgram.fragFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->textProgram.vertFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->textProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->textProgram.vertFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->textProgram.fragFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->textProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->textProgram.fragFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->rectProgram.vertFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->rectProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->rectProgram.vertFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->rectProgram.fragFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->rectProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->rectProgram.fragFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->gradientRectProgram.vertFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->gradientRectProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->gradientRectProgram.vertFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->gradientRectProgram.fragFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->gradientRectProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->gradientRectProgram.fragFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->texturedRectProgram.vertFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->texturedRectProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->texturedRectProgram.vertFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->texturedRectProgram.fragFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->texturedRectProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->texturedRectProgram.fragFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->circleProgram.vertFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->circleProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->circleProgram.vertFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->circleProgram.fragFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->circleProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->circleProgram.fragFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->colorWheelProgram.vertFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->colorWheelProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->colorWheelProgram.vertFilePath); }
+    res = ls_fwStartWatchingFile(&c->fileWatcher, (char*)c->colorWheelProgram.fragFilePath, NULL, __ui_ShaderOnChangedReloadCallback, &c->colorWheelProgram);
+    if (res == 0) { ls_log("Could not watch file {char*}", c->colorWheelProgram.fragFilePath); }
+
 #endif
     //
     // --------------------------------
 }
 
 
-u32 __ui_ReloadShader(UIContext *c, UIShader *s)
+u32 __ui_ReloadShader(UIShader *s)
 {
     AssertMsg(s->vertFilePath != NULL, "Reloading shader has null filepath");
     AssertMsg(s->fragFilePath != NULL, "Reloading shader has null filepath");

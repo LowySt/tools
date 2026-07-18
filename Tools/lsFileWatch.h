@@ -85,12 +85,21 @@
 #endif
 
 #ifndef FW_PATH_SEPARATOR
+
+#ifdef _WIN32
 #define FW_PATH_SEPARATOR '\\'
+#elif __unix__
+#define FW_PATH_SEPARATOR '/'
+#else
+#error Unhandled OS when trying to define FW_PATH_SEPARATOR You can define it yourself before including lsFileWatch.h
+#endif
+
 #endif 
 
 
 struct FW_FileWatcher;
-typedef bool(*FW_Callback)(FW_FileWatcher *fw, void *userData);
+struct FW_WatchedFile;
+typedef bool(*FW_Callback)(FW_FileWatcher *fw, FW_WatchedFile *changed, void *userData);
 
 struct FW_WatchedFile
 {
@@ -103,6 +112,7 @@ struct FW_WatchedFile
     
     FW_Callback onChangeCallback;
     void *userData;
+    bool onCallResult;
 };
 
 struct FW_FileWatcher
@@ -122,14 +132,15 @@ struct FW_FileWatcher
     u32 size;
 };
 
+
+
 FW_FileWatcher  ls_fwCreateFileWatcher(void *backingMemory, u32 size);
 
 s32             ls_fwPushEndingToBlacklist(FW_FileWatcher *fw, char *ending);
 s32             ls_fwPopEndingFromBlacklist(FW_FileWatcher *fw);
 
-//s32             ls_fwStartWatchingFile(FW_FileWatcher *fw, char *absolutePath, char **dest);
-s32             ls_fwStartWatchingFile(FW_FileWatcher *fw, char *absolutePath, char **dest, FW_Callback callback = NULL, void *userData = NULL);
-s32             ls_fwStartWatchingAllFilesInDir(FW_FileWatcher *fw, char *dirParentPath, char *dirName, bool recursive);
+s32             ls_fwStartWatchingFile(FW_FileWatcher *fw, char *absolutePath, char **dest, FW_Callback callback, void *userData);
+s32             ls_fwStartWatchingAllFilesInDir(FW_FileWatcher *fw, char *dirParentPath, char *dirName, bool recursive, FW_Callback callback, void *userData);
 FW_WatchedFile *ls_fwIterNext(FW_FileWatcher *fw);
 
 #endif //LS_FILEWATCH_H
@@ -269,12 +280,15 @@ s32 ls_fwStartWatchingFile(FW_FileWatcher *fw, char *absolutePath, char **dest, 
 
     u64 fSize = ((u64)attrData.nFileSizeHigh << 32) | attrData.nFileSizeLow;
     u64 ts    = ((u64)attrData.ftLastWriteTime.dwHighDateTime << 32) | attrData.ftLastWriteTime.dwLowDateTime;
-    curr->size          = fSize;
-    curr->lastTimestamp = ts;
+    curr->size             = fSize;
+    curr->lastTimestamp    = ts;
+    curr->onChangeCallback = callback;
+    curr->userData         = userData;
+
     return fSize;
 }
 
-s32 ls_fwStartWatchingAllFilesInDir(FW_FileWatcher *fw, char *dirParentPath, char *dirName, bool recursive = true)
+s32 ls_fwStartWatchingAllFilesInDir(FW_FileWatcher *fw, char *dirParentPath, char *dirName, bool recursive = true, FW_Callback callback = NULL, void *userData = NULL)
 {
     //TODO Better errors
     if (fw->idx >= FW_MAX_FILES_WATCHED)
@@ -313,7 +327,7 @@ s32 ls_fwStartWatchingAllFilesInDir(FW_FileWatcher *fw, char *dirParentPath, cha
                     ls_memcpy(dirName, nextDirPath+parentLen, dpLen);
                     ls_memcpy((char *)"\\\0", nextDirPath+parentLen+dpLen, 1);
 
-                    s32 dRes = ls_fwStartWatchingAllFilesInDir(fw, nextDirPath, dirFindData.cFileName);
+                    s32 dRes = ls_fwStartWatchingAllFilesInDir(fw, nextDirPath, dirFindData.cFileName, recursive, callback, userData);
                     if (dRes == 0)
                     {
                         return 0;
@@ -332,7 +346,7 @@ s32 ls_fwStartWatchingAllFilesInDir(FW_FileWatcher *fw, char *dirParentPath, cha
             ls_memcpy((char *)"\\", nextFilePath+parentLen+dpLen, 1);
             ls_memcpy(dirFindData.cFileName, nextFilePath+parentLen+dpLen+1, fLen);
 
-            s32 fRes = ls_fwStartWatchingFile(fw, nextFilePath, NULL);
+            s32 fRes = ls_fwStartWatchingFile(fw, nextFilePath, NULL, callback, userData);
             if (fRes == 0)
             {
                 continue;
@@ -384,6 +398,11 @@ FW_WatchedFile *ls_fwIterNext(FW_FileWatcher *fw)
 
     watchedFile->size          = fSize;
     watchedFile->lastTimestamp = ts;
+    watchedFile->onCallResult  = false;
+
+    if (watchedFile->onChangeCallback) {
+        watchedFile->onCallResult = watchedFile->onChangeCallback(fw, watchedFile, watchedFile->userData);
+    }
 
     return watchedFile;
 }

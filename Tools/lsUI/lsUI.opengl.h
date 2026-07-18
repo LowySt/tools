@@ -22,7 +22,7 @@ struct UIShader
 void     __ui_InitOpenGLExtensions();
 UIShader __ui_CreateGLShader(const char *vertSrcOrFile, const char *fragSrcOrFile, bool isSource);
 void     __ui_CreateDefaultShaders(UIContext *c);
-u32      __ui_ReloadShader(UIContext *c, UIShader *s);
+u32      __ui_ReloadShader(UIShader *s);
 void     __ui_CreateOpenGLWindow(UIContext *c, UIWindow *win, HWND WindowHandle);
 
 LS_COMPILE_TIME_FILE_REL_PATH(__ui_DebugShadersParentDir, __FILE__, "OpenGLShaders\\Debug");
